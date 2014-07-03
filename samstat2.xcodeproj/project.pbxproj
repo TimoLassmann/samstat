@@ -7,8 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A196F4DA19493B6000C9B6F2 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4D919493B6000C9B6F2 /* main.c */; };
-		A196F4DC19493B6000C9B6F2 /* samstat2.1 in CopyFiles */ = {isa = PBXBuildFile; fileRef = A196F4DB19493B6000C9B6F2 /* samstat2.1 */; };
+		25D5B1401965088F00A57D8D /* viz.c in Sources */ = {isa = PBXBuildFile; fileRef = 25D5B13F1965088F00A57D8D /* viz.c */; };
+		A196F4E619493CAC00C9B6F2 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4E319493CAC00C9B6F2 /* main.c */; };
+		A196F4E719493CAC00C9B6F2 /* interface.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4E419493CAC00C9B6F2 /* interface.c */; };
+		A196F4EE19493CFA00C9B6F2 /* nuc_code.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4EC19493CFA00C9B6F2 /* nuc_code.c */; };
+		A196F4F119493E3600C9B6F2 /* misc.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4F019493E3600C9B6F2 /* misc.c */; };
+		A196F4F41949408B00C9B6F2 /* io.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4F21949408B00C9B6F2 /* io.c */; };
+		A196F4F7194969F600C9B6F2 /* hmm.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4F6194969F600C9B6F2 /* hmm.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -18,16 +23,30 @@
 			dstPath = /usr/share/man/man1/;
 			dstSubfolderSpec = 0;
 			files = (
-				A196F4DC19493B6000C9B6F2 /* samstat2.1 in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		25D5B13E1965088F00A57D8D /* viz.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = viz.h; path = src/viz.h; sourceTree = "<group>"; };
+		25D5B13F1965088F00A57D8D /* viz.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = viz.c; path = src/viz.c; sourceTree = "<group>"; };
 		A196F4D619493B6000C9B6F2 /* samstat2 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = samstat2; sourceTree = BUILT_PRODUCTS_DIR; };
-		A196F4D919493B6000C9B6F2 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
-		A196F4DB19493B6000C9B6F2 /* samstat2.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = samstat2.1; sourceTree = "<group>"; };
+		A196F4E219493CAC00C9B6F2 /* malloc_macro.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = malloc_macro.h; path = src/malloc_macro.h; sourceTree = "<group>"; };
+		A196F4E319493CAC00C9B6F2 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = src/main.c; sourceTree = "<group>"; };
+		A196F4E419493CAC00C9B6F2 /* interface.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = interface.c; path = src/interface.c; sourceTree = "<group>"; };
+		A196F4E519493CAC00C9B6F2 /* interface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = interface.h; path = src/interface.h; sourceTree = "<group>"; };
+		A196F4E819493CB500C9B6F2 /* configure.ac */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = configure.ac; sourceTree = "<group>"; };
+		A196F4E919493CB500C9B6F2 /* Makefile.am */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = Makefile.am; sourceTree = "<group>"; };
+		A196F4EB19493CFA00C9B6F2 /* Makefile.am */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = Makefile.am; path = src/Makefile.am; sourceTree = "<group>"; };
+		A196F4EC19493CFA00C9B6F2 /* nuc_code.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = nuc_code.c; path = src/nuc_code.c; sourceTree = "<group>"; };
+		A196F4ED19493CFA00C9B6F2 /* nuc_code.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = nuc_code.h; path = src/nuc_code.h; sourceTree = "<group>"; };
+		A196F4EF19493E3600C9B6F2 /* misc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = misc.h; path = src/misc.h; sourceTree = "<group>"; };
+		A196F4F019493E3600C9B6F2 /* misc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = misc.c; path = src/misc.c; sourceTree = "<group>"; };
+		A196F4F21949408B00C9B6F2 /* io.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = io.c; path = src/io.c; sourceTree = "<group>"; };
+		A196F4F31949408B00C9B6F2 /* io.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = io.h; path = src/io.h; sourceTree = "<group>"; };
+		A196F4F5194969F600C9B6F2 /* hmm.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = hmm.h; path = src/hmm.h; sourceTree = "<group>"; };
+		A196F4F6194969F600C9B6F2 /* hmm.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = hmm.c; path = src/hmm.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,7 +63,9 @@
 		A196F4CD19493B6000C9B6F2 = {
 			isa = PBXGroup;
 			children = (
-				A196F4D819493B6000C9B6F2 /* samstat2 */,
+				A196F4E819493CB500C9B6F2 /* configure.ac */,
+				A196F4E919493CB500C9B6F2 /* Makefile.am */,
+				A196F4EA19493CBD00C9B6F2 /* src */,
 				A196F4D719493B6000C9B6F2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -57,13 +78,26 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A196F4D819493B6000C9B6F2 /* samstat2 */ = {
+		A196F4EA19493CBD00C9B6F2 /* src */ = {
 			isa = PBXGroup;
 			children = (
-				A196F4D919493B6000C9B6F2 /* main.c */,
-				A196F4DB19493B6000C9B6F2 /* samstat2.1 */,
+				25D5B13E1965088F00A57D8D /* viz.h */,
+				25D5B13F1965088F00A57D8D /* viz.c */,
+				A196F4F5194969F600C9B6F2 /* hmm.h */,
+				A196F4F6194969F600C9B6F2 /* hmm.c */,
+				A196F4F31949408B00C9B6F2 /* io.h */,
+				A196F4F21949408B00C9B6F2 /* io.c */,
+				A196F4EF19493E3600C9B6F2 /* misc.h */,
+				A196F4F019493E3600C9B6F2 /* misc.c */,
+				A196F4EC19493CFA00C9B6F2 /* nuc_code.c */,
+				A196F4ED19493CFA00C9B6F2 /* nuc_code.h */,
+				A196F4E219493CAC00C9B6F2 /* malloc_macro.h */,
+				A196F4E319493CAC00C9B6F2 /* main.c */,
+				A196F4E419493CAC00C9B6F2 /* interface.c */,
+				A196F4E519493CAC00C9B6F2 /* interface.h */,
+				A196F4EB19493CFA00C9B6F2 /* Makefile.am */,
 			);
-			path = samstat2;
+			name = src;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -117,7 +151,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A196F4DA19493B6000C9B6F2 /* main.c in Sources */,
+				A196F4F7194969F600C9B6F2 /* hmm.c in Sources */,
+				A196F4F41949408B00C9B6F2 /* io.c in Sources */,
+				A196F4EE19493CFA00C9B6F2 /* nuc_code.c in Sources */,
+				25D5B1401965088F00A57D8D /* viz.c in Sources */,
+				A196F4E619493CAC00C9B6F2 /* main.c in Sources */,
+				A196F4E719493CAC00C9B6F2 /* interface.c in Sources */,
+				A196F4F119493E3600C9B6F2 /* misc.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -227,6 +267,7 @@
 				A196F4E119493B6000C9B6F2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

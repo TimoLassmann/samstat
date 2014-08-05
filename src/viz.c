@@ -26,7 +26,7 @@ int main (int argc,char * argv[])
 
 	
 	
-	print_html5_header(stdout);
+	print_html5_header(stdout,"TEST");
 	pd->plot_type = LINE_PLOT;
 	
 	
@@ -59,13 +59,14 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 	pd->series_labels = NULL;
 	pd->data = NULL;
 	pd->description = NULL;
-	
+	pd->plot_title = NULL;
 	
 	pd->plot_type = 0;
 	pd->width = 700;
 	pd->height = 300;
 	
 	MMALLOC(pd->description, sizeof(char) * 100000);
+	MMALLOC(pd->plot_title, sizeof(char) * 100000);
 	
 	MMALLOC(pd->labels , sizeof(char* ) * num_points);
 	
@@ -93,7 +94,6 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 
 		}
 	}
-
 	return pd;
 }
 
@@ -109,6 +109,7 @@ void free_plot_data(struct plot_data* pd)
 	MFREE(pd->data);
 	MFREE(pd->labels);
 	MFREE(pd->description);
+	MFREE(pd->plot_title);
 	MFREE(pd);
 	
 }
@@ -117,14 +118,14 @@ void free_plot_data(struct plot_data* pd)
 
 
 
-void print_html5_header(FILE* out)
+void print_html5_header(FILE* out,struct plot_data* pd)
 {
 	int i;
 	
 	fprintf(out,"<!doctype html>\n");
 	fprintf(out,"<html>\n");
 	fprintf(out,"<head>\n");
-	fprintf(out,"<title>%s</title>\n","TITE");
+	fprintf(out,"<title>%s</title>\n", pd->plot_title);
 	
 	fprintf(out,"<script>");
 	for(i = 0; i < Chartjs_len;i++ ){
@@ -141,10 +142,44 @@ void print_html5_header(FILE* out)
 	fprintf(out,"padding: 22px 0;\n");
 	fprintf(out,"width: 940px;\n");
 	//fprintf(out,"font-family: \"Open Sans\";\n");
-	fprintf(out,"font: 14px/24px Arial,Helvetica, sans-serif;\n");
+	fprintf(out,"font: 14px Arial,Helvetica, sans-serif;\n");
 	fprintf(out,"background: #F0F0F0;\n");
 	fprintf(out,"}\n");
 	
+	fprintf(out,"#intro {\n");
+	fprintf(out,"position: relative;\n");
+	fprintf(out,"	margin-top: 66px;\n");
+	fprintf(out,"padding: 44px;\n");
+	fprintf(out,"background: #3366AA;\n");
+	
+	
+	
+	
+	/* Border-radius not implemented yet */
+	fprintf(out,"	-moz-border-radius: 22px;\n");
+	fprintf(out,"	-webkit-border-radius: 22px;\n");
+	fprintf(out,"}\n");
+	
+	fprintf(out,"#intro h1, #intro p {\n");
+	fprintf(out,"position: relative;\n");
+	fprintf(out,"z-index: 9999;\n");
+	fprintf(out,"width: 620px;\n");
+	fprintf(out,"}\n");
+	
+	fprintf(out,"#intro h1 {\n");
+	fprintf(out,"padding: 0 0 0 0;\n");
+	fprintf(out,"font-weight: normal;\n");
+	fprintf(out,"font-size: 300%%;\n");
+	fprintf(out,"color: #fff;\n");
+	fprintf(out,"}\n");
+	
+	fprintf(out,"#intro p {\n");
+	fprintf(out,"padding: 0;\n");
+	fprintf(out,"color:#CCC;\n");
+	fprintf(out,"}\n");
+	
+
+
 	fprintf(out,"table.simple {background-color: #FFFFFF;border-collapse:collapse;text-align :right; border: 2px solid #000000; float:none;}\n");
 	fprintf(out,"table.simple td  {border: 1px solid #000000;width:auto;padding:5px;font-family:\"Courier New\" Courier 	monospace;font-size: 12pt;}\n");
 	fprintf(out,"table.simple th  {border: 2px solid #000000;width:auto;padding:5px;font-family:\"Courier New\" Courier 	monospace;font-size: 12pt;}\n");
@@ -198,14 +233,52 @@ void print_html5_header(FILE* out)
 	
 	
 	
+	fprintf(out,"nav {\n");
+	//fprintf(out,"position: absolute;\n");
+	fprintf(out,"left: 0;\n");
+	fprintf(out,"width: 100%%;\n");
+	fprintf(out,"background: #000000;\n");
+	fprintf(out,"color: #FFF;\n");
+	fprintf(out,"}\n");
+	
+	
+	
+	
 	fprintf(out,"</style>\n");
 	fprintf(out,"</head>\n");
 	fprintf(out,"<body>\n");
+	
+	
+	//fprintf(out,"<ul>\n");
+	//fprintf(out,"<li  style=\"font-size: 300%%;\">%s</li>\n",pd->plot_title);
+	//fprintf(out,"<li style=\"color: #999\" >%s</li>\n",pd->description);
+	//fprintf(out,"<li><a href=\"#contact\">Contact</a></li>\n");
+	//fprintf(out,"</ul>\n");
+	
+	
+	fprintf(out,"<nav>\n");
+	fprintf(out,"<table style=\"margin: 0 auto;width: 940px;\">\n");
+	fprintf(out,"<tr>\n");
+	fprintf(out,"<td style=\"font-size: 200%%;\">%s</td>\n",pd->plot_title);
+	fprintf(out,"<td style=\"vertical-align: bottom; \">%s</td>\n",pd->description);
+	fprintf(out,"</tr>\n");
+	        fprintf(out,"</table>\n");
+	fprintf(out,"</nav>\n");
+	
+	
+	//fprintf(out,"<section id=\"intro\">\n");
+	//fprintf(out,"<header>\n");
+	//fprintf(out,"<h1>%s</h1>\n",pd->plot_title);
+	//fprintf(out,"</header>\n");
+	//fprintf(out,"<p>%s</p>\n",pd->description);
+	
+	//fprintf(out,"</section>\n");
+	
 }
 
 void print_html5_footer(FILE* out)
 {
-	fprintf(out,"http://www.chartjs.org");
+	//fprintf(out,"http://www.chartjs.org");
 	fprintf(out,"<footer>\n");
 	fprintf(out,"<div>\n");
 	fprintf(out,"<section id=\"about\">\n");
@@ -266,10 +339,18 @@ void print_html_table(FILE* out,struct plot_data* pd)
 		//head row..
 		
 		if(pd->series_labels){
-			fprintf(out,"<td style=\"width:50px \"></td>\n");
+			if(pd->num_points < 5){
+				fprintf(out,"<td style=\"width:100px \"></td>\n");
+			}else{
+				fprintf(out,"<td style=\"width:50px \"></td>\n");
+			}
 		}
 		for(i = start; i < stop;i++){
-			fprintf(out,"<td style=\"width:45px\">%s</td>\n",pd->labels[i]);
+			if(pd->num_points < 5){
+				fprintf(out,"<td style=\"width:90px\">%s</td>\n",pd->labels[i]);
+			}else{
+				fprintf(out,"<td style=\"width:45px\">%s</td>\n",pd->labels[i]);
+			}
 			
 		}
 		
@@ -277,7 +358,7 @@ void print_html_table(FILE* out,struct plot_data* pd)
 		for(j = 0;j < pd->num_series;j++){
 			fprintf(out,"<tr>\n");
 			if(pd->series_labels){
-				fprintf(out,"<td style=\"background-color: %s;width:45px\" >%s</td>\n",colors[j], pd->series_labels[j]);
+				fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j & 3], pd->series_labels[j]);
 			}
 			for(i =start ; i < stop ;i++){
 				fprintf(out,"<td>%0.1f</td>\n",pd->data[j][i]);
@@ -307,13 +388,11 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 	static int id = 1;
 	int i,j;
 	fprintf(out,"<section>\n");
-	
-	fprintf(out,"<h2>Error Profile %s</h2>\n","TITLE");
+	fprintf(out,"<h2>%s</h2>\n", pd->plot_title);
 	int start,stop;
 	int points_shown =15;
 	
 	start = 0;
-	
 	
 	switch (pd->plot_type) {
 		case RADAR_PLOT:
@@ -331,11 +410,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 	}
 	
 	while(1){
-		
-		
 		fprintf(out,"<canvas id=\"canvas%d\" height=\"300\" width=\"%f\"></canvas>\n",id , 900.0 * (float)(stop-start )/ points_shown);
-		
-		
 		fprintf(out,"<script>\n");
 		
 		fprintf(out,"var ChartData%d = {\n",id);
@@ -374,11 +449,11 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 		
 		
 		fprintf(out,"var pieData%d = [\n",id);
-		for(i =start ; i < stop;i++){
-			if(i!=start){
+		for(i = 0; i < pd->num_series; i++){//start ; i < stop;i++){
+			if(i!=0){
 				fprintf(out,",");
 			}
-			fprintf(out,"{ value: %f, color:\"%s\"}",pd->data[0][i],colors[i & 3] );
+			fprintf(out,"{ value: %f, color:\"%s\"}",pd->data[i][0],colors[i & 3] );
 		}
 		fprintf(out,"];\n");
 		
@@ -421,7 +496,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 		id++;
 	}
 	fprintf(out,"<br>");
-	fprintf(out,"Description: %s\n",  pd->description);
+	fprintf(out,"%s\n",  pd->description);
 	id++;
 }
 

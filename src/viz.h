@@ -13,6 +13,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "malloc_macro.h"
 #endif
 
+
+#ifndef VIZ_HEADER
+
+#define VIZ_HEADER 3
+
 #define MAXLABEL_LEN 10
 
 #define LINE_PLOT 0
@@ -24,7 +29,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <stdio.h>
 
 
-unsigned char Chartjs[] = {
+static  unsigned char Chartjs[] = {
   0x2f, 0x2a, 0x21, 0x0a, 0x20, 0x2a, 0x20, 0x43, 0x68, 0x61, 0x72, 0x74,
   0x2e, 0x6a, 0x73, 0x0a, 0x20, 0x2a, 0x20, 0x68, 0x74, 0x74, 0x70, 0x3a,
   0x2f, 0x2f, 0x63, 0x68, 0x61, 0x72, 0x74, 0x6a, 0x73, 0x2e, 0x6f, 0x72,
@@ -3735,9 +3740,9 @@ unsigned char Chartjs[] = {
   0x29, 0x20, 0x3a, 0x20, 0x66, 0x6e, 0x3b, 0x0a, 0x09, 0x20, 0x20, 0x7d,
   0x3b, 0x0a, 0x7d, 0x0a, 0x0a, 0x0a
 };
-unsigned int Chartjs_len = 44502;
+static unsigned int Chartjs_len = 44502;
 
-const char *colors[4] = { "rgba(52,255,54,0.5)", "rgba(57,124,214,0.5)","rgba(251,220,60,0.5)","rgba(255,61,107,0.5)"};
+static const char *colors[4] = { "rgba(52,255,54,0.5)", "rgba(57,124,214,0.5)","rgba(251,220,60,0.5)","rgba(255,61,107,0.5)"};
 
 
 
@@ -3746,6 +3751,7 @@ struct plot_data{
 	char** series_labels;
 	float** data;
 	char* description;
+	char* plot_title;
 	int num_series;
 	int num_points;
 	int plot_type;
@@ -3759,7 +3765,9 @@ void free_plot_data(struct plot_data* pd);
 
 void print_html5_chart(FILE* out,struct plot_data* pd);
 void print_html_table(FILE* out,struct plot_data* pd);
-void print_html5_header(FILE* out);
+
+
+void print_html5_header(FILE* out,struct plot_data* pd);
 void print_html5_footer(FILE* out);
 
-
+#endif

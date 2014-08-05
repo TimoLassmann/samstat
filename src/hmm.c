@@ -12,7 +12,7 @@ struct hmm* run_EM_iterations(struct hmm* hmm,struct hmm_data* data)
 	data->run_mode = MODE_BAUM_WELCH;
 	
 	for(i = 0; i < data->iterations;i++ ){
-	//	fprintf(stderr,"ITER:%d\n", i);
+		fprintf(stderr,"ITER:%d\n", i);
 		hmm = run_pHMM(hmm, data);
 		hmm= reestimate_hmm_parameters(hmm);
 	}
@@ -297,26 +297,26 @@ struct hmm* init_hmm_simple_ID(struct hmm* hmm)
 void print_hmm_parameters(struct hmm* hmm)
 {
 	int i,j;
-	fprintf(stdout,"\nEmission:\n");
+	fprintf(stderr,"\nEmission:\n");
 	
 	
 	for(i = 0; i < hmm->num_states ;i++){
-		fprintf(stdout,"%d:",i);
+		fprintf(stderr,"%d:",i);
 		if(hmm->emissions[i]){
 			for(j = 0; j < hmm->alphabet_len;j++){
-				fprintf(stdout," %f", scaledprob2prob(hmm->emissions[i][j]));
+				fprintf(stderr," %f", scaledprob2prob(hmm->emissions[i][j]));
 			}
-			fprintf(stdout," \n");
+			fprintf(stderr," \n");
 		}else{
-			fprintf(stdout," NULL\n");
+			fprintf(stderr," NULL\n");
 		}
 	}
-	fprintf(stdout,"\nTransition:\n");
+	fprintf(stderr,"\nTransition:\n");
 	
 	for(i = 0; i < hmm->num_states ;i++){
 		//fprintf(stdout,"%d:",i);
 		for(j = 1; j < hmm->tindex[i][0];j++){
-			fprintf(stdout,"from %d to %d:%0.3f\n",i,hmm->tindex[i][j],scaledprob2prob(hmm->transitions[i][hmm->tindex[i][j]] ));
+			fprintf(stderr,"from %d to %d:%0.3f\n",i,hmm->tindex[i][j],scaledprob2prob(hmm->transitions[i][hmm->tindex[i][j]] ));
 			
 		}
 	}
@@ -388,25 +388,25 @@ struct hmm* reestimate_hmm_parameters(struct hmm* hmm)
 void print_hmm_estimated_parameters(struct hmm* hmm)
 {
 	int i,j;
-	fprintf(stdout,"\nEmission:\n");
+	fprintf(stderr,"\nEmission:\n");
 	
 	
 	for(i = 0; i < hmm->num_states ;i++){
-		fprintf(stdout,"%d:",i);
+		fprintf(stderr,"%d:",i);
 		if(hmm->emissions[i]){
 			for(j = 0; j < hmm->alphabet_len;j++){
-				fprintf(stdout," %0.3f", scaledprob2prob(hmm->emissions_e[i][j]));
+				fprintf(stderr," %0.3f", scaledprob2prob(hmm->emissions_e[i][j]));
 			}
-			fprintf(stdout," \n");
+			fprintf(stderr," \n");
 		}else{
-			fprintf(stdout," NULL\n");
+			fprintf(stderr," NULL\n");
 		}
 	}
-	fprintf(stdout,"\nTransition:\n");
+	fprintf(stderr,"\nTransition:\n");
 	for(i = 0; i < hmm->num_states ;i++){
 		//fprintf(stdout,"%d:",i);
 		for(j = 1; j < hmm->tindex[i][0];j++){
-			fprintf(stdout,"from %d to %d:%0.3f\n",i,hmm->tindex[i][j],scaledprob2prob(hmm->transitions_e[i][hmm->tindex[i][j]] ));
+			fprintf(stderr,"from %d to %d:%0.3f\n",i,hmm->tindex[i][j],scaledprob2prob(hmm->transitions_e[i][hmm->tindex[i][j]] ));
 			
 		}
 		//f = hmm->tindex[j][c];

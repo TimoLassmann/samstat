@@ -64,6 +64,8 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 	pd->plot_type = 0;
 	pd->width = 700;
 	pd->height = 300;
+	pd->num_points_shown = 30;
+	pd->color_scheme = 0;
 	
 	MMALLOC(pd->description, sizeof(char) * 100000);
 	MMALLOC(pd->plot_title, sizeof(char) * 100000);
@@ -326,7 +328,7 @@ void print_html_table(FILE* out,struct plot_data* pd)
 	
 	start = 0;
 	
-	stop = 15;
+	stop = pd->num_points_shown;
 	
 	if(pd->num_points < stop){
 		stop = pd->num_points;
@@ -358,7 +360,7 @@ void print_html_table(FILE* out,struct plot_data* pd)
 		for(j = 0;j < pd->num_series;j++){
 			fprintf(out,"<tr>\n");
 			if(pd->series_labels){
-				fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j & 3], pd->series_labels[j]);
+				fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j  + pd->color_scheme], pd->series_labels[j]);
 			}
 			for(i =start ; i < stop ;i++){
 				fprintf(out,"<td>%0.1f</td>\n",pd->data[j][i]);
@@ -373,12 +375,18 @@ void print_html_table(FILE* out,struct plot_data* pd)
 			break;
 		}
 		fprintf(out,"<br>\n");
-		start += 15;
-		stop += 15;
+		start += pd->num_points_shown;
+		stop += pd->num_points_shown;
 		if(pd->num_points < stop){
 			stop = pd->num_points;
 		}
 		
+	}
+	if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+	}else{
+		fprintf(out,"<br>");
+		fprintf(out,"<div style=\"clear:both;\"></div>");
+		fprintf(out,"%s\n",  pd->description);
 	}
 }
 
@@ -388,9 +396,11 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 	static int id = 1;
 	int i,j;
 	fprintf(out,"<section>\n");
+	if(pd->plot_title[0] != 0){
 	fprintf(out,"<h2>%s</h2>\n", pd->plot_title);
+	}
 	int start,stop;
-	int points_shown =15;
+	int points_shown = pd->num_points_shown;
 	
 	start = 0;
 	
@@ -408,9 +418,14 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			}
 			break;
 	}
-	
+	if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+		
+	fprintf(out,"<div style=\"float: left\">\n");
+	}else{
+		fprintf(out,"<div style=\"float: none\">\n");
+	}
 	while(1){
-		fprintf(out,"<canvas id=\"canvas%d\" height=\"300\" width=\"%f\"></canvas>\n",id , 900.0 * (float)(stop-start )/ points_shown);
+		fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%f\"></canvas>\n",id , pd->height, (float)pd->width   * (float)(stop-start )/ points_shown);
 		fprintf(out,"<script>\n");
 		
 		fprintf(out,"var ChartData%d = {\n",id);
@@ -431,9 +446,9 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 				fprintf(out,",\n");
 			}
 			fprintf(out,"{\n");
-			fprintf(out,"fillColor : \"%s\",\n",colors[j]);
-			fprintf(out,"strokeColor : \"%s\",\n",colors[j]);
-			fprintf(out,"pointColor : \"%s\",\n",colors[j]);
+			fprintf(out,"fillColor : \"%s\",\n",colors[j+ pd->color_scheme]);
+			fprintf(out,"strokeColor : \"%s\",\n",colors[j+ pd->color_scheme]);
+			fprintf(out,"pointColor : \"%s\",\n",colors[j+ pd->color_scheme]);
 			fprintf(out,"data : [");
 			for(i =start; i < stop;i++){
 				if(i!= start){
@@ -453,7 +468,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			if(i!=0){
 				fprintf(out,",");
 			}
-			fprintf(out,"{ value: %f, color:\"%s\"}",pd->data[i][0],colors[i & 3] );
+			fprintf(out,"{ value: %f, color:\"%s\"}",pd->data[i][0],colors[i + pd->color_scheme] );
 		}
 		fprintf(out,"];\n");
 		
@@ -488,15 +503,20 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			break;
 		}
 		fprintf(out,"<br>\n");
-		start += 15;
-		stop += 15;
+		start += pd->num_points_shown;
+		stop += pd->num_points_shown;
 		if(pd->num_points < stop){
 			stop = pd->num_points;
 		}
 		id++;
 	}
-	fprintf(out,"<br>");
-	fprintf(out,"%s\n",  pd->description);
+	fprintf(out,"</div>");
+	if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+	}else{
+		fprintf(out,"<br>");
+		fprintf(out,"<div style=\"clear:both;\"></div>");
+		fprintf(out,"%s\n",  pd->description);
+	}
 	id++;
 }
 

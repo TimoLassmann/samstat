@@ -3742,7 +3742,9 @@ static  unsigned char Chartjs[] = {
 };
 static unsigned int Chartjs_len = 44502;
 
-static const char *colors[4] = { "rgba(52,255,54,0.5)", "rgba(57,124,214,0.5)","rgba(251,220,60,0.5)","rgba(255,61,107,0.5)"};
+// first 4 are nucleotides...
+static const char* colors[] = { "rgba(52,255,54,0.75)", "rgba(57,124,214,0.75)","rgba(251,220,60,0.75)","rgba(255,61,107,0.75)",
+	"rgba(224 , 69 , 123,1.0)", "rgba(237,139,65,1.0)", "rgba(254,209,65,1.0)","rgba(120,190,32,1.0)","rgba(66,109,169,1.0)","rgba(83,86,90,1.0)" };
 
 
 
@@ -3752,11 +3754,13 @@ struct plot_data{
 	float** data;
 	char* description;
 	char* plot_title;
+	int color_scheme;
 	int num_series;
 	int num_points;
 	int plot_type;
 	int height;
 	int width;
+	int num_points_shown;
 	
 };
 

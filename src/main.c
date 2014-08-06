@@ -29,6 +29,7 @@
 #include "io.h"
 #include "hmm.h"
 #include "viz.h"
+#include "pst.h"
 
 #include <ctype.h>
 #include <time.h>
@@ -58,7 +59,7 @@ struct seq_stats{
 	int max_len;
 	int average_len;
 	int max_error_per_read;
-	
+	int total_reads;
 };
 
 struct hmm* init_samstat_hmm(int average_length);
@@ -71,7 +72,8 @@ int parse_cigar_md(struct read_info* ri,struct seq_stats* seq_stats,int qual_key
 
 char* make_file_stats(char* filename,char* buffer);
 
-int main (int argc,char * argv[]) {
+int main (int argc,char * argv[])
+{
 	struct parameters* param = 0;
 	struct seq_stats* seq_stats = 0;
 	
@@ -79,7 +81,8 @@ int main (int argc,char * argv[]) {
 	struct hmm* hmm = 0;
 	
 	struct hmm* background_hmm = 0;
-	
+	clock_t cStartClock;
+
 	int (*fp)(struct read_info** ,struct parameters*,FILE* ) = 0;
 	FILE* file = 0;
 	int numseq = 0;
@@ -100,8 +103,6 @@ int main (int argc,char * argv[]) {
 	param->num_query = 1000000;
 #endif
 	ri = malloc_read_info(ri, param->num_query );
-	
-	
 	
 	MMALLOC(hmm_data, sizeof(struct hmm_data));
 	hmm_data->length = 0;
@@ -142,7 +143,6 @@ int main (int argc,char * argv[]) {
 			if(ri[i]->len > seq_stats->max_len){
 				seq_stats->max_len = ri[i]->len;
 			}
-			
 			if(ri[i]->len < seq_stats->min_len ){
 				seq_stats->min_len = ri[i]->len;
 			}
@@ -186,6 +186,7 @@ int main (int argc,char * argv[]) {
 			}
 			
 			seq_stats->alignments[qual_key]++;
+			seq_stats->total_reads++;
 			
 			// sequence length
 			if(ri[i]->len >=  MAX_SEQ_LEN){
@@ -225,6 +226,10 @@ int main (int argc,char * argv[]) {
 		}
 		//needs to be run after sequences are reverse complemented.....
 		if(first_lot){
+			
+						
+			
+			
 			
 			seq_stats->average_len = (int) floor((double) seq_stats->average_len / (double) numseq   + 0.5);
 			//seq_stats = reformat_base_qualities(seq_stats);
@@ -279,6 +284,131 @@ int main (int argc,char * argv[]) {
 
 			print_hmm_parameters(background_hmm);
 			
+			// done with hmm
+			// now reformat the sequence and run pst ...
+			
+			//build pst...
+			struct pst* pst = NULL;
+			char alphabet[] = "ACGTN";
+			
+			fprintf(stderr,"PST building... %d\n",numseq);
+			pst = alloc_pst(numseq) ;
+			for(i = 0; i < numseq;i++){
+				for(j = 0; j < ri[i]->len;j++){
+					ri[i]->seq[j] = alphabet[(int)ri[i]->seq[j]];
+				}
+				pst->total_len += ri[i]->len;
+			}
+			
+			
+			cStartClock = clock();
+			
+			
+			if(pst->current_suffix_size < pst->total_len){
+				pst->suffix_array = realloc(pst->suffix_array , sizeof(char*)* (pst->total_len+64));
+				pst->current_suffix_size =  (pst->total_len+64);
+			}
+			
+			c = 0;
+			pst->mean_length = 0.0;
+			for(i = 0; i < numseq;i++){
+				for(j = 0; j < ri[i]->len;j++){//ri[i]->len;j++){
+					pst->suffix_array[c] = ri[i]->seq +j;
+					c++;
+				}
+				pst->mean_length +=  ri[i]->len;
+				
+			}
+			
+			pst->mean_length /= (float)numseq;
+			
+			
+			pst->suffix_len = c;
+			pst->numseq = numseq;
+			pst->rank_array = malloc(sizeof(struct ranks*) * (int)(numseq));
+			for(i = 0; i  < numseq;i++){
+				pst->rank_array[i] = malloc(sizeof(struct ranks));
+			}
+			
+			
+			fprintf(stderr,"%d\t%d\t%d	%f\n",c,pst->total_len, pst->suffix_len*(4 + 4*5),pst->mean_length);
+			///exit(0);
+			qsort(pst->suffix_array, pst->suffix_len, sizeof(char *), qsort_string_cmp);
+			fprintf(stderr,"built SA in %4.2f seconds\n",(double)( clock() - cStartClock) / (double)CLOCKS_PER_SEC);
+			
+			//init root - removes if statement in recursion...
+			double sum = 0.0;
+			char tmp[MAX_PST_LEN+5];
+			for(i = 0;i < 5;i++){
+				tmp[0] = alphabet[i];
+				tmp[1] = 0;//alphabet[i];
+				c = count_string(tmp,(const char**)pst->suffix_array,pst->suffix_len-1,1);
+				pst->pst_root->nuc_probability[i] = c;
+				pst->ppt_root->nuc_probability[i] = c;
+				sum+= c;
+			}
+			for(i = 0;i < 5;i++){
+				
+				pst->pst_root->nuc_probability[i] =  pst->pst_root->nuc_probability[i]/ sum;
+				pst->ppt_root->nuc_probability[i] =  pst->ppt_root->nuc_probability[i]/ sum;
+				//fprintf(stderr,"%c\t%f\n",alphabet[i], n->nuc_probability[i]);
+			}
+			
+			
+			pst->pst_root = build_pst(pst,pst->pst_root );
+			pst->ppt_root = build_ppt(pst,pst->ppt_root );
+			
+			fprintf(stderr,"built PST in %4.2f seconds\n",(double)( clock() - cStartClock) / (double)CLOCKS_PER_SEC);
+			cStartClock = clock();
+			pst->pst_root  = alloc_bit_occ_pst(pst->pst_root , numseq);
+			pst->ppt_root = alloc_bit_occ_pst(pst->ppt_root, numseq);
+			ri =  scan_read_with_pst( ri, pst);
+			fprintf(stderr,"scanned  in %4.2f seconds\n",(double)( clock() - cStartClock) / (double)CLOCKS_PER_SEC);
+			
+			/*print_pst(pst,pst->pst_root,ri);
+			
+			
+			qsort(ri,numseq, sizeof(struct read_info*), qsort_ri_mapq_compare);
+			
+			for(i = 0; i < 10;i++){
+				fprintf(stderr,"%s\t%f\n", ri[i]->seq,ri[i]->mapq);
+			}*/
+			
+			
+			int num_patterns = 0;
+			num_patterns = count_patterns(pst->pst_root, num_patterns);
+			num_patterns = count_patterns(pst->ppt_root,num_patterns);
+			//
+			//exit(0);
+			struct pst_node** all_patterns = 0;
+
+			all_patterns = malloc(sizeof(struct pst_node*)  *num_patterns );
+			
+			num_patterns = 0;
+			num_patterns = add_patterns(all_patterns,pst->pst_root, num_patterns);
+			num_patterns = add_patterns(all_patterns,pst->ppt_root,num_patterns);
+			
+			qsort((void *)  all_patterns, num_patterns, sizeof(struct pst_node* ),(compfn) sort_pst_nodel_according_to_label);
+			
+			fprintf(stderr,"%d numpatterns\n",num_patterns );
+			c = 0;
+			for(i = 0; i < num_patterns-1;i++){
+				if(strcmp(all_patterns[i]->label, all_patterns[i+1]->label)){
+					all_patterns[c] = all_patterns[i];
+					c++;
+				}
+			}
+			
+			qsort((void *)  all_patterns, num_patterns, sizeof(struct pst_node* ),(compfn) sort_pst_nodel_according_to_occ);
+			//c = 0;
+			for(i = 0; i < 10;i++){
+				fprintf(stderr,"%s	%d\n",all_patterns[i]->label,all_patterns[i]->occ );
+			}
+			
+			//exit(0);
+			
+			
+			
 		}
 	}
 	pclose(file);
@@ -295,37 +425,94 @@ int main (int argc,char * argv[]) {
 	print_html5_header(stdout,pd);
 	
 	sprintf(pd->labels[0], "%s","Number");
+	sprintf(pd->labels[1], "%s","Percentage");
+	
+	
+	
 	
 	
 	pd->data[5][0] =  seq_stats->alignments[5];
+	pd->data[5][1] =  (float)seq_stats->alignments[5] / (float)seq_stats->total_reads * 100.0;
+
 	sprintf(pd->series_labels[5], "Unmapped");
 	
 	pd->data[4][0] =  seq_stats->alignments[0];
+	pd->data[4][1] =  (float)seq_stats->alignments[0] / (float)seq_stats->total_reads* 100.0;
 	sprintf(pd->series_labels[4], "MAPQ < 3");
 	pd->data[3][0] =  seq_stats->alignments[1];
+	pd->data[3][1] =  (float)seq_stats->alignments[1] / (float)seq_stats->total_reads* 100.0;
 	
 	sprintf(pd->series_labels[3], "MAPQ < 10");
 	pd->data[2][0] =  seq_stats->alignments[2];
+	pd->data[2][1] =  (float)seq_stats->alignments[2] / (float)seq_stats->total_reads* 100.0;
 	
 	sprintf(pd->series_labels[2], "MAPQ < 20");
 	pd->data[1][0] =  seq_stats->alignments[3];
+	pd->data[1][1] =  (float)seq_stats->alignments[3] / (float)seq_stats->total_reads* 100.0;
 	
 	sprintf(pd->series_labels[1], "MAPQ < 30");
 	pd->data[0][0] =  seq_stats->alignments[4];
+	pd->data[0][1] =  (float)seq_stats->alignments[4] / (float)seq_stats->total_reads* 100.0;
 	
 	sprintf(pd->series_labels[0], "MAPQ >= 30");
 	
-	sprintf(pd->description,"Number of alignments in various mapping quality (MAPQ) intervals and number of unmapped sequences.");
 	
 	pd->num_points = 1;
 	pd->num_series = 6;
+	pd->color_scheme = 4;
+	pd->width = 400;
+	sprintf(pd->description,"NA");
+//pd->description = 0;
 	sprintf(pd->plot_title, "Mapping stats:");
 	pd->plot_type = PIE_PLOT;
 	print_html5_chart(stdout, pd);
+	pd->num_points = 2;
+	pd->num_series = 6;
+	sprintf(pd->description,"Number of alignments in various mapping quality (MAPQ) intervals and number of unmapped sequences.");
+	
 	print_html_table(stdout, pd);
+	pd->color_scheme = 0;
+	pd->width = 900;
+        
+        int plots =0;
+	
+	for(i = 0; i < 6;i++){
+		
+		for(j = seq_stats->min_len; j <= seq_stats->max_len;j++){
+			if(plots ==0){
+				sprintf(pd->labels[j-seq_stats->min_len], "%d",j);
+			}
+			pd->data[i][j-seq_stats->min_len] = seq_stats->seq_len[i][j];
+		}
+		
+		for(j = 0; j < 6;j++){
+			fprintf(stderr,"%d %d %s\n",j,6,pd->series_labels[j] );
+		}
+		
 
-        
-        
+        }
+	pd->width = 700;
+	pd->color_scheme = 4;
+	pd->num_points = seq_stats->max_len - seq_stats->min_len;
+	pd->num_series = 6;
+	sprintf(pd->description,"NA");
+	sprintf(pd->plot_title, "Read Length Distributions");
+	pd->plot_type = LINE_PLOT;
+	print_html5_chart(stdout, pd);
+	
+	pd->num_points = 0;
+	pd->num_series = 6;
+	for(i = 0; i < plots;i++){
+		fprintf(stderr,"%d %d %s\n",i,plots,pd->series_labels[i] );
+	}
+	sprintf(pd->description,"Read Length Distributions.");
+	
+	print_html_table(stdout, pd);
+	pd->width = 900;
+	
+	plots = 0;
+	pd->color_scheme = 0;
+	
         for(i = 0; i < 6;i++){
                 switch (i) {
                         case 0:
@@ -355,13 +542,19 @@ int main (int argc,char * argv[]) {
                                 sprintf(pd->plot_title, "Read Length Distribution(unmapped):");
                                 sprintf(pd->description,"Length Distribution of unmapped reads.");
                                 break;
-
-
-                                
                         default:
                                 break;
                 }
                 if(seq_stats->alignments[i]){
+			plots++;
+			if(plots == 3){
+				plots= 0;
+			}else if(plots == 1){
+				sprintf(pd->description,"NA");
+			}else{
+				 sprintf(pd->description,"NA");
+				pd->plot_title[0] = 0;
+			}
                         for(j = seq_stats->min_len; j <= seq_stats->max_len;j++){
                                 sprintf(pd->labels[j-seq_stats->min_len], "%d",j);
                                 pd->data[0][j-seq_stats->min_len] = seq_stats->seq_len[i][j];
@@ -370,7 +563,7 @@ int main (int argc,char * argv[]) {
                         pd->num_series = 1;
                         
                         
-                        pd->plot_type = BAR_PLOT;
+                        pd->plot_type = LINE_PLOT;
                         print_html5_chart(stdout, pd);
                 }
         }
@@ -413,6 +606,7 @@ int main (int argc,char * argv[]) {
                         }
                         pd->num_points = seq_stats->max_error_per_read ;
                         pd->num_series = 1;
+			pd->num_points_shown = 10;
                         
                         
                         pd->plot_type = BAR_PLOT;
@@ -420,20 +614,30 @@ int main (int argc,char * argv[]) {
                 }
         }
         
+		///HMM plots - need to count  nucleotide frequencies.. .
+	
+	float sum = 0;
+	for(i = 0; i < 6;i++){
+		sum +=seq_stats->nuc_num[i];
+	}
+	
+	
 	sprintf(pd->series_labels[0],"A");
         sprintf(pd->series_labels[1],"C");
         sprintf(pd->series_labels[2],"G");
         sprintf(pd->series_labels[3],"T");
         sprintf(pd->series_labels[4],"N");
 	
+	
 	sprintf(pd->plot_title, "HMM stuff..,");
 	sprintf(pd->description,"Distribution of Mismatches in MAPQ >= 30 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
 	for(j = 2; j <= 3+seq_stats->average_len -1;j++){
 		sprintf(pd->labels[j-2], "%d",j-1);
 		for(c = 0; c < 5;c++){
-			pd->data[c][j-2] =  log2f(scaledprob2prob(hmm->emissions[j][c] ) /scaledprob2prob(background_hmm->emissions[j][c]));
+			pd->data[c][j-2] =  log2f(scaledprob2prob(hmm->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
  		}
 	}
+	pd->num_points_shown = 30;
 
 	pd->num_points = seq_stats->average_len+1;
 	pd->num_series = 4;
@@ -484,7 +688,7 @@ int main (int argc,char * argv[]) {
 			for(j = 0; j <= seq_stats->max_len;j++){
                                 sprintf(pd->labels[j], "%d",j+1);
 				for(c = 0; c < 5;c++){
-					pd->data[c][j-seq_stats->min_len] =  (float)seq_stats->mismatches[i][j][c] / (float)seq_stats->alignments[i];
+					pd->data[c][j] =  (float)seq_stats->mismatches[i][j][c] / (float)seq_stats->alignments[i] * 100.0f;
 				}
 			}
 		}
@@ -951,204 +1155,204 @@ void free_seq_stats(struct seq_stats* seq_stats)
 
 
 int parse_cigar_md(struct read_info* ri,struct seq_stats* seq_stats,int qual_key)
-	{
-		int* read = malloc(sizeof(int)* MAX_SEQ_LEN);
-		int* genome = malloc(sizeof(int) * MAX_SEQ_LEN);
-		int reverse_int[5]  ={3,2,1,0,4};
-		char tmp_num[8];
-		int l,i,j,c,rp,gp,sp,exit_loop,aln_len,add;
-		
-		for(i = 0; i < MAX_SEQ_LEN;i++){
-			genome[i] = 0;
-			read[i] = 0;
-		}
-		
-		l = (int) strlen((char*)ri->cigar);
-		exit_loop = 0;
-		i =0;
-		rp = 0;
-		sp = 0;
-		while(!exit_loop){
-			c = 0;
-			if(isdigit((int)ri->cigar[i])){
-				j = 0;
-				while (isdigit(ri->cigar[i])) {
-					tmp_num[j] = ri->cigar[i];
-					j++;
-					i++;
-					if(i == l){
-						exit_loop =1;
-						break;
-					}
-				}
-				tmp_num[j] = 0;
-				
-				c = atoi(tmp_num);
-			}
-			if(isalpha((int)ri->cigar[i])){
-				switch (ri->cigar[i]) {
-					case 'M':
-						for(j = 0; j < c;j++){
-							read[rp] = ri->seq[sp];
-							rp++;
-							sp++;
-						}
-						//			fprintf(stderr,"M:%d\n",c);
-						break;
-					case 'I':
-						for(j = 0; j < c;j++){
-							read[rp] = ri->seq[sp];
-							genome[rp] = -1;
-							rp++;
-							sp++;
-						}
-						
-						//			fprintf(stderr,"I:%d\n",c);
-						break;
-					case 'D':
-						for(j = 0; j < c;j++){
-							read[rp] = -1;
-							rp++;
-							
-						}
-						
-						//			fprintf(stderr,"D:%d\n",c);
-						break;
-					default:
-						break;
-				}
-				c = 0;
-			}
-			i++;
-			if(i == l){
-				exit_loop =1;
-				break;
-			}
-			
-		}
-		aln_len = rp;
-		
-		i =0;
-		rp = 0;
-		
-		while(read[rp] == -1){
-			rp++;
-		}
-		gp = 0;
-		exit_loop = 0;
-		add  = 0;
-		l = (int) strlen((char*)ri->md);
-		
-		//int gg;
-		
-		//#1C20^ATT0C3A0
-		while(!exit_loop){
-			if(isdigit((int)ri->md[i])){
-				j = 0;
-				while (isdigit(ri->md[i])) {
-					tmp_num[j] = ri->md[i];
-					j++;
-					i++;
-					if(i == l){
-						exit_loop = 1;
-						break;
-					}
-				}
-				tmp_num[j] = 0;
-				
-				c = atoi(tmp_num);
-				
-				//fprintf(stderr,"MD:%d\n",c);
-				for(j = 0; j < c;j++){
-					while(genome[gp] == -1){
-						gp++;
-						rp++;
-					}
-					while(read[rp] == -1){
-						rp++;
-					}
-					genome[gp] = read[rp];
-					
-					gp++;
-					rp++;
-					//fprintf(stderr,"%d	%d	%d \n",aln_len,rp,i);
-					while(read[rp] == -1){
-						rp++;
-					}
-				}
-				add = 0;
-			}else if(isalpha((int)ri->md[i])){
-				//fprintf(stderr,"MD:%c\n",ri->md[i]);
-				while(genome[gp] == -1){
-					gp++;
-				}
-				genome[gp] = nuc_code[(int)ri->md[i]];
-				gp++;
-				i++;
-				if(!add){
-					rp++;
-				}
-				
-			}else{
-				add = 1;
-				i++;
-			}
-			if(i == l){
-				exit_loop = 1;
-				break;
-			}
-		}
-		
-		if(ri->strand == 0){
-			gp = 0;
-			for(i =0;i < aln_len;i++){
-				
-				if(read[i] != -1 && genome[i] != -1){
-					if(read[i] != genome[i]){
-						seq_stats->mismatches[qual_key][gp][read[i]] += 1;
-					}
-					gp++;
-					//			fprintf(stderr,"Mismatch %d\n",i);
-				}else if(read[i] == -1 && genome[i] != -1){
-					seq_stats->deletions[qual_key][gp] += 1;
-					
-					//			fprintf(stderr,"Deletion %d\n",i);
-				}else if(read[i] != -1 && genome[i] == -1){
-					seq_stats->insertions[qual_key][gp][read[i]] += 1;
-					gp++;
-					//			fprintf(stderr,"Insertion %d\n",i);
-				}
-			}
-		}else{
-			gp = ri->len-1;
-			for(i = 0;i < aln_len;i++){
-				
-				if(read[i] != -1 && genome[i] != -1){
-					if(read[i] != genome[i]){
-						seq_stats->mismatches[qual_key][gp][reverse_int[read[i]]] += 1;
-						//		fprintf(stderr,"Mismatch %d->%d\n",i,gp);
-					}
-					gp--;
-					
-				}else if(read[i] == -1 && genome[i] != -1){
-					seq_stats->deletions[qual_key][gp] += 1;
-					
-					//	fprintf(stderr,"Deletion %d\n",i);
-				}else if(read[i] != -1 && genome[i] == -1){
-					seq_stats->insertions[qual_key][gp][reverse_int[read[i]]] += 1;
-					gp--;
-					//	fprintf(stderr,"Insertion %d\n",i);
-				}
-			}
-		}
-		
-		free(read);
-		free(genome);
-		return aln_len;
+{
+	int* read = malloc(sizeof(int)* MAX_SEQ_LEN);
+	int* genome = malloc(sizeof(int) * MAX_SEQ_LEN);
+	int reverse_int[5]  ={3,2,1,0,4};
+	char tmp_num[8];
+	int l,i,j,c,rp,gp,sp,exit_loop,aln_len,add;
+	
+	for(i = 0; i < MAX_SEQ_LEN;i++){
+		genome[i] = 0;
+		read[i] = 0;
 	}
 	
+	l = (int) strlen((char*)ri->cigar);
+	exit_loop = 0;
+	i =0;
+	rp = 0;
+	sp = 0;
+	while(!exit_loop){
+		c = 0;
+		if(isdigit((int)ri->cigar[i])){
+			j = 0;
+			while (isdigit(ri->cigar[i])) {
+				tmp_num[j] = ri->cigar[i];
+				j++;
+				i++;
+				if(i == l){
+					exit_loop =1;
+					break;
+				}
+			}
+			tmp_num[j] = 0;
+			
+			c = atoi(tmp_num);
+		}
+		if(isalpha((int)ri->cigar[i])){
+			switch (ri->cigar[i]) {
+				case 'M':
+					for(j = 0; j < c;j++){
+						read[rp] = ri->seq[sp];
+						rp++;
+						sp++;
+					}
+					//			fprintf(stderr,"M:%d\n",c);
+					break;
+				case 'I':
+					for(j = 0; j < c;j++){
+						read[rp] = ri->seq[sp];
+						genome[rp] = -1;
+						rp++;
+						sp++;
+					}
+					
+					//			fprintf(stderr,"I:%d\n",c);
+					break;
+				case 'D':
+					for(j = 0; j < c;j++){
+						read[rp] = -1;
+						rp++;
+						
+					}
+					
+					//			fprintf(stderr,"D:%d\n",c);
+					break;
+				default:
+					break;
+			}
+			c = 0;
+		}
+		i++;
+		if(i == l){
+			exit_loop =1;
+			break;
+		}
+		
+	}
+	aln_len = rp;
 	
+	i =0;
+	rp = 0;
 	
+	while(read[rp] == -1){
+		rp++;
+	}
+	gp = 0;
+	exit_loop = 0;
+	add  = 0;
+	l = (int) strlen((char*)ri->md);
+	
+	//int gg;
+	
+	//#1C20^ATT0C3A0
+	while(!exit_loop){
+		if(isdigit((int)ri->md[i])){
+			j = 0;
+			while (isdigit(ri->md[i])) {
+				tmp_num[j] = ri->md[i];
+				j++;
+				i++;
+				if(i == l){
+					exit_loop = 1;
+					break;
+				}
+			}
+			tmp_num[j] = 0;
+			
+			c = atoi(tmp_num);
+			
+			//fprintf(stderr,"MD:%d\n",c);
+			for(j = 0; j < c;j++){
+				while(genome[gp] == -1){
+					gp++;
+					rp++;
+				}
+				while(read[rp] == -1){
+					rp++;
+				}
+				genome[gp] = read[rp];
+				
+				gp++;
+				rp++;
+				//fprintf(stderr,"%d	%d	%d \n",aln_len,rp,i);
+				while(read[rp] == -1){
+					rp++;
+				}
+			}
+			add = 0;
+		}else if(isalpha((int)ri->md[i])){
+			//fprintf(stderr,"MD:%c\n",ri->md[i]);
+			while(genome[gp] == -1){
+				gp++;
+			}
+			genome[gp] = nuc_code[(int)ri->md[i]];
+			gp++;
+			i++;
+			if(!add){
+				rp++;
+			}
+			
+		}else{
+			add = 1;
+			i++;
+		}
+		if(i == l){
+			exit_loop = 1;
+			break;
+		}
+	}
+	
+	if(ri->strand == 0){
+		gp = 0;
+		for(i =0;i < aln_len;i++){
+			
+			if(read[i] != -1 && genome[i] != -1){
+				if(read[i] != genome[i]){
+					seq_stats->mismatches[qual_key][gp][read[i]] += 1;
+				}
+				gp++;
+				//			fprintf(stderr,"Mismatch %d\n",i);
+			}else if(read[i] == -1 && genome[i] != -1){
+				seq_stats->deletions[qual_key][gp] += 1;
+				
+				//			fprintf(stderr,"Deletion %d\n",i);
+			}else if(read[i] != -1 && genome[i] == -1){
+				seq_stats->insertions[qual_key][gp][read[i]] += 1;
+				gp++;
+				//			fprintf(stderr,"Insertion %d\n",i);
+			}
+		}
+	}else{
+		gp = ri->len-1;
+		for(i = 0;i < aln_len;i++){
+			
+			if(read[i] != -1 && genome[i] != -1){
+				if(read[i] != genome[i]){
+					seq_stats->mismatches[qual_key][gp][reverse_int[read[i]]] += 1;
+					//		fprintf(stderr,"Mismatch %d->%d\n",i,gp);
+				}
+				gp--;
+				
+			}else if(read[i] == -1 && genome[i] != -1){
+				seq_stats->deletions[qual_key][gp] += 1;
+				
+				//	fprintf(stderr,"Deletion %d\n",i);
+			}else if(read[i] != -1 && genome[i] == -1){
+				seq_stats->insertions[qual_key][gp][reverse_int[read[i]]] += 1;
+				gp--;
+				//	fprintf(stderr,"Insertion %d\n",i);
+			}
+		}
+	}
+	
+	free(read);
+	free(genome);
+	return aln_len;
+}
+
+
+
 
 
 

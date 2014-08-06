@@ -16,7 +16,9 @@ io.h \
 hmm.c \
 hmm.h \
 viz.h \
-viz.c
+viz.c \
+pst.h \
+pst.c
 
 samstat_LDADD = -lm
 

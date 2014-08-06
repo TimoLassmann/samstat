@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		25D5B1401965088F00A57D8D /* viz.c in Sources */ = {isa = PBXBuildFile; fileRef = 25D5B13F1965088F00A57D8D /* viz.c */; };
+		2767683B1991EDB50097D604 /* pst.c in Sources */ = {isa = PBXBuildFile; fileRef = 276768391991EDB50097D604 /* pst.c */; };
 		A196F4E619493CAC00C9B6F2 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4E319493CAC00C9B6F2 /* main.c */; };
 		A196F4E719493CAC00C9B6F2 /* interface.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4E419493CAC00C9B6F2 /* interface.c */; };
 		A196F4EE19493CFA00C9B6F2 /* nuc_code.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4EC19493CFA00C9B6F2 /* nuc_code.c */; };
@@ -31,6 +32,8 @@
 /* Begin PBXFileReference section */
 		25D5B13E1965088F00A57D8D /* viz.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = viz.h; path = src/viz.h; sourceTree = "<group>"; };
 		25D5B13F1965088F00A57D8D /* viz.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = viz.c; path = src/viz.c; sourceTree = "<group>"; };
+		276768391991EDB50097D604 /* pst.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = pst.c; path = src/pst.c; sourceTree = "<group>"; };
+		2767683A1991EDB50097D604 /* pst.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = pst.h; path = src/pst.h; sourceTree = "<group>"; };
 		A196F4D619493B6000C9B6F2 /* samstat2 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = samstat2; sourceTree = BUILT_PRODUCTS_DIR; };
 		A196F4E219493CAC00C9B6F2 /* malloc_macro.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = malloc_macro.h; path = src/malloc_macro.h; sourceTree = "<group>"; };
 		A196F4E319493CAC00C9B6F2 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = src/main.c; sourceTree = "<group>"; };
@@ -93,6 +96,8 @@
 				A196F4ED19493CFA00C9B6F2 /* nuc_code.h */,
 				A196F4E219493CAC00C9B6F2 /* malloc_macro.h */,
 				A196F4E319493CAC00C9B6F2 /* main.c */,
+				2767683A1991EDB50097D604 /* pst.h */,
+				276768391991EDB50097D604 /* pst.c */,
 				A196F4E419493CAC00C9B6F2 /* interface.c */,
 				A196F4E519493CAC00C9B6F2 /* interface.h */,
 				A196F4EB19493CFA00C9B6F2 /* Makefile.am */,
@@ -156,6 +161,7 @@
 				A196F4EE19493CFA00C9B6F2 /* nuc_code.c in Sources */,
 				25D5B1401965088F00A57D8D /* viz.c in Sources */,
 				A196F4E619493CAC00C9B6F2 /* main.c in Sources */,
+				2767683B1991EDB50097D604 /* pst.c in Sources */,
 				A196F4E719493CAC00C9B6F2 /* interface.c in Sources */,
 				A196F4F119493E3600C9B6F2 /* misc.c in Sources */,
 			);

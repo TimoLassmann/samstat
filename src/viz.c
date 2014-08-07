@@ -60,6 +60,7 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 	pd->data = NULL;
 	pd->description = NULL;
 	pd->plot_title = NULL;
+	pd->show_series = NULL;
 	
 	pd->plot_type = 0;
 	pd->width = 700;
@@ -69,7 +70,7 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 	
 	MMALLOC(pd->description, sizeof(char) * 100000);
 	MMALLOC(pd->plot_title, sizeof(char) * 100000);
-	
+	MMALLOC(pd->show_series, sizeof(int) * num_series);
 	MMALLOC(pd->labels , sizeof(char* ) * num_points);
 	
 	MMALLOC(pd->series_labels , sizeof(char* ) * num_series);
@@ -86,6 +87,7 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 	for(i = 0; i < num_series;i++){
 		pd->data[i] = 0;
 		pd->series_labels[i] = 0;
+		pd->show_series[i] = 1;
 		MMALLOC(pd->series_labels[i], sizeof(char)* MAXLABEL_LEN);
 		for(j = 0; j < MAXLABEL_LEN;j++){
 			pd->series_labels[i][j] = 0;
@@ -108,6 +110,7 @@ void free_plot_data(struct plot_data* pd)
 	for(i = 0; i < pd->num_points;i++){
 		MFREE(pd->labels[i]);// = 0;
 	}
+	MFREE(pd->show_series);
 	MFREE(pd->data);
 	MFREE(pd->labels);
 	MFREE(pd->description);
@@ -172,7 +175,7 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"padding: 0 0 0 0;\n");
 	fprintf(out,"font-weight: normal;\n");
 	fprintf(out,"font-size: 300%%;\n");
-	fprintf(out,"color: #fff;\n");
+	fprintf(out,"color: #75787B;\n");
 	fprintf(out,"}\n");
 	
 	fprintf(out,"#intro p {\n");
@@ -239,7 +242,7 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	//fprintf(out,"position: absolute;\n");
 	fprintf(out,"left: 0;\n");
 	fprintf(out,"width: 100%%;\n");
-	fprintf(out,"background: #000000;\n");
+	fprintf(out,"background: #75787B;\n");
 	fprintf(out,"color: #FFF;\n");
 	fprintf(out,"}\n");
 	
@@ -325,68 +328,77 @@ void print_html_table(FILE* out,struct plot_data* pd)
 	int i,j;
 	int start,stop;
 	
-	
 	start = 0;
-	
-	stop = pd->num_points_shown;
-	
-	if(pd->num_points < stop){
-		stop = pd->num_points;
+	for(j = 0;j < pd->num_series;j++){
+		if(pd->show_series[j]){
+			start++;
+		}
 	}
-	while(1){
+	if(start){
 		
-		fprintf(out,"<table  class=\"simple\" >\n");
-		fprintf(out,"<tr>\n");
+		start = 0;
 		
-		//head row..
+		stop = pd->num_points_shown;
 		
-		if(pd->series_labels){
-			if(pd->num_points < 5){
-				fprintf(out,"<td style=\"width:100px \"></td>\n");
-			}else{
-				fprintf(out,"<td style=\"width:50px \"></td>\n");
-			}
-		}
-		for(i = start; i < stop;i++){
-			if(pd->num_points < 5){
-				fprintf(out,"<td style=\"width:90px\">%s</td>\n",pd->labels[i]);
-			}else{
-				fprintf(out,"<td style=\"width:45px\">%s</td>\n",pd->labels[i]);
-			}
-			
-		}
-		
-		fprintf(out,"</tr>\n");
-		for(j = 0;j < pd->num_series;j++){
-			fprintf(out,"<tr>\n");
-			if(pd->series_labels){
-				fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j  + pd->color_scheme], pd->series_labels[j]);
-			}
-			for(i =start ; i < stop ;i++){
-				fprintf(out,"<td>%0.1f</td>\n",pd->data[j][i]);
-				
-			}
-			fprintf(out,"</tr>\n");
-			
-		}
-		fprintf(out,"</table>\n");
-		
-		if(stop == pd->num_points){
-			break;
-		}
-		fprintf(out,"<br>\n");
-		start += pd->num_points_shown;
-		stop += pd->num_points_shown;
 		if(pd->num_points < stop){
 			stop = pd->num_points;
 		}
-		
-	}
-	if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
-	}else{
-		fprintf(out,"<br>");
-		fprintf(out,"<div style=\"clear:both;\"></div>");
-		fprintf(out,"%s\n",  pd->description);
+		while(1){
+			
+			fprintf(out,"<table  class=\"simple\" >\n");
+			fprintf(out,"<tr>\n");
+			
+			//head row..
+			
+			if(pd->series_labels){
+				if(pd->num_points < 5){
+					fprintf(out,"<td style=\"width:100px \"></td>\n");
+				}else{
+					fprintf(out,"<td style=\"width:50px \"></td>\n");
+				}
+			}
+			for(i = start; i < stop;i++){
+				if(pd->num_points < 5){
+					fprintf(out,"<td style=\"width:90px\">%s</td>\n",pd->labels[i]);
+				}else{
+					fprintf(out,"<td style=\"width:45px\">%s</td>\n",pd->labels[i]);
+				}
+				
+			}
+			
+			fprintf(out,"</tr>\n");
+			for(j = 0;j < pd->num_series;j++){
+				if(pd->show_series[j]){
+					fprintf(out,"<tr>\n");
+					if(pd->series_labels){
+						fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j  + pd->color_scheme], pd->series_labels[j]);
+					}
+					for(i =start ; i < stop ;i++){
+						fprintf(out,"<td>%0.1f</td>\n",pd->data[j][i]);
+						
+					}
+					fprintf(out,"</tr>\n");
+				}
+			}
+			fprintf(out,"</table>\n");
+			
+			if(stop == pd->num_points){
+				break;
+			}
+			fprintf(out,"<br>\n");
+			start += pd->num_points_shown;
+			stop += pd->num_points_shown;
+			if(pd->num_points < stop){
+				stop = pd->num_points;
+			}
+			
+		}
+		if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+		}else{
+			fprintf(out,"<br>");
+			fprintf(out,"<div style=\"clear:both;\"></div>");
+			fprintf(out,"%s\n",  pd->description);
+		}
 	}
 }
 
@@ -395,129 +407,146 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 {
 	static int id = 1;
 	int i,j;
-	fprintf(out,"<section>\n");
-	if(pd->plot_title[0] != 0){
-	fprintf(out,"<h2>%s</h2>\n", pd->plot_title);
+	int first = 0;
+	
+	for(j = 0;j < pd->num_series;j++){
+		if(pd->show_series[j]){
+			first++;
+		}
 	}
-	int start,stop;
-	int points_shown = pd->num_points_shown;
-	
-	start = 0;
-	
-	switch (pd->plot_type) {
-		case RADAR_PLOT:
-		case PIE_PLOT:
-			stop =pd->num_points;
-			points_shown =pd->num_points;
-			break;
-		default:
-			stop = points_shown;
+	if(first){
+		
+		fprintf(out,"<section>\n");
+		if(pd->plot_title[0] != 0){
+			fprintf(out,"<h2>%s</h2>\n", pd->plot_title);
+		}
+		int start,stop;
+		int points_shown = pd->num_points_shown;
+		
+		start = 0;
+		
+		switch (pd->plot_type) {
+			case RADAR_PLOT:
+			case PIE_PLOT:
+				stop =pd->num_points;
+				points_shown =pd->num_points;
+				break;
+			default:
+				stop = points_shown;
+				
+				if(pd->num_points < stop){
+					stop = pd->num_points;
+				}
+				break;
+		}
+		if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
 			
+			fprintf(out,"<div style=\"float: left\">\n");
+		}else{
+			fprintf(out,"<div style=\"float: none\">\n");
+		}
+		while(1){
+			fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%f\"></canvas>\n",id , pd->height, (float)pd->width   * (float)(stop-start )/ points_shown);
+			fprintf(out,"<script>\n");
+			
+			fprintf(out,"var ChartData%d = {\n",id);
+			fprintf(out,"labels : [");
+			for(i =start ; i < stop;i++){
+				if(i != start){
+					fprintf(out,",");
+				}
+				fprintf(out,"\"%s\"",pd->labels[i]);
+			}
+			fprintf(out,"],\n");
+			
+			//labels : ["January","February","March","April","May","June","July"],
+			fprintf(out,"datasets : [\n");
+			first = 0;
+			for(j = 0;j < pd->num_series;j++){
+				if(pd->show_series[j]){
+					if(first){
+						fprintf(out,",\n");
+					}
+					first++;
+					fprintf(out,"{\n");
+					fprintf(out,"fillColor : \"%s\",\n",colors[j+ pd->color_scheme]);
+					fprintf(out,"strokeColor : \"%s\",\n",colors[j+ pd->color_scheme]);
+					fprintf(out,"pointColor : \"%s\",\n",colors[j+ pd->color_scheme]);
+					fprintf(out,"data : [");
+					for(i =start; i < stop;i++){
+						if(i!= start){
+							fprintf(out,",");
+						}
+						fprintf(out,"%f",pd->data[j][i]);
+					}
+					fprintf(out,"]\n");
+					fprintf(out,"}");
+				}
+				
+			}
+			fprintf(out,"\n]\n}\n");
+			
+			
+			fprintf(out,"var pieData%d = [\n",id);
+			first = 0;
+			for(i = 0; i < pd->num_series; i++){//start ; i < stop;i++){
+				if(pd->show_series[j]){
+					if(first!=0){
+						fprintf(out,",");
+					}
+					first++;
+					fprintf(out,"{ value: %f, color:\"%s\"}",pd->data[i][0],colors[i + pd->color_scheme] );
+				}
+			}
+			fprintf(out,"];\n");
+			
+			
+			
+			fprintf(out,"var Chartopt = {datasetFill : false}\n");
+			
+			
+			switch (pd->plot_type) {
+				case LINE_PLOT:
+					fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Line(ChartData%d,Chartopt);\n",id,id);
+					break;
+				case BAR_PLOT:
+					fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Bar(ChartData%d);\n",id,id);
+					break;
+				case RADAR_PLOT:
+					fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Radar(ChartData%d);\n",id,id);
+					break;
+				case PIE_PLOT:
+					fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Pie(pieData%d);\n",id,id);
+					break;
+				default:
+					fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Bar(ChartData%d);\n",id,id);
+					break;
+			}
+			
+			
+			
+			
+			fprintf(out,"</script>\n");
+			if(stop == pd->num_points){
+				break;
+			}
+			fprintf(out,"<br>\n");
+			start += pd->num_points_shown;
+			stop += pd->num_points_shown;
 			if(pd->num_points < stop){
 				stop = pd->num_points;
 			}
-			break;
-	}
-	if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
-		
-	fprintf(out,"<div style=\"float: left\">\n");
-	}else{
-		fprintf(out,"<div style=\"float: none\">\n");
-	}
-	while(1){
-		fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%f\"></canvas>\n",id , pd->height, (float)pd->width   * (float)(stop-start )/ points_shown);
-		fprintf(out,"<script>\n");
-		
-		fprintf(out,"var ChartData%d = {\n",id);
-		fprintf(out,"labels : [");
-		for(i =start ; i < stop;i++){
-			if(i != start){
-				fprintf(out,",");
-			}
-			fprintf(out,"\"%s\"",pd->labels[i]);
+			id++;
 		}
-		fprintf(out,"],\n");
-		
-		//labels : ["January","February","March","April","May","June","July"],
-		fprintf(out,"datasets : [\n");
-		
-		for(j = 0;j < pd->num_series;j++){
-			if(j){
-				fprintf(out,",\n");
-			}
-			fprintf(out,"{\n");
-			fprintf(out,"fillColor : \"%s\",\n",colors[j+ pd->color_scheme]);
-			fprintf(out,"strokeColor : \"%s\",\n",colors[j+ pd->color_scheme]);
-			fprintf(out,"pointColor : \"%s\",\n",colors[j+ pd->color_scheme]);
-			fprintf(out,"data : [");
-			for(i =start; i < stop;i++){
-				if(i!= start){
-					fprintf(out,",");
-				}
-				fprintf(out,"%f",pd->data[j][i]);
-			}
-			fprintf(out,"]\n");
-			fprintf(out,"}");
-			
-		}
-		fprintf(out,"\n]\n}\n");
-		
-		
-		fprintf(out,"var pieData%d = [\n",id);
-		for(i = 0; i < pd->num_series; i++){//start ; i < stop;i++){
-			if(i!=0){
-				fprintf(out,",");
-			}
-			fprintf(out,"{ value: %f, color:\"%s\"}",pd->data[i][0],colors[i + pd->color_scheme] );
-		}
-		fprintf(out,"];\n");
-		
-		
-		
-		fprintf(out,"var Chartopt = {datasetFill : false}\n");
-		
-		
-		switch (pd->plot_type) {
-			case LINE_PLOT:
-				fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Line(ChartData%d,Chartopt);\n",id,id);
-				break;
-			case BAR_PLOT:
-				fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Bar(ChartData%d);\n",id,id);
-				break;
-			case RADAR_PLOT:
-				fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Radar(ChartData%d);\n",id,id);
-				break;
-			case PIE_PLOT:
-				fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Pie(pieData%d);\n",id,id);
-				break;
-			default:
-				fprintf(out,"var myLine = new Chart(document.getElementById(\"canvas%d\").getContext(\"2d\")).Bar(ChartData%d);\n",id,id);
-				break;
-		}
-		
-		
-		
-		
-		fprintf(out,"</script>\n");
-		if(stop == pd->num_points){
-			break;
-		}
-		fprintf(out,"<br>\n");
-		start += pd->num_points_shown;
-		stop += pd->num_points_shown;
-		if(pd->num_points < stop){
-			stop = pd->num_points;
+		fprintf(out,"</div>");
+		if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+		}else{
+			fprintf(out,"<br>");
+			fprintf(out,"<div style=\"clear:both;\"></div>");
+			fprintf(out,"%s\n",  pd->description);
 		}
 		id++;
 	}
-	fprintf(out,"</div>");
-	if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
-	}else{
-		fprintf(out,"<br>");
-		fprintf(out,"<div style=\"clear:both;\"></div>");
-		fprintf(out,"%s\n",  pd->description);
-	}
-	id++;
 }
 
 

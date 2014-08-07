@@ -43,6 +43,7 @@ struct seq_stats{
 	int** seq_len;
 	int*** nuc_composition;
 	int** seq_quality;
+	int** seq_quality_count;
 	int* aln_quality;
 	int* alignments;
 	int* nuc_num;
@@ -180,6 +181,7 @@ int main (int argc,char * argv[])
 				if(ri[i]->qual[0] != '*'){
 					for(j = 0; j < ri[i]->len;j++){
 						seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]);
+						seq_stats->seq_quality_count[qual_key][j] += 1; //(int)(ri[i]->qual[j]);
 						seq_stats->base_qualities[(int)(ri[i]->qual[j])]++;
 					}
 				}
@@ -232,7 +234,7 @@ int main (int argc,char * argv[])
 			
 			
 			seq_stats->average_len = (int) floor((double) seq_stats->average_len / (double) numseq   + 0.5);
-			//seq_stats = reformat_base_qualities(seq_stats);
+			seq_stats = reformat_base_qualities(seq_stats);
 			hmm = init_samstat_hmm(seq_stats->average_len);
 			for(i = 0; i < numseq;i++){
 				if(ri[i]->mapq != -1){
@@ -267,7 +269,7 @@ int main (int argc,char * argv[])
 			hmm = run_EM_iterations(hmm,hmm_data);
 			fprintf(stderr,"FORGROUND:\n");
 			print_hmm_parameters(hmm);
-			if(use_mapping_qualities_for_hmm_training){
+			/*if(use_mapping_qualities_for_hmm_training){
 				background_hmm =init_samstat_hmm(seq_stats->average_len);
 				for(i = 0; i < numseq;i++){
 					hmm_data->length[i] = ri[i]->len;
@@ -283,7 +285,7 @@ int main (int argc,char * argv[])
 			fprintf(stderr,"Background:\n");
 
 			print_hmm_parameters(background_hmm);
-			
+			*/
 			// done with hmm
 			// now reformat the sequence and run pst ...
 			
@@ -419,7 +421,6 @@ int main (int argc,char * argv[])
 	struct plot_data* pd = 0;
 	pd = malloc_plot_data(10, 255);
 	
-	
 	sprintf(pd->plot_title, "%s",shorten_pathname(param->infile[0]));
 	pd->description = make_file_stats(param->infile[0],pd->description);
 	print_html5_header(stdout,pd);
@@ -427,35 +428,29 @@ int main (int argc,char * argv[])
 	sprintf(pd->labels[0], "%s","Number");
 	sprintf(pd->labels[1], "%s","Percentage");
 	
-	
-	
-	
-	
 	pd->data[5][0] =  seq_stats->alignments[5];
 	pd->data[5][1] =  (float)seq_stats->alignments[5] / (float)seq_stats->total_reads * 100.0;
-
 	sprintf(pd->series_labels[5], "Unmapped");
 	
 	pd->data[4][0] =  seq_stats->alignments[0];
 	pd->data[4][1] =  (float)seq_stats->alignments[0] / (float)seq_stats->total_reads* 100.0;
-	sprintf(pd->series_labels[4], "MAPQ < 3");
+	sprintf(pd->series_labels[4], "MAPQ  <  3");
+	
 	pd->data[3][0] =  seq_stats->alignments[1];
 	pd->data[3][1] =  (float)seq_stats->alignments[1] / (float)seq_stats->total_reads* 100.0;
+	sprintf(pd->series_labels[3], "MAPQ  < 10");
 	
-	sprintf(pd->series_labels[3], "MAPQ < 10");
 	pd->data[2][0] =  seq_stats->alignments[2];
 	pd->data[2][1] =  (float)seq_stats->alignments[2] / (float)seq_stats->total_reads* 100.0;
+	sprintf(pd->series_labels[2], "MAPQ  < 20");
 	
-	sprintf(pd->series_labels[2], "MAPQ < 20");
 	pd->data[1][0] =  seq_stats->alignments[3];
 	pd->data[1][1] =  (float)seq_stats->alignments[3] / (float)seq_stats->total_reads* 100.0;
+	sprintf(pd->series_labels[1], "MAPQ  < 30");
 	
-	sprintf(pd->series_labels[1], "MAPQ < 30");
 	pd->data[0][0] =  seq_stats->alignments[4];
 	pd->data[0][1] =  (float)seq_stats->alignments[4] / (float)seq_stats->total_reads* 100.0;
-	
 	sprintf(pd->series_labels[0], "MAPQ >= 30");
-	
 	
 	pd->num_points = 1;
 	pd->num_series = 6;
@@ -466,34 +461,48 @@ int main (int argc,char * argv[])
 	sprintf(pd->plot_title, "Mapping stats:");
 	pd->plot_type = PIE_PLOT;
 	print_html5_chart(stdout, pd);
+	
+	sprintf(pd->series_labels[6], "Total");
+	pd->data[6][0] =  seq_stats->total_reads;
+	pd->data[6][1] =  100.0;
 	pd->num_points = 2;
-	pd->num_series = 6;
+	pd->num_series = 7;
 	sprintf(pd->description,"Number of alignments in various mapping quality (MAPQ) intervals and number of unmapped sequences.");
 	
 	print_html_table(stdout, pd);
 	pd->color_scheme = 0;
 	pd->width = 900;
         
+	for(i = 0; i < 6;i++){
+		if(!seq_stats->alignments[i]){
+			pd->show_series[i] =0;
+		}
+		fprintf(stderr,"SANITY:show:%d	%d\n", i,pd->show_series[i]);
+	}
+	
+	
         int plots =0;
 	
 	for(i = 0; i < 6;i++){
-		
 		for(j = seq_stats->min_len; j <= seq_stats->max_len;j++){
 			if(plots ==0){
-				sprintf(pd->labels[j-seq_stats->min_len], "%d",j);
+				sprintf(pd->labels[j-seq_stats->min_len], "%dnt",j+1);
 			}
 			pd->data[i][j-seq_stats->min_len] = seq_stats->seq_len[i][j];
 		}
-		
 		for(j = 0; j < 6;j++){
 			fprintf(stderr,"%d %d %s\n",j,6,pd->series_labels[j] );
 		}
-		
-
         }
+	
 	pd->width = 700;
 	pd->color_scheme = 4;
 	pd->num_points = seq_stats->max_len - seq_stats->min_len;
+	if(pd->num_points < 20){
+		pd->num_points_shown =pd->num_points;
+	}else{
+		pd->num_points_shown = 20;
+	}
 	pd->num_series = 6;
 	sprintf(pd->description,"NA");
 	sprintf(pd->plot_title, "Read Length Distributions");
@@ -505,132 +514,68 @@ int main (int argc,char * argv[])
 	for(i = 0; i < plots;i++){
 		fprintf(stderr,"%d %d %s\n",i,plots,pd->series_labels[i] );
 	}
-	sprintf(pd->description,"Read Length Distributions.");
+	sprintf(pd->description,"Distribution of read lengths separated by mapping quality thresholds.");
 	
 	print_html_table(stdout, pd);
-	pd->width = 900;
+	// BASE QUALITIES...
 	
-	plots = 0;
-	pd->color_scheme = 0;
 	
-        for(i = 0; i < 6;i++){
-                switch (i) {
-                        case 0:
-                                sprintf(pd->plot_title, "Read Length Distribution(MAPQ >= 30):");
-                                sprintf(pd->description,"Length Distribution of MAPQ >= 30 reads.");
-                                break;
-                        case 1:
-                                sprintf(pd->plot_title, "Read Length Distribution(MAPQ < 30):");
-                                sprintf(pd->description,"Length Distribution of MAPQ < 30 reads.");
-                                break;
-
-                        case 2:
-                                sprintf(pd->plot_title, "Read Length Distribution(MAPQ < 20):");
-                                sprintf(pd->description,"Length Distribution of MAPQ < 20 reads.");
-                                break;
-
-                        case 3:
-                                sprintf(pd->plot_title, "Read Length Distribution(MAPQ < 10):");
-                                sprintf(pd->description,"Length Distribution of MAPQ < 10 reads.");
-                                break;
-
-                        case 4:
-                                sprintf(pd->plot_title, "Read Length Distribution(MAPQ < 3):");
-                                sprintf(pd->description,"Length Distribution of MAPQ < 3 reads.");
-                                break;
-                        case 5:
-                                sprintf(pd->plot_title, "Read Length Distribution(unmapped):");
-                                sprintf(pd->description,"Length Distribution of unmapped reads.");
-                                break;
-                        default:
-                                break;
-                }
-                if(seq_stats->alignments[i]){
-			plots++;
-			if(plots == 3){
-				plots= 0;
-			}else if(plots == 1){
-				sprintf(pd->description,"NA");
-			}else{
-				 sprintf(pd->description,"NA");
-				pd->plot_title[0] = 0;
+	for(i = 0; i < 6;i++){
+		for(j = 0; j <= seq_stats->max_len;j++){
+			if(plots ==0){
+				sprintf(pd->labels[j], "%dnt",j+1);
 			}
-                        for(j = seq_stats->min_len; j <= seq_stats->max_len;j++){
-                                sprintf(pd->labels[j-seq_stats->min_len], "%d",j);
-                                pd->data[0][j-seq_stats->min_len] = seq_stats->seq_len[i][j];
-                        }
-                        pd->num_points = seq_stats->max_len - seq_stats->min_len;
-                        pd->num_series = 1;
-                        
-                        
-                        pd->plot_type = LINE_PLOT;
-                        print_html5_chart(stdout, pd);
-                }
+			if(seq_stats->alignments[i] ){
+				pd->data[i][j] =  (float)seq_stats->seq_quality[i][j] /   (float)seq_stats->seq_quality_count[i][j] - (float)seq_stats->base_quality_offset;
+			}else{
+				pd->data[i][j] = 0;
+			}
+		}
+		for(j = 0; j < 6;j++){
+			fprintf(stderr,"%d %d %s\n",j,6,pd->series_labels[j] );
+		}
         }
 	
-	fprintf(stderr,"Errors :\n");
-	for(i = 0; i < 5;i++){
-                switch (i) {
-                        case 0:
-                                sprintf(pd->plot_title, "Number of Errors Per Read (MAPQ >= 30):");
-                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ >= 30 reads.");
-                                break;
-                        case 1:
-                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 30):");
-                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 30 reads.");
-                                break;
-				
-                        case 2:
-                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 20):");
-                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 20 reads.");
-                                break;
-				
-                        case 3:
-                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 10):");
-                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 10 reads.");
-                                break;
-				
-                        case 4:
-                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 3):");
-                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0m, 1, 2 ... errors (x axis) for MAPQ < 3 reads.");
-                                break;
-                       
-                                
-                        default:
-                                break;
-                }
-                if(seq_stats->alignments[i]){
-                        for(j = 0; j <= seq_stats->max_error_per_read;j++){
-                                sprintf(pd->labels[j], "%d",j);
-                                pd->data[0][j] = 100.0 * (float)seq_stats->errors[i][j]/ (float)seq_stats->alignments[i];
-                        }
-                        pd->num_points = seq_stats->max_error_per_read ;
-                        pd->num_series = 1;
-			pd->num_points_shown = 10;
-                        
-                        
-                        pd->plot_type = BAR_PLOT;
-                        print_html5_chart(stdout, pd);
-                }
-        }
-        
+	pd->width = 700;
+	pd->color_scheme = 4;
+	pd->num_points = seq_stats->max_len;
+	if(pd->num_points < 20){
+		pd->num_points_shown =pd->num_points;
+	}else{
+		pd->num_points_shown = 20;
+	}
+	pd->num_series = 6;
+	sprintf(pd->description,"NA");
+	sprintf(pd->plot_title, "Base Quality Distributions");
+	pd->plot_type = LINE_PLOT;
+	print_html5_chart(stdout, pd);
+
+	pd->num_points = 0;
+	pd->num_series = 6;
+	sprintf(pd->description,"Base quality distributions separated by mapping quality thresholds.");
+	
+	print_html_table(stdout, pd);
+
+	
 		///HMM plots - need to count  nucleotide frequencies.. .
 	
 	float sum = 0;
 	for(i = 0; i < 6;i++){
 		sum +=seq_stats->nuc_num[i];
 	}
-	
+	pd->color_scheme = 0;
 	
 	sprintf(pd->series_labels[0],"A");
         sprintf(pd->series_labels[1],"C");
         sprintf(pd->series_labels[2],"G");
         sprintf(pd->series_labels[3],"T");
         sprintf(pd->series_labels[4],"N");
+	for(i = 0; i < 5;i++){
+		pd->show_series[i] = 1;
+	}
 	
-	
-	sprintf(pd->plot_title, "HMM stuff..,");
-	sprintf(pd->description,"Distribution of Mismatches in MAPQ >= 30 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
+	sprintf(pd->plot_title, "Read Composition");
+	sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
 	for(j = 2; j <= 3+seq_stats->average_len -1;j++){
 		sprintf(pd->labels[j-2], "%d",j-1);
 		for(c = 0; c < 5;c++){
@@ -654,6 +599,11 @@ int main (int argc,char * argv[])
         sprintf(pd->series_labels[3],"T");
         sprintf(pd->series_labels[4],"N");
         
+	for(i = 0; i < 6;i++){
+		if(!seq_stats->alignments[i]){
+			pd->show_series[i] =0;
+		}
+	}
         
         for(i = 0; i < 5;i++){
                 switch (i) {
@@ -686,7 +636,7 @@ int main (int argc,char * argv[])
                 }
 		if(seq_stats->alignments[i]){
 			for(j = 0; j <= seq_stats->max_len;j++){
-                                sprintf(pd->labels[j], "%d",j+1);
+                                sprintf(pd->labels[j], "%dnt",j+1);
 				for(c = 0; c < 5;c++){
 					pd->data[c][j] =  (float)seq_stats->mismatches[i][j][c] / (float)seq_stats->alignments[i] * 100.0f;
 				}
@@ -697,6 +647,56 @@ int main (int argc,char * argv[])
                 pd->plot_type = BAR_PLOT;
                 print_html5_chart(stdout, pd);
 	}
+	
+	pd->width = 900;
+	pd->color_scheme = 0;
+	
+	fprintf(stderr,"Errors :\n");
+	for(i = 0; i < 5;i++){
+                switch (i) {
+                        case 0:
+                                sprintf(pd->plot_title, "Number of Errors Per Read (MAPQ >= 30):");
+                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ >= 30 reads.");
+                                break;
+                        case 1:
+                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 30):");
+                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 30 reads.");
+                                break;
+				
+                        case 2:
+                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 20):");
+                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 20 reads.");
+                                break;
+				
+                        case 3:
+                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 10):");
+                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 10 reads.");
+                                break;
+				
+                        case 4:
+                                sprintf(pd->plot_title, "Number of Errors Per Read(MAPQ < 3):");
+                                sprintf(pd->description,"Barplot shows the percentage of reads (y-axis) with 0, 1, 2 ... errors (x axis) for MAPQ < 3 reads.");
+                                break;
+				
+                        default:
+                                break;
+                }
+                if(seq_stats->alignments[i]){
+                        for(j = 0; j <= seq_stats->max_error_per_read;j++){
+                                sprintf(pd->labels[j], "%d",j);
+                                pd->data[0][j] = 100.0 * (float)seq_stats->errors[i][j]/ (float)seq_stats->alignments[i];
+                        }
+                        pd->num_points = seq_stats->max_error_per_read ;
+                        pd->num_series = 1;
+			pd->width = 300;
+			pd->num_points_shown = seq_stats->max_error_per_read;
+                        
+                        
+                        pd->plot_type = BAR_PLOT;
+                        print_html5_chart(stdout, pd);
+                }
+        }
+        
         
 	print_html5_footer(stdout);
 	
@@ -735,7 +735,7 @@ char* make_file_stats(char* filename,char* buffer)
 		}
 		strftime(time_string, 200, "%F %H:%M:%S\t", ptr);
 
-		sprintf(buffer,"size:%9jd  created: %s",(intmax_t)buf.st_size, time_string);
+		sprintf(buffer,"size:%9jd bytes; created: %s",(intmax_t)buf.st_size, time_string);
 	}else{
 		fprintf(stderr,"Failed getting stats for file:%s\n",filename );
 	}
@@ -916,6 +916,8 @@ struct seq_stats* init_seq_stats(void)
 	seq_stats->percent_identity = NULL;
 	seq_stats->seq_len = NULL;
 	seq_stats->seq_quality = NULL;
+	seq_stats->seq_quality_count = NULL;
+	
 	seq_stats->base_qualities = NULL;
 	
 	MMALLOC(seq_stats->base_qualities, sizeof(int)* 256);
@@ -924,6 +926,7 @@ struct seq_stats* init_seq_stats(void)
 	MMALLOC(seq_stats->seq_len,sizeof(int*)* 6);
 	MMALLOC(seq_stats->nuc_composition,sizeof(int**)* 6);
 	MMALLOC(seq_stats->seq_quality,sizeof(int*)* 6);
+	MMALLOC(seq_stats->seq_quality_count,sizeof(int*)* 6);
 	MMALLOC(seq_stats->aln_quality,sizeof(int)*6);
 	MMALLOC(seq_stats->nuc_num,sizeof(int) * 6);
 	//seq_stats->overall_kmers= malloc(sizeof(float) * KMERALLOC);
@@ -952,6 +955,7 @@ struct seq_stats* init_seq_stats(void)
 		seq_stats->seq_len[c] = NULL;
 		seq_stats->nuc_composition[c] = NULL;
 		seq_stats->seq_quality[c] = NULL;
+		seq_stats->seq_quality_count[c] = NULL;
 	
 		
 		
@@ -964,6 +968,7 @@ struct seq_stats* init_seq_stats(void)
 		MMALLOC(seq_stats->seq_len[c],sizeof(int)* MAX_SEQ_LEN);
 		MMALLOC(seq_stats->nuc_composition[c],sizeof(int*)* MAX_SEQ_LEN);
 		MMALLOC(seq_stats->seq_quality[c],sizeof(int)* MAX_SEQ_LEN);
+		MMALLOC(seq_stats->seq_quality_count[c],sizeof(int)* MAX_SEQ_LEN);
 
 		
 		seq_stats->percent_identity[c] = 0.0f;
@@ -981,6 +986,7 @@ struct seq_stats* init_seq_stats(void)
 			seq_stats->nuc_composition[c][i] = NULL;
 			
 			seq_stats->seq_quality[c][i] = 0;
+			seq_stats->seq_quality_count[c][i] = 0;
 			
 			MMALLOC(seq_stats->mismatches[c][i],sizeof(int)*5);
 			MMALLOC(seq_stats->insertions[c][i],sizeof(int)*5);
@@ -1030,6 +1036,7 @@ void free_seq_stats(struct seq_stats* seq_stats)
 		free(seq_stats->seq_len[i]);// = malloc(sizeof(int)* MAX_SEQ_LEN);
 		free(seq_stats->nuc_composition[i]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
 		free(seq_stats->seq_quality[i]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
+		free(seq_stats->seq_quality_count[i]);
 	}
 	for(i = 0; i < 6;i++){
 		free(seq_stats->errors[i]);
@@ -1044,6 +1051,7 @@ void free_seq_stats(struct seq_stats* seq_stats)
 	free(seq_stats->seq_len);// = malloc(sizeof(int*)* 6);
 	free(seq_stats->nuc_composition);// = malloc(sizeof(int**)* 6);
 	free(seq_stats->seq_quality);// = malloc(sizeof(int**)* 6);
+	free(seq_stats->seq_quality_count);
 	free(seq_stats->aln_quality);// = malloc(sizeof(int)*6);
 	free(seq_stats);// = malloc(sizeof(struct seq_stats));
 	

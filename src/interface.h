@@ -25,6 +25,9 @@
  Initializes nucleotide alphabet needed to parse input. Calls parameter parser. Calls functions to process the data. \author Timo Lassmann \bug No known bugs.
  */
 
+#ifndef interfaceon
+
+#define interfaceon
 
 #include <stdio.h>
 #include <getopt.h>
@@ -55,5 +58,5 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[]);
 void free_param(struct parameters* param);
 void usage(void);
 
-
+#endif
 

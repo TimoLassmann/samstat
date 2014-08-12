@@ -12,9 +12,12 @@ struct hmm* run_EM_iterations(struct hmm* hmm,struct hmm_data* data)
 	data->run_mode = MODE_BAUM_WELCH;
 	
 	for(i = 0; i < data->iterations;i++ ){
-		fprintf(stderr,"ITER:%d\n", i);
 		hmm = run_pHMM(hmm, data);
 		hmm= reestimate_hmm_parameters(hmm);
+#ifdef DEBUG
+		fprintf(stderr,"Iteration:%d\n",i);
+		print_hmm_parameters(hmm);
+#endif
 	}
 	return hmm;
 }
@@ -118,8 +121,11 @@ void* do_baum_welch(void *threadarg)
 	
 	for(i = start; i < end;i++){
 		hmm = forward(hmm,hmm_data->string[i], hmm_data->length[i]);
+		
 		hmm = backward(hmm,hmm_data->string[i], hmm_data->length[i]);
+		
 		hmm = collect_estimated(hmm,hmm_data->string[i], hmm_data->weight[i], hmm_data->length[i]);
+		
 	}
 	pthread_exit((void *) 0);
 }
@@ -162,6 +168,8 @@ struct hmm* malloc_hmm(int num_states, int alphabet_len, int max_seq_len)
 	
 	hmm->emissions_e = NULL;
 	hmm->transitions_e = NULL;
+	
+	hmm->data = NULL;
 	
 	hmm->F = NULL;
 	hmm->B = NULL;
@@ -298,15 +306,17 @@ void print_hmm_parameters(struct hmm* hmm)
 {
 	int i,j;
 	fprintf(stderr,"\nEmission:\n");
-	
+	float sum = 0;
 	
 	for(i = 0; i < hmm->num_states ;i++){
 		fprintf(stderr,"%d:",i);
+		sum = prob2scaledprob(0.0f);
 		if(hmm->emissions[i]){
 			for(j = 0; j < hmm->alphabet_len;j++){
 				fprintf(stderr," %f", scaledprob2prob(hmm->emissions[i][j]));
+				sum = logsum(sum,hmm->emissions[i][j] );
 			}
-			fprintf(stderr," \n");
+			fprintf(stderr," Sum: %f\n", scaledprob2prob(sum));
 		}else{
 			fprintf(stderr," NULL\n");
 		}
@@ -315,10 +325,13 @@ void print_hmm_parameters(struct hmm* hmm)
 	
 	for(i = 0; i < hmm->num_states ;i++){
 		//fprintf(stdout,"%d:",i);
+		sum = prob2scaledprob(0.0f);
 		for(j = 1; j < hmm->tindex[i][0];j++){
+			sum = logsum(sum, hmm->transitions[i][hmm->tindex[i][j]]);
 			fprintf(stderr,"from %d to %d:%0.3f\n",i,hmm->tindex[i][j],scaledprob2prob(hmm->transitions[i][hmm->tindex[i][j]] ));
 			
 		}
+		fprintf(stderr,"Sanity:%f\n", scaledprob2prob(sum));
 	}
 	
 }
@@ -340,35 +353,51 @@ struct hmm* reestimate_hmm_parameters(struct hmm* hmm)
 		//}
 	}
 	
+	sum = prob2scaledprob(0.0f);
 	for(i = 0; i < hmm->num_states ;i++){
-		sum = -INFINITY;// prob2scaledprob(0.0f);
-		for(j = 0; j < hmm->num_states;j++){
-			if(hmm->transitions_e[i][j] != -INFINITY){
-				sum = logsum(sum, hmm->transitions_e[i][j]);
-			}
- 		}
-		
-		for(j = 0; j < hmm->num_states;j++){
-			if(hmm->transitions_e[i][j] != -INFINITY){
-				hmm->transitions[i][j] = hmm->transitions_e[i][j] - sum;
-			}else{
-				hmm->transitions[i][j] = -INFINITY;// prob2scaledprob(0.0);
-			}
- 		}
-	}
-	
-	for(i = 0; i < hmm->num_states;i++){
-		for(j = 0; j < hmm->num_states;j++){
-			//hmm->transitions[i][j] = prob2scaledprob(0.0);
-			if(hmm->transitions[i][j] != -INFINITY){
-				hmm->transitions_e[i][j] = prob2scaledprob(0.5f);
-			}else{
-				hmm->transitions_e[i][j] = -INFINITY;// prob2scaledprob(0.0);
-			}
-			
+		//for(j = 1; j < hmm->tindex[i][0];j++){
+		sum = prob2scaledprob(0.0f);
+		for(j = 1; j < hmm->tindex[i][0];j++){
+			sum = logsum(sum, hmm->transitions_e[i][hmm->tindex[i][j]]);
 		}
+		
+		for(j = 1; j < hmm->tindex[i][0];j++){
+			hmm->transitions[i][hmm->tindex[i][j]] = hmm->transitions_e[i][hmm->tindex[i][j]] -sum;
+			hmm->transitions_e[i][hmm->tindex[i][j]]  = prob2scaledprob(0.5f);
+			//	sum = logsum(sum, hmm->transitions_e[i][hmm->tindex[i][j]]);
+		}
+		
 	}
-	
+	/*
+	 for(i = 0; i < hmm->num_states ;i++){
+	 sum = -INFINITY;// prob2scaledprob(0.0f);
+	 for(j = 0; j < hmm->num_states;j++){
+	 if(hmm->transitions_e[i][j] != -INFINITY){
+	 sum = logsum(sum, hmm->transitions_e[i][j]);
+	 }
+	 }
+	 
+	 for(j = 0; j < hmm->num_states;j++){
+	 if(hmm->transitions_e[i][j] != -INFINITY){
+	 hmm->transitions[i][j] = hmm->transitions_e[i][j] - sum;
+	 }else{
+	 hmm->transitions[i][j] = -INFINITY;// prob2scaledprob(0.0);
+	 }
+	 }
+	 }
+	 
+	 for(i = 0; i < hmm->num_states;i++){
+	 for(j = 0; j < hmm->num_states;j++){
+	 //hmm->transitions[i][j] = prob2scaledprob(0.0);
+	 if(hmm->transitions[i][j] != -INFINITY){
+	 hmm->transitions_e[i][j] = prob2scaledprob(0.5f);
+	 }else{
+	 hmm->transitions_e[i][j] = -INFINITY;// prob2scaledprob(0.0);
+	 }
+	 
+	 }
+	 }
+	 */
 	
 	//emission (remember to malloc!
 	// state 0 is delete state - all others emit!
@@ -402,7 +431,7 @@ void print_hmm_estimated_parameters(struct hmm* hmm)
 			fprintf(stderr," NULL\n");
 		}
 	}
-	fprintf(stderr,"\nTransition:\n");
+	fprintf(stdout,"\nTransition:\n");
 	for(i = 0; i < hmm->num_states ;i++){
 		//fprintf(stdout,"%d:",i);
 		for(j = 1; j < hmm->tindex[i][0];j++){
@@ -504,6 +533,7 @@ struct hmm* copy_hmm(struct hmm* org )
 	
 	new->emissions_e = NULL;
 	new->transitions_e = NULL;
+	new->data = NULL;
 	
 	new->F = NULL;
 	new->B = NULL;
@@ -703,7 +733,7 @@ struct hmm* collect_estimated(struct hmm* hmm, char* a,float weight, int len)
 	const float* trans = 0;
 	
 	float total = hmm->f_score + weight;
-
+	
 	for(i = 1; i < len+1;i++){
 		last_F = Fmatrix[i-1];
 		this_F = Fmatrix[i];
@@ -819,7 +849,7 @@ int main (int argc,char * argv[])
 	
 	//struct hmm* hmm = malloc_hmm(len,4);
 	
-	int i;
+	int i,j;
 	
 	init_logsum();
 	
@@ -841,26 +871,33 @@ int main (int argc,char * argv[])
 	}
 	test_seq[500] = 0;
 	start = clock();
-	for(i = 0; i < 10000;i++){
-		
-		hmm = backward(hmm,test_seq,len);
-		hmm = forward(hmm,test_seq,len);
-		
-		
-		
-		
-		//print_dyn_matrix(hmm,len);
-		
-		//fprintf(stderr,"Forward:\t%f\nBackward:\t%f\n", hmm->f_score, hmm->b_score);
-		hmm = collect_estimated(hmm,test_seq,1.0, len);
+	
+	print_hmm_parameters(hmm);
+	for(j = 0; j < 50;j++){
+		for(i = 0; i < 1;i++){
+			
+			hmm = backward(hmm,test_seq,len);
+			hmm = forward(hmm,test_seq,len);
+			
+			
+			
+			
+			//print_dyn_matrix(hmm,len);
+			//if( fabs(hmm->f_score - hmm->b_score > 0.001)){
+			fprintf(stderr,"F:%f b:%f diff = %f\n", hmm->f_score, hmm->b_score,hmm->f_score-  hmm->b_score );
+			//}
+			hmm = collect_estimated(hmm,test_seq,1.0, len);
+		}
+		reestimate_hmm_parameters(hmm);
 	}
+	print_hmm_parameters(hmm);
 	end = clock();
 	cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
 	fprintf(stderr,"Forward:\t%f\nBackward:\t%f\n", hmm->f_score, hmm->b_score);
 	
 	fprintf(stderr,"%f time\n", cpu_time_used);
 	
-	print_hmm_estimated_parameters(hmm);
+	//print_hmm_estimated_parameters(hmm);
 	exit(EXIT_SUCCESS);
 	
 	//

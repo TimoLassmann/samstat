@@ -75,20 +75,16 @@ char* make_file_stats(char* filename,char* buffer);
 
 int main (int argc,char * argv[])
 {
-	struct parameters* param = 0;
-	struct seq_stats* seq_stats = 0;
+	struct parameters* param = NULL;
+	struct seq_stats* seq_stats = NULL;
 	
-	struct hmm_data* hmm_data= 0;
-	struct hmm* hmm = 0;
+	struct hmm_data* hmm_data= NULL;
+	struct hmm** hmms = NULL;
 	
-	struct hmm* background_hmm = 0;
-	clock_t cStartClock;
-
-	int (*fp)(struct read_info** ,struct parameters*,FILE* ) = 0;
-	FILE* file = 0;
+	int (*fp)(struct read_info** ,struct parameters*,FILE* ) = NULL;
+	FILE* file = NULL;
 	int numseq = 0;
 	int i,j,c;
-	
 	
 	init_nuc_code();
 	
@@ -97,12 +93,13 @@ int main (int argc,char * argv[])
 	sprintf(param->buffer,"Start Run\n--------------------------------------------------\n");
 	param->messages = append_message(param->messages, param->buffer);
 	
-	struct read_info** ri = 0;
+	
 #ifdef DEBUG
-	param->num_query = 1000;
+	param->num_query = 100;
 #else
 	param->num_query = 1000000;
 #endif
+	struct read_info** ri = NULL;
 	ri = malloc_read_info(ri, param->num_query );
 	
 	MMALLOC(hmm_data, sizeof(struct hmm_data));
@@ -137,7 +134,6 @@ int main (int argc,char * argv[])
 	int qual_key = 0;
 	int aln_len = 0;
 	int first_lot =1;
-	int use_mapping_qualities_for_hmm_training = 0;
 	
 	while ((numseq = fp(ri, param,file)) != 0){
 		for(i = 0; i < numseq;i++){
@@ -186,10 +182,8 @@ int main (int argc,char * argv[])
 					}
 				}
 			}
-			
 			seq_stats->alignments[qual_key]++;
 			seq_stats->total_reads++;
-			
 			// sequence length
 			if(ri[i]->len >=  MAX_SEQ_LEN){
 				seq_stats->seq_len[qual_key][MAX_SEQ_LEN-1]++;
@@ -202,95 +196,95 @@ int main (int argc,char * argv[])
 				seq_stats->nuc_composition[qual_key][j][(int)ri[i]->seq[j]]++;
 			}
 			
-			
 			if(ri[i]->errors != -1){
-				
-				
 				if(ri[i]->errors > seq_stats->max_error_per_read){
 					seq_stats->max_error_per_read = ri[i]->errors;
 				}
-				
-				seq_stats->percent_identity[qual_key] +=(((double)aln_len - (double)ri[i]->errors) / (double)aln_len * 100.0);// ((float)aln_len - (float)ri[i]->errors) / (float) aln_len * 100.0f;
-				
-				//if((int)  floor((((float)aln_len - (float)ri[i]->errors) / (float)aln_len * 1000.0f) + 0.5f ) > 1000 || (int)  floor((((float)aln_len - (float)ri[i]->errors) / (float)aln_len * 1000.0f) + 0.5f ) < 0 ){
-				//	fprintf(stderr,"ERROR: %f	%f\n", (float)aln_len,  (float)ri[i]->errors);
-				//}
-				
-				//fprintf(stderr,"%d	%d	%d	%d\n",qual_key,aln_len,ri[i]->errors,(int)  floor((((float)aln_len - (float)ri[i]->errors) / (float)aln_len * 1000.0f) + 0.5 ));
+				seq_stats->percent_identity[qual_key] +=(((double)aln_len - (double)ri[i]->errors) / (double)aln_len * 100.0);
 				if(ri[i]->errors >= MAXERROR){
 					seq_stats->errors[qual_key][MAXERROR-1]++;
 				}else{
 					seq_stats->errors[qual_key][ri[i]->errors]++;
 				}
 			}
-			
-			
 		}
 		//needs to be run after sequences are reverse complemented.....
 		if(first_lot){
-			
-						
-			
-			
-			
+			first_lot = 0;
 			seq_stats->average_len = (int) floor((double) seq_stats->average_len / (double) numseq   + 0.5);
 			seq_stats = reformat_base_qualities(seq_stats);
-			hmm = init_samstat_hmm(seq_stats->average_len);
-			for(i = 0; i < numseq;i++){
-				if(ri[i]->mapq != -1){
-					use_mapping_qualities_for_hmm_training++;
-				}
-				// set mapping quality of 0 to a small number
-				if(ri[i]->mapq == 0){
-					ri[i]->mapq = 0.00001;
-				}
+			
+			hmms = NULL;
+			MMALLOC(hmms,sizeof(struct hmm*) * 3) ;
+			
+			for(i =0 ; i < 3;i++){
+				hmms[i] = NULL;
+				hmms[i] = init_samstat_hmm(seq_stats->min_len);
 			}
 			
-			//all sequences have a mapping quality.
-			if(use_mapping_qualities_for_hmm_training == numseq){
-				use_mapping_qualities_for_hmm_training = 1;
+			// run for Q20-40  and unmapped.
+			j = 0;
+			for(i = 0; i < numseq;i++){
+				if(ri[i]->mapq >= 20){
+					hmm_data->length[j] = ri[i]->len;
+					hmm_data->string[j] = ri[i]->seq;
+					hmm_data->weight[j] = prob2scaledprob(1.0);
+					j++;
+				}
+			}
+			hmm_data->num_seq =j;
+			if(j > 10){
+				hmms[0] = run_EM_iterations(hmms[0],hmm_data);
+				print_hmm_parameters(hmms[0]);
+				//exit(0);
 			}else{
-				use_mapping_qualities_for_hmm_training = 0;
+				free_hmm(hmms[0]);
+				hmms[0] = 0;
 			}
-			
+			j = 0;
 			for(i = 0; i < numseq;i++){
-				hmm_data->length[i] = ri[i]->len;
-				hmm_data->string[i] = ri[i]->seq;
-
-				if(use_mapping_qualities_for_hmm_training){
-					hmm_data->weight[i] = prob2scaledprob(1.0 - pow(10.0, -1.0 *  ri[i]->mapq/ 10.0));
-				}else{
-					hmm_data->weight[i] = prob2scaledprob(1.0);
+				if(ri[i]->mapq >= 0 && ri[i]->mapq < 20){
+					hmm_data->length[j] = ri[i]->len;
+					hmm_data->string[j] = ri[i]->seq;
+					hmm_data->weight[j] = prob2scaledprob(1.0);
+					j++;
 				}
-			//	fprintf(stderr, "%d: %f %f %f\t->\t%f\n",i, hmm_data->weight[i] , scaledprob2prob(hmm_data->weight[i] ),ri[i]->mapq ,     1.0 - pow(10.0, -1.0 *  ri[i]->mapq/ 10.0) );
-				//fprintf(stderr,"%f	->%f\n",ri[i]->mapq ,     1.0 - pow(10.0, -1.0 *  ri[i]->mapq/ 10.0));
 			}
-			hmm_data->num_seq =numseq;
-			hmm = run_EM_iterations(hmm,hmm_data);
-			fprintf(stderr,"FORGROUND:\n");
-			print_hmm_parameters(hmm);
-			/*if(use_mapping_qualities_for_hmm_training){
-				background_hmm =init_samstat_hmm(seq_stats->average_len);
-				for(i = 0; i < numseq;i++){
-					hmm_data->length[i] = ri[i]->len;
-					hmm_data->string[i] = ri[i]->seq;
-					hmm_data->weight[i] =  prob2scaledprob(1.0 -(1.0 - pow(10.0, -1.0 *  ri[i]->mapq/ 10.0)) );
-					//fprintf(stderr,"%f	->%f\n",ri[i]->mapq ,     1.0 - pow(10.0, -1.0 *  ri[i]->mapq/ 10.0));
-					//	fprintf(stderr, "%d: %f %f %f\t->\t%f\n",i, hmm_data->weight[i] , scaledprob2prob(hmm_data->weight[i] ),ri[i]->mapq ,     1.0 - pow(10.0, -1.0 *  ri[i]->mapq/ 10.0) );
-				}
-				hmm_data->num_seq =numseq;
-				background_hmm = run_EM_iterations(background_hmm,hmm_data);
+			hmm_data->num_seq =j;
+			if(j > 10){
+				hmms[1] = run_EM_iterations(hmms[1],hmm_data);
+			}else{
+				free_hmm(hmms[1]);
+				hmms[1] = 0;
 			}
-			first_lot = 0;
-			fprintf(stderr,"Background:\n");
-
-			print_hmm_parameters(background_hmm);
-			*/
-			// done with hmm
-			// now reformat the sequence and run pst ...
 			
-			//build pst...
-			struct pst* pst = NULL;
+			j = 0;
+			for(i = 0; i < numseq;i++){
+				if(ri[i]->mapq <  0){
+					hmm_data->length[j] = ri[i]->len;
+					hmm_data->string[j] = ri[i]->seq;
+					hmm_data->weight[j] = prob2scaledprob(1.0);
+					j++;
+				}
+			}
+			hmm_data->num_seq =j;
+			if(j > 10){
+				hmms[2] = run_EM_iterations(hmms[2],hmm_data);
+			}else{
+				free_hmm(hmms[2]);
+				hmms[2] = 0;
+			}
+			
+			MFREE(hmm_data->length);
+			MFREE(hmm_data->score);
+			MFREE(hmm_data->string);
+			MFREE(hmm_data->weight);
+			
+			MFREE(hmm_data);
+			
+			
+			
+			/*struct pst* pst = NULL;
 			char alphabet[] = "ACGTN";
 			
 			fprintf(stderr,"PST building... %d\n",numseq);
@@ -302,9 +296,7 @@ int main (int argc,char * argv[])
 				pst->total_len += ri[i]->len;
 			}
 			
-			
 			cStartClock = clock();
-			
 			
 			if(pst->current_suffix_size < pst->total_len){
 				pst->suffix_array = realloc(pst->suffix_array , sizeof(char*)* (pst->total_len+64));
@@ -319,22 +311,18 @@ int main (int argc,char * argv[])
 					c++;
 				}
 				pst->mean_length +=  ri[i]->len;
-				
 			}
 			
 			pst->mean_length /= (float)numseq;
-			
-			
 			pst->suffix_len = c;
 			pst->numseq = numseq;
 			pst->rank_array = malloc(sizeof(struct ranks*) * (int)(numseq));
+			
 			for(i = 0; i  < numseq;i++){
 				pst->rank_array[i] = malloc(sizeof(struct ranks));
 			}
 			
-			
 			fprintf(stderr,"%d\t%d\t%d	%f\n",c,pst->total_len, pst->suffix_len*(4 + 4*5),pst->mean_length);
-			///exit(0);
 			qsort(pst->suffix_array, pst->suffix_len, sizeof(char *), qsort_string_cmp);
 			fprintf(stderr,"built SA in %4.2f seconds\n",(double)( clock() - cStartClock) / (double)CLOCKS_PER_SEC);
 			
@@ -349,13 +337,11 @@ int main (int argc,char * argv[])
 				pst->ppt_root->nuc_probability[i] = c;
 				sum+= c;
 			}
+			
 			for(i = 0;i < 5;i++){
-				
 				pst->pst_root->nuc_probability[i] =  pst->pst_root->nuc_probability[i]/ sum;
 				pst->ppt_root->nuc_probability[i] =  pst->ppt_root->nuc_probability[i]/ sum;
-				//fprintf(stderr,"%c\t%f\n",alphabet[i], n->nuc_probability[i]);
 			}
-			
 			
 			pst->pst_root = build_pst(pst,pst->pst_root );
 			pst->ppt_root = build_ppt(pst,pst->ppt_root );
@@ -367,21 +353,10 @@ int main (int argc,char * argv[])
 			ri =  scan_read_with_pst( ri, pst);
 			fprintf(stderr,"scanned  in %4.2f seconds\n",(double)( clock() - cStartClock) / (double)CLOCKS_PER_SEC);
 			
-			/*print_pst(pst,pst->pst_root,ri);
-			
-			
-			qsort(ri,numseq, sizeof(struct read_info*), qsort_ri_mapq_compare);
-			
-			for(i = 0; i < 10;i++){
-				fprintf(stderr,"%s\t%f\n", ri[i]->seq,ri[i]->mapq);
-			}*/
-			
-			
 			int num_patterns = 0;
 			num_patterns = count_patterns(pst->pst_root, num_patterns);
 			num_patterns = count_patterns(pst->ppt_root,num_patterns);
-			//
-			//exit(0);
+			
 			struct pst_node** all_patterns = 0;
 
 			all_patterns = malloc(sizeof(struct pst_node*)  *num_patterns );
@@ -402,19 +377,14 @@ int main (int argc,char * argv[])
 			}
 			
 			qsort((void *)  all_patterns, num_patterns, sizeof(struct pst_node* ),(compfn) sort_pst_nodel_according_to_occ);
-			//c = 0;
-			for(i = 0; i < 10;i++){
+			
+			
+			for(i = 0; i < (num_patterns < 10 ? num_patterns : 10 );i++){
 				fprintf(stderr,"%s	%d\n",all_patterns[i]->label,all_patterns[i]->occ );
-			}
-			
-			//exit(0);
-			
-			
-			
+			}*/
 		}
 	}
 	pclose(file);
-	
 	
 	print_stats(seq_stats);
 
@@ -450,6 +420,10 @@ int main (int argc,char * argv[])
 	
 	pd->data[0][0] =  seq_stats->alignments[4];
 	pd->data[0][1] =  (float)seq_stats->alignments[4] / (float)seq_stats->total_reads* 100.0;
+	
+	fprintf(stderr,"%d	%d\n", 0 ,1);
+	fprintf(stderr," %f %f\n", (float)seq_stats->alignments[4] , (float)seq_stats->total_reads);
+	fprintf(stderr,"%f\n",pd->data[0][1] );
 	sprintf(pd->series_labels[0], "MAPQ >= 30");
 	
 	pd->num_points = 1;
@@ -466,7 +440,7 @@ int main (int argc,char * argv[])
 	pd->data[6][0] =  seq_stats->total_reads;
 	pd->data[6][1] =  100.0;
 	pd->num_points = 2;
-	pd->num_series = 7;
+	pd->num_series = 6;
 	sprintf(pd->description,"Number of alignments in various mapping quality (MAPQ) intervals and number of unmapped sequences.");
 	
 	print_html_table(stdout, pd);
@@ -536,6 +510,7 @@ int main (int argc,char * argv[])
 		}
         }
 	
+	
 	pd->width = 700;
 	pd->color_scheme = 4;
 	pd->num_points = seq_stats->max_len;
@@ -555,42 +530,109 @@ int main (int argc,char * argv[])
 	sprintf(pd->description,"Base quality distributions separated by mapping quality thresholds.");
 	
 	print_html_table(stdout, pd);
-
+	
 	
 		///HMM plots - need to count  nucleotide frequencies.. .
 	
 	float sum = 0;
+	
+	for(i = 0; i < 6;i++){
+		sum +=seq_stats->nuc_num[i];
+	}
+	if(hmms[0]){
+		pd->color_scheme = 0;
+		
+		sprintf(pd->series_labels[0],"A");
+		sprintf(pd->series_labels[1],"C");
+		sprintf(pd->series_labels[2],"G");
+		sprintf(pd->series_labels[3],"T");
+		sprintf(pd->series_labels[4],"N");
+		for(i = 0; i < 5;i++){
+			pd->show_series[i] = 1;
+		}
+		
+		sprintf(pd->plot_title, "Read Composition");
+		sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
+		fprintf(stderr,"Got here\n");
+		for(j = 2; j <seq_stats->min_len +2;j++){
+			sprintf(pd->labels[j-2], "%d",j-1);
+			fprintf(stderr,"Got here %d (%d)\n",j ,seq_stats->min_len +2 );
+			for(c = 0; c < 5;c++){
+				pd->data[c][j-2] =  log2f(scaledprob2prob(hmms[0]->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
+			}
+		}
+		fprintf(stderr,"Got here\n");
+		pd->num_points_shown = 30;
+		
+		pd->num_points = seq_stats->min_len;
+		pd->num_series = 4;
+		pd->plot_type = LINE_PLOT;
+		print_html5_chart(stdout, pd);
+		
+	}
+	
+	sum = 0;
 	for(i = 0; i < 6;i++){
 		sum +=seq_stats->nuc_num[i];
 	}
 	pd->color_scheme = 0;
-	
-	sprintf(pd->series_labels[0],"A");
-        sprintf(pd->series_labels[1],"C");
-        sprintf(pd->series_labels[2],"G");
-        sprintf(pd->series_labels[3],"T");
-        sprintf(pd->series_labels[4],"N");
-	for(i = 0; i < 5;i++){
-		pd->show_series[i] = 1;
+	if(hmms[1]){
+		
+		sprintf(pd->series_labels[0],"A");
+		sprintf(pd->series_labels[1],"C");
+		sprintf(pd->series_labels[2],"G");
+		sprintf(pd->series_labels[3],"T");
+		sprintf(pd->series_labels[4],"N");
+		for(i = 0; i < 5;i++){
+			pd->show_series[i] = 1;
+		}
+		
+		sprintf(pd->plot_title, "Read Composition");
+		sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
+		for(j = 2; j <seq_stats->min_len +2;j++){
+			sprintf(pd->labels[j-2], "%d",j-1);
+			for(c = 0; c < 5;c++){
+				pd->data[c][j-2] =  log2f(scaledprob2prob(hmms[1]->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
+			}
+		}
+		pd->num_points_shown = 30;
+		
+		pd->num_points = seq_stats->min_len;
+		pd->num_series = 4;
+		pd->plot_type = LINE_PLOT;
+		print_html5_chart(stdout, pd);
 	}
 	
-	sprintf(pd->plot_title, "Read Composition");
-	sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
-	for(j = 2; j <= 3+seq_stats->average_len -1;j++){
-		sprintf(pd->labels[j-2], "%d",j-1);
-		for(c = 0; c < 5;c++){
-			pd->data[c][j-2] =  log2f(scaledprob2prob(hmm->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
- 		}
+	pd->color_scheme = 0;
+	if(hmms[2]){
+		sprintf(pd->series_labels[0],"A");
+		sprintf(pd->series_labels[1],"C");
+		sprintf(pd->series_labels[2],"G");
+		sprintf(pd->series_labels[3],"T");
+		sprintf(pd->series_labels[4],"N");
+		for(i = 0; i < 5;i++){
+			pd->show_series[i] = 1;
+		}
+		
+		sprintf(pd->plot_title, "Read Composition");
+		sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
+		for(j = 2; j <seq_stats->min_len +2;j++){
+			sprintf(pd->labels[j-2], "%d",j-1);
+			for(c = 0; c < 5;c++){
+				pd->data[c][j-2] =  log2f(scaledprob2prob(hmms[2]->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
+			}
+		}
+		pd->num_points_shown = 30;
+		
+		pd->num_points = seq_stats->min_len;
+		pd->num_series = 4;
+		pd->plot_type = LINE_PLOT;
+		print_html5_chart(stdout, pd);
+		
 	}
-	pd->num_points_shown = 30;
-
-	pd->num_points = seq_stats->average_len+1;
-	pd->num_series = 4;
-	pd->plot_type = LINE_PLOT;
-	print_html5_chart(stdout, pd);
-
-
-
+	
+	
+	
 
 
         sprintf(pd->series_labels[0],"A");
@@ -697,13 +739,23 @@ int main (int argc,char * argv[])
                 }
         }
         
+	for(i =0 ; i < 3;i++){
+		if(hmms[i]){
+			free_hmm(hmms[i]);
+		}
+	}
+	MFREE(hmms);
         
 	print_html5_footer(stdout);
 	
 	free_plot_data(pd);
 	
 	free_seq_stats(seq_stats);
+	
+	free_read_info(ri, param->num_query);
 	free_param(param);
+	
+	
 	return EXIT_SUCCESS;
 	
 }
@@ -735,7 +787,7 @@ char* make_file_stats(char* filename,char* buffer)
 		}
 		strftime(time_string, 200, "%F %H:%M:%S\t", ptr);
 
-		sprintf(buffer,"size:%9jd bytes; created: %s",(intmax_t)buf.st_size, time_string);
+		sprintf(buffer,"size:%9d bytes; created: %s",(int)buf.st_size, time_string);
 	}else{
 		fprintf(stderr,"Failed getting stats for file:%s\n",filename );
 	}
@@ -804,9 +856,11 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
 }
 
 
+
+
 struct hmm* init_samstat_hmm(int average_length)
 {
-	struct hmm* hmm = malloc_hmm(average_length * 2 + 3, 5,100);
+	struct hmm* hmm = malloc_hmm(average_length + 2, 5,100);
 	
 	init_logsum();
 	
@@ -819,38 +873,25 @@ struct hmm* init_samstat_hmm(int average_length)
 	}
 	
 	hmm->transitions[STARTSTATE ][2]= prob2scaledprob(0.5f);
-	hmm->transitions[STARTSTATE][3] = prob2scaledprob(0.5f);
+	//hmm->transitions[STARTSTATE][3] = prob2scaledprob(0.5f);
+	c = 2;
+	for(i = 0; i < average_length / 2 ;i++){
+		hmm->transitions[c][c+1]= prob2scaledprob(0.5f);
+		c++;
+		//hmm->transitions[i+2][ENDSTATE]= prob2scaledprob(0.5f);
+	}
+	hmm->transitions[c][c]= prob2scaledprob(0.5f);
+	hmm->transitions[c][c+1]= prob2scaledprob(0.5f);
+	//hmm->transitions[i][ENDSTATE]= prob2scaledprob(0.5f);
+	for(i =c+1 ; i < average_length+2  ;i++){
+		hmm->transitions[c][c+1]= prob2scaledprob(0.5f);
+		c++;
+		//hmm->transitions[i+2][ENDSTATE]= prob2scaledprob(0.5f);
+	}
 	
-	hmm->transitions[2][2]= prob2scaledprob(0.5f);
-	hmm->transitions[2][3]= prob2scaledprob(0.5f);
+	hmm->transitions[c][ENDSTATE]= prob2scaledprob(0.5f);
 
 	
-	
-	
-	for(i = 0; i < average_length ;i++ ){
-		//match states
-		hmm->transitions[3+i][3+i + average_length] =  prob2scaledprob(0.5);
-		if(3+i +1 <average_length  + 3){
-			hmm->transitions[3+i][3+i +1]=  prob2scaledprob(0.5);
-		}
-		if(3+i +2 < average_length  + 3){
-			hmm->transitions[3+i][3+i + 2] =  prob2scaledprob(0.5);
-		}
-		if(3+i +3 < average_length + 3){
-			hmm->transitions[3+i][3+i + 3] =  prob2scaledprob(0.5);
-		}
-		
-		// insert states
-		hmm->transitions[3+i + average_length][3+i + average_length] = prob2scaledprob(0.5f);
-		//if(
-		if(3+i +1 <average_length  + 3){
-			hmm->transitions[3+i + average_length][3+i +1] = prob2scaledprob(0.5f);
-		}
-	}
-	hmm->transitions[3+average_length-1][ENDSTATE] = prob2scaledprob(0.5);
-	
-	hmm->transitions[3+average_length+average_length-1][3+average_length+average_length-1] =prob2scaledprob (0.5);
-	hmm->transitions[3+average_length+average_length-1][ENDSTATE] = prob2scaledprob(0.5);
 	
 	//norm;
 	float sum = prob2scaledprob(0.0);
@@ -919,6 +960,7 @@ struct seq_stats* init_seq_stats(void)
 	seq_stats->seq_quality_count = NULL;
 	
 	seq_stats->base_qualities = NULL;
+	seq_stats->total_reads = 0;
 	
 	MMALLOC(seq_stats->base_qualities, sizeof(int)* 256);
 	MMALLOC(seq_stats->alignments, sizeof(int)* 6);

@@ -26,7 +26,7 @@
  */
 
 #include <ctype.h>
-#include "interface.h"
+
 #include "nuc_code.h"
 #include "misc.h"
 

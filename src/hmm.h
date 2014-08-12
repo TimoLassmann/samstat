@@ -36,6 +36,7 @@ struct hmm{
 	float* F_memory;
 	float* B_memory;
 	
+	void* data;
 	
 	float f_score;
 	float b_score;

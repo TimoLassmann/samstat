@@ -55,6 +55,9 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 	MMALLOC(pd, sizeof(struct plot_data));
 	pd->num_series = num_series;
 	pd->num_points = num_points;
+	pd->org_num_series = num_series;
+	pd->org_num_points = num_points;
+	
 	pd->labels = NULL;
 	pd->series_labels = NULL;
 	pd->data = NULL;
@@ -104,10 +107,11 @@ struct plot_data* malloc_plot_data(int num_series,int num_points)
 void free_plot_data(struct plot_data* pd)
 {
 	int i;
-	for(i = 0; i < pd->num_series;i++){
+	for(i = 0; i < pd->org_num_series;i++){
 		MFREE(pd->data[i]);
+		MFREE(pd->series_labels[i]);
 	}
-	for(i = 0; i < pd->num_points;i++){
+	for(i = 0; i < pd->org_num_points;i++){
 		MFREE(pd->labels[i]);// = 0;
 	}
 	MFREE(pd->show_series);
@@ -115,6 +119,7 @@ void free_plot_data(struct plot_data* pd)
 	MFREE(pd->labels);
 	MFREE(pd->description);
 	MFREE(pd->plot_title);
+	MFREE(pd->series_labels);// , sizeof(char* ) * num_series);
 	MFREE(pd);
 	
 }
@@ -374,8 +379,8 @@ void print_html_table(FILE* out,struct plot_data* pd)
 						fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j  + pd->color_scheme], pd->series_labels[j]);
 					}
 					for(i =start ; i < stop ;i++){
+						fprintf(stderr," %d - %d\n", j,i);
 						fprintf(out,"<td>%0.1f</td>\n",pd->data[j][i]);
-						
 					}
 					fprintf(out,"</tr>\n");
 				}
@@ -408,6 +413,8 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 	static int id = 1;
 	int i,j;
 	int first = 0;
+	int start = 0;
+	int stop = 0;
 	
 	for(j = 0;j < pd->num_series;j++){
 		if(pd->show_series[j]){
@@ -420,7 +427,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 		if(pd->plot_title[0] != 0){
 			fprintf(out,"<h2>%s</h2>\n", pd->plot_title);
 		}
-		int start,stop;
+		
 		int points_shown = pd->num_points_shown;
 		
 		start = 0;

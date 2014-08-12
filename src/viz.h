@@ -18,7 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #define VIZ_HEADER 3
 
-#define MAXLABEL_LEN 10
+#define MAXLABEL_LEN 20
 
 #define LINE_PLOT 0
 #define BAR_PLOT 1
@@ -8824,6 +8824,8 @@ struct plot_data{
 	int color_scheme;
 	int num_series;
 	int num_points;
+	int org_num_series;
+	int org_num_points;
 	int plot_type;
 	int height;
 	int width;

@@ -20,7 +20,7 @@ viz.c \
 pst.h \
 pst.c
 
-samstat_LDADD = -lm
+samstat_LDADD = -lm -lpthread
 
 TESTS = hmm_ITEST
 

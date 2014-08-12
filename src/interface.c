@@ -67,7 +67,8 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	param->bzipped = 0;
 	param->sam = 0;
 	param->buffer = 0;
-		
+	param->messages = 0;
+	param->filter = 0;
 	
 	while (1){	 
 		static struct option long_options[] ={

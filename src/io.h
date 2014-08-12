@@ -24,6 +24,8 @@
 
 #include <unistd.h>
 
+#include "interface.h"
+
 struct read_info{
 	char* name;
 	char* qual;

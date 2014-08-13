@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(samstart 0.0, timolassmann@gmail.com)
+AC_INIT(SAMstat,  2.0, timolassmann@gmail.com)
 AC_CONFIG_HEADER([src/config.h])
 AM_INIT_AUTOMAKE([1.9.6 -Wall no-define])
 
@@ -38,6 +38,21 @@ fi
 
 AC_MSG_CHECKING([whether self tests are run under valgrind])
 AC_MSG_RESULT($opt_valgrind_tests)
+
+AC_CHECK_PROGS([SAMTOOLS], [samtools])
+if test -z "$SAMTOOLS"; then
+	AC_MSG_ERROR([
+
+********************************************************
+* The samtools package is not installed on your system.
+* Download samtools from here: 
+* http://samtools.sourceforge.net
+* or 
+* check you PATH variable.
+********************************************************
+
+])
+fi
 
 
 # Checks for programs.

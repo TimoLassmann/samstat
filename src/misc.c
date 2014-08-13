@@ -220,15 +220,15 @@ char* append_message(char* old_message, char* new_message)
 	void* tmp = 0;
 	char time_string[200];
 	int hour;
-	char am_or_pm;
+	//char am_or_pm;
 	time_t current = time(NULL);
 	ptr = localtime(&current);
 	hour = ptr->tm_hour;
-	if (hour <= 11)
-		am_or_pm = 'a';
-	else {
+	if (hour <= 11){
+	//	am_or_pm = 'a';
+	}else {
 		hour -= 12;
-		am_or_pm = 'p';
+	//	am_or_pm = 'p';
 	}
 	if (hour == 0){
 		hour = 12;
@@ -636,7 +636,7 @@ int validate_bpm_sse(unsigned char**  query, int* query_lengths,unsigned char* t
 	
 	unsigned int _MM_ALIGN16 lengths[4];
 	
-	__m128i VP,VN,D0,HN,HP,X,MASK,K,NOTONE,POS,diff,zero,one;
+	__m128i VP,VN,D0,HN,HP,X,MASK,K,NOTONE,diff,zero,one;
 	__m128i* nuc_p;
 	__m128i xmm1,xmm2;
 	
@@ -666,7 +666,7 @@ int validate_bpm_sse(unsigned char**  query, int* query_lengths,unsigned char* t
 	VN =  _mm_set1_epi32(0);
 	NOTONE =  _mm_set1_epi32(0xFFFFFFFF);
 	K =  _mm_set1_epi32(0x7FFFFFFF);
-	POS = _mm_set1_epi32(0);
+	//POS = _mm_set1_epi32(0);
 	
 	for(i = 0; i< 4;i++){
 		lengths[i]--;

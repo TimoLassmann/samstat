@@ -83,7 +83,7 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 {
 	char command[1000];
 	char  tmp[1000];
-	int i = 0; 
+	//int i = 0;
 	int gzcat = -1;
 	if(access("/usr/bin/gzcat", X_OK) == 0){
 		gzcat = 1;
@@ -170,10 +170,10 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 				strcat ( command, "samtools view -F 768 "); 
 			}else{
 				strcat ( command, "samtools view -F "); 
-				i = sprintf (tmp, "%s ",param->filter);
+				sprintf (tmp, "%s ",param->filter);
 				strcat ( command, tmp);
 			}
-			i = sprintf (tmp, "%s ","-");
+			sprintf (tmp, "%s ","-");
 			strcat ( command, tmp);
 			if (!(file = popen(command, "r"))) {
 				fprintf(stderr,"Cannot open bam file '%s' with command:%s\n",param->infile[file_num],command);
@@ -185,10 +185,10 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 				strcat ( command, "samtools view -SF 768 "); 
 			}else{
 				strcat ( command, "samtools view -SF "); 
-				i = sprintf (tmp, "%s ",param->filter);
+				sprintf (tmp, "%s ",param->filter);
 				strcat ( command, tmp);
 			}
-			i = sprintf (tmp, "%s ", "-");
+			sprintf (tmp, "%s ", "-");
 			strcat ( command, tmp);
 			if (!(file = popen(command, "r"))) {
 				fprintf(stderr,"Cannot open bam file '%s' with command:%s\n",param->infile[file_num],command);
@@ -204,12 +204,12 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 			if(param->bzipped){
 				strcat ( command, "bzcat ");
 				if(!param->filter){
-					i = sprintf (tmp, "%s | samtools view -F 768 - ", param->infile[file_num]);
+					sprintf (tmp, "%s | samtools view -F 768 - ", param->infile[file_num]);
 					strcat ( command, tmp);
 				}else{
-					i = sprintf (tmp, "%s | samtools view -F  ", param->infile[file_num]);
+					sprintf (tmp, "%s | samtools view -F  ", param->infile[file_num]);
 					strcat ( command, tmp);
-					i = sprintf (tmp, "%s - ",param->filter);
+					sprintf (tmp, "%s - ",param->filter);
 					strcat ( command, tmp);
 				}
 				
@@ -220,12 +220,12 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 					strcat ( command, "zcat "); 
 				}
 				if(!param->filter){
-					i = sprintf (tmp, "%s | samtools view -F 768 - ", param->infile[file_num]);
+					sprintf (tmp, "%s | samtools view -F 768 - ", param->infile[file_num]);
 					strcat ( command, tmp);
 				}else{
-					i = sprintf (tmp, "%s | samtools view -F  ", param->infile[file_num]);
+					sprintf (tmp, "%s | samtools view -F  ", param->infile[file_num]);
 					strcat ( command, tmp);
-					i = sprintf (tmp, "%s - ",param->filter);
+					sprintf (tmp, "%s - ",param->filter);
 					strcat ( command, tmp);
 				}
 			}else{
@@ -233,10 +233,10 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 					strcat ( command, "samtools view -F 768 "); 
 				}else{
 					strcat ( command, "samtools view -F "); 
-					i = sprintf (tmp, "%s ",param->filter);
+					sprintf (tmp, "%s ",param->filter);
 					strcat ( command, tmp);
 				}
-				i = sprintf (tmp, "%s ", param->infile[file_num]);
+				sprintf (tmp, "%s ", param->infile[file_num]);
 				strcat ( command, tmp);
 			}
 			if (!(file = popen(command, "r"))) {
@@ -254,12 +254,12 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 					strcat ( command, "zcat "); 
 				}
 				if(!param->filter){
-					i = sprintf (tmp, "%s | samtools view -SF 768 - ", param->infile[file_num]);
+					sprintf (tmp, "%s | samtools view -SF 768 - ", param->infile[file_num]);
 					strcat ( command, tmp);
 				}else{
-					i = sprintf (tmp, "%s | samtools view -SF  ", param->infile[file_num]);
+					sprintf (tmp, "%s | samtools view -SF  ", param->infile[file_num]);
 					strcat ( command, tmp);
-					i = sprintf (tmp, "%s - ",param->filter);
+					sprintf (tmp, "%s - ",param->filter);
 					strcat ( command, tmp);
 				}
 			}else{
@@ -267,10 +267,10 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 					strcat ( command, "samtools view -SF 768 "); 
 				}else{
 					strcat ( command, "samtools view -SF "); 
-					i = sprintf (tmp, "%s ",param->filter);
+					sprintf (tmp, "%s ",param->filter);
 					strcat ( command, tmp);
 				}
-				i = sprintf (tmp, "%s ", param->infile[file_num]);
+				sprintf (tmp, "%s ", param->infile[file_num]);
 				strcat ( command, tmp);
 			}
 			if (!(file = popen(command, "r"))) {
@@ -293,7 +293,7 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 			}else{
 				strcat ( command, "cat ");
 			}
-			i = sprintf (tmp, "%s ", param->infile[file_num]);
+			sprintf (tmp, "%s ", param->infile[file_num]);
 			strcat ( command, tmp);
 			//fprintf(stderr,"%s\n",command);
 			if (!(file = popen(command, "r"))) {
@@ -315,10 +315,8 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 	char line[MAX_LINE];
 	int column = 0; 
 	int i,j,g,tmp;
-	unsigned int pos;
 	int read = 0;
 	int c = 0;
-	int hit = 0;
 	
 	ri = clear_read_info(ri, param->num_query);
 	
@@ -326,8 +324,6 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 		if(line[0] != '@'){
 			column = 1; //<QNAME>
 			tmp = 0;
-			hit = 0;
-			pos = 0xFFFFFFFFu;
 			for(j = 0;j < MAX_LINE;j++){
 				tmp++;
 				if(isspace((int)line[j])){

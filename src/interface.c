@@ -50,7 +50,7 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	int help = 0;
 	int version = 0;
 	
-	if (argc < 2 && isatty(0)){
+	if (argc < 2){
 		usage();
 		exit(EXIT_SUCCESS);
 	}
@@ -122,7 +122,7 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	MMALLOC(param->buffer,sizeof(char) * MAX_LINE);
 	
 	
-	sprintf(param->buffer , "%s %s, Copyright (C) 2013 Timo Lassmann <%s>\n",PACKAGE_NAME, PACKAGE_VERSION,PACKAGE_BUGREPORT);
+	sprintf(param->buffer , "%s %s, Copyright (C) 2014 Timo Lassmann <%s>\n",PACKAGE_NAME, PACKAGE_VERSION,PACKAGE_BUGREPORT);
 	param->messages = append_message(param->messages, param->buffer  );
 	//command_line[0] = 0;
 	//c = 0;
@@ -184,19 +184,9 @@ void usage()
 {
 	fprintf(stdout, "\n%s %s, Copyright (C) 2013 Timo Lassmann <%s>\n",PACKAGE_NAME, PACKAGE_VERSION,PACKAGE_BUGREPORT);
 	fprintf(stdout, "\n");
-	fprintf(stdout, "Usage:   simreads  [options] <barcodefile from EDITTAG>-o <file>  .... \n\n");
+	fprintf(stdout, "Usage:   simreads  <SAM/BAM/Fasta/Fastq file> -o <file> \n\n");
 	fprintf(stdout, "Options:\n");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_barlen","INT","", "Barcode length.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_barnum","INT" ,"","Number of samples.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_5seq","STR" ,"", "Sequence of 5' linker.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_3seq","STR" ,"", "Sequence of 3' linker.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_readlen","INT" ,"", "Length of read.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_readlen_mod","INT" ,"", "+/- mod of read length.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_error_rate","FLT" ,"", "Simulated error rate.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_InDel_frac","FLT" ,"", "INDEL fraction.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_numseq","INT" ,"", "Number of simulated sequences.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_random_frac","FLT" ,"", "Fraction of totally random sequences.");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-sim_endloss","INT" ,"", "mean number of nucleotides lost on either end of the read.");
+	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-o","STR","", "Output file name.");
 
 	
 	fprintf(stdout, "\n");

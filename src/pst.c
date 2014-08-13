@@ -286,7 +286,6 @@ struct read_info**  scan_read_with_pst(struct read_info** ri,struct pst* pst)
 	
 	float* base_p = pst->pst_root->nuc_probability;
 	char* seq;
-	char* qual;
 	
 	float total_T = prob2scaledprob(1.0);
 	float total_R = prob2scaledprob(1.0);
@@ -313,7 +312,7 @@ struct read_info**  scan_read_with_pst(struct read_info** ri,struct pst* pst)
 		for(j = 0; j < ri[i]->len; j++ ){
 			ri[i]->qual[j] = 48;
 		}
-		qual = ri[i]->qual;
+		//qual = ri[i]->qual;
 		seq = ri[i]->seq;
 		
 		//if(!i){

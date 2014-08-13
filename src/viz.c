@@ -135,6 +135,7 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"<!doctype html>\n");
 	fprintf(out,"<html>\n");
 	fprintf(out,"<head>\n");
+	fprintf(out,"<link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro:200,400,700' rel='stylesheet' type='text/css'>\n");
 	fprintf(out,"<title>%s</title>\n", pd->plot_title);
 	
 	fprintf(out,"<script>");
@@ -144,74 +145,53 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"</script>");
 	fprintf(out,"<meta name = \"viewport\" content = \"initial-scale = 1, user-scalable = no\">\n");
 	fprintf(out,"<style>\n");
-	fprintf(out,"canvas{\n");
-	fprintf(out,"}\n");
+	//fprintf(out,"canvas{\n");
+	//fprintf(out,"}\n");
 	
 	fprintf(out,"body {\n");
-	fprintf(out,"margin: 0 auto;\n");
-	fprintf(out,"padding: 22px 0;\n");
-	fprintf(out,"width: 940px;\n");
+	fprintf(out,"	margin: 0 auto;\n");
+	fprintf(out,"	padding: 22px 0;\n");
+	fprintf(out,"	font-family: 'Source Sans Pro', sans-serif;\n");
+	fprintf(out,"	font-weight: 200;\n");
+	fprintf(out,"	width: 940px;\n");
 	//fprintf(out,"font-family: \"Open Sans\";\n");
-	fprintf(out,"font: 14px Arial,Helvetica, sans-serif;\n");
-	fprintf(out,"background: #F0F0F0;\n");
+	//fprintf(out,"font: 14px Arial,Helvetica, sans-serif;\n");
+	fprintf(out,"	background: #F0F0F0;\n");
 	fprintf(out,"}\n");
 	
-	fprintf(out,"#intro {\n");
-	fprintf(out,"position: relative;\n");
-	fprintf(out,"	margin-top: 66px;\n");
-	fprintf(out,"padding: 44px;\n");
-	fprintf(out,"background: #3366AA;\n");
-	
-	
-	
-	
-	/* Border-radius not implemented yet */
-	fprintf(out,"	-moz-border-radius: 22px;\n");
-	fprintf(out,"	-webkit-border-radius: 22px;\n");
+	fprintf(out,"h2 {\n");
+	fprintf(out,"	font-weight: 200;\n");
+	fprintf(out,"	font-size: 1.5em;\n");
+	fprintf(out,"	border-bottom: solid 1px black;\n");
+	fprintf(out,"	padding-top: 35px;\n");
 	fprintf(out,"}\n");
 	
-	fprintf(out,"#intro h1, #intro p {\n");
-	fprintf(out,"position: relative;\n");
-	fprintf(out,"z-index: 9999;\n");
-	fprintf(out,"width: 620px;\n");
+	fprintf(out,"p {\n");
+	fprintf(out,"	line-height:140%%;\n");
 	fprintf(out,"}\n");
-	
-	fprintf(out,"#intro h1 {\n");
-	fprintf(out,"padding: 0 0 0 0;\n");
-	fprintf(out,"font-weight: normal;\n");
-	fprintf(out,"font-size: 300%%;\n");
-	fprintf(out,"color: #75787B;\n");
-	fprintf(out,"}\n");
-	
-	fprintf(out,"#intro p {\n");
-	fprintf(out,"padding: 0;\n");
-	fprintf(out,"color:#CCC;\n");
-	fprintf(out,"}\n");
-	
-
 
 	fprintf(out,"table.simple {background-color: #FFFFFF;border-collapse:collapse;text-align :right; border: 2px solid #000000; float:none;}\n");
-	fprintf(out,"table.simple td  {border: 1px solid #000000;width:auto;padding:5px;font-family:\"Courier New\" Courier 	monospace;font-size: 12pt;}\n");
-	fprintf(out,"table.simple th  {border: 2px solid #000000;width:auto;padding:5px;font-family:\"Courier New\" Courier 	monospace;font-size: 12pt;}\n");
+	fprintf(out,"table.simple td  {border: 1px solid #000000;width:auto;padding:5px;font-size: 12pt;}\n");
+	fprintf(out,"table.simple th  {border: 2px solid #000000;width:auto;padding:5px;font-size: 12pt;}\n");
 	        
 	fprintf(out,"footer {\n");
-	fprintf(out,"position: absolute;\n");
-	fprintf(out,"left: 0;\n");
-	fprintf(out,"width: 100%%;\n");
-	fprintf(out,"background: #222;\n");
+	fprintf(out,"	position: absolute;\n");
+	fprintf(out,"	left: 0;\n");
+	fprintf(out,"	width: 100%%;\n");
+	fprintf(out,"	background: #222;\n");
 	fprintf(out,"}\n");
 	
 	fprintf(out,"footer div {\n");
-	fprintf(out,"display: table;\n");
-	fprintf(out,"margin: 0 auto;\n");
-	fprintf(out,"padding: 44px 0;\n");
-	fprintf(out,"width: 940px;\n");
-	fprintf(out,"color: #777;\n");
+	fprintf(out,"	display: table;\n");
+	fprintf(out,"	margin: 0 auto;\n");
+	fprintf(out,"	padding: 44px 0;\n");
+	fprintf(out,"	width: 940px;\n");
+	fprintf(out,"	color: #777;\n");
 	fprintf(out,"}\n");
 	
 	fprintf(out,"footer div section {\n");
-	fprintf(out,"display: table-cell;\n");
-	fprintf(out,"width: 300px;\n");
+	fprintf(out,"	display: table-cell;\n");
+	fprintf(out,"	width: 300px;\n");
 	fprintf(out,"}\n");
 	
 	fprintf(out,"footer div #about, footer div #blogroll {\n");
@@ -219,15 +199,15 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"}\n");
 	
 	fprintf(out,"footer h3 {\n");
-	fprintf(out,"color: #FFF;\n");
+	fprintf(out,"	color: #FFF;\n");
 	fprintf(out,"}\n");
 	
 	fprintf(out,"footer a {\n");
-	fprintf(out,"color: #999;\n");
+	fprintf(out,"	color: #999;\n");
 	fprintf(out,"}\n");
 	
 	fprintf(out,"footer a:hover {\n");
-	fprintf(out,"color: #FFF;\n");
+	fprintf(out,"	color: #FFF;\n");
 	fprintf(out,"	text-decoration: none;\n");
 	fprintf(out,"}\n");
 	
@@ -241,6 +221,14 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"display: block;\n");
 	fprintf(out,"}\n");
 	
+	fprintf(out,"canvas  {\n");
+	fprintf(out,"	padding-left: 0;\n");
+	fprintf(out,"	padding-right: 0;\n");
+	fprintf(out,"	margin-left: 0;\n");
+	fprintf(out,"	margin-right: auto;\n");
+	fprintf(out,"	display: block;\n");
+	fprintf(out,"	float: left;\n");
+	fprintf(out,"}\n");
 	
 	
 	fprintf(out,"nav {\n");
@@ -251,7 +239,32 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"color: #FFF;\n");
 	fprintf(out,"}\n");
 	
-	
+	fprintf(out,".chart-legend ul {\n");
+	fprintf(out,"	list-style: none;\n");
+	fprintf(out,"	width: 100%%;\n");
+	fprintf(out,"	margin: 30px auto 0;\n");
+	fprintf(out,"	float: left;\n");
+	fprintf(out,"}\n");
+	fprintf(out,".chart-legend li {\n");
+	fprintf(out,"	text-indent: 16px;\n");
+	fprintf(out,"	line-height: 24px;\n");
+	fprintf(out,"	position: relative;\n");
+	fprintf(out,"	font-weight: 200;\n");
+	fprintf(out,"	display: block;\n");
+	fprintf(out,"	float: left;\n");
+	fprintf(out,"	width: 100%%;\n");
+	fprintf(out,"	font-size: 1em;\n");
+	fprintf(out,"}\n");
+	fprintf(out,".chart-legend  li:before  {\n");
+	fprintf(out,"	display: block;\n");
+	fprintf(out,"	width: 10px;\n");
+	fprintf(out,"	height: 16px;\n");
+	fprintf(out,"	position: absolute;\n");
+	fprintf(out,"	left: 0;\n");
+	fprintf(out,"	top: 3px;\n");
+	fprintf(out,"	content: \"\";");
+	fprintf(out,"}\n");
+
 	
 	
 	fprintf(out,"</style>\n");
@@ -269,7 +282,7 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"<nav>\n");
 	fprintf(out,"<table style=\"margin: 0 auto;width: 940px;\">\n");
 	fprintf(out,"<tr>\n");
-	fprintf(out,"<td style=\"font-size: 200%%;\">%s</td>\n",pd->plot_title);
+	fprintf(out,"<td style=\"font-size: 2em;\">%s</td>\n",pd->plot_title);
 	fprintf(out,"<td style=\"vertical-align: bottom; \">%s</td>\n",pd->description);
 	fprintf(out,"</tr>\n");
 	        fprintf(out,"</table>\n");
@@ -302,13 +315,12 @@ void print_html5_footer(FILE* out)
 	fprintf(out,"<p>SAMStat was developed by Timo Lassmann (timolassmann at gmail dot com).</p>\n");
 	fprintf(out,"<h3>Please cite:</h3>\n");
 	
-	fprintf(out,"<p>Lassmann et al. (2010) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n");
+	fprintf(out,"<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n");
 	fprintf(out,"</section>\n");
 	fprintf(out,"<section id=\"blogroll\">\n");
 	fprintf(out,"<h3>Links</h3>\n");
 	fprintf(out,"<ul>\n");
-	fprintf(out,"<li><a href=\"http://www.yokohama.riken.jp/english/\">RIKEN</a></li>\n");
-	fprintf(out,"<li><a href=\"http://www.osc.riken.jp/english/\">OMICS Science Center</a></li>\n");
+	fprintf(out,"<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n");
 	fprintf(out,"<li><a href=\"http://samtools.sourceforge.net/\">samtools</a></li>\n");
 	fprintf(out,"<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n");
 	fprintf(out,"<li><a href=\"http://msa.sbc.su.se/\">Kalign</a></li>\n");
@@ -368,7 +380,6 @@ void print_html_table(FILE* out,struct plot_data* pd)
 				}else{
 					fprintf(out,"<td style=\"width:45px\">%s</td>\n",pd->labels[i]);
 				}
-				
 			}
 			
 			fprintf(out,"</tr>\n");
@@ -379,7 +390,6 @@ void print_html_table(FILE* out,struct plot_data* pd)
 						fprintf(out,"<td style=\"background-color: %s;\" >%s</td>\n",colors[j  + pd->color_scheme], pd->series_labels[j]);
 					}
 					for(i =start ; i < stop ;i++){
-						fprintf(stderr," %d - %d\n", j,i);
 						fprintf(out,"<td>%0.1f</td>\n",pd->data[j][i]);
 					}
 					fprintf(out,"</tr>\n");
@@ -398,12 +408,12 @@ void print_html_table(FILE* out,struct plot_data* pd)
 			}
 			
 		}
-		if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+		/*if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
 		}else{
 			fprintf(out,"<br>");
-			fprintf(out,"<div style=\"clear:both;\"></div>");
-			fprintf(out,"%s\n",  pd->description);
-		}
+		*/	fprintf(out,"<div style=\"clear:both;\"></div>");
+			fprintf(out,"<p>%s</p>\n",  pd->description);
+		//}
 	}
 }
 
@@ -415,6 +425,8 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 	int first = 0;
 	int start = 0;
 	int stop = 0;
+	
+	float working_width = 0;
 	
 	for(j = 0;j < pd->num_series;j++){
 		if(pd->show_series[j]){
@@ -437,6 +449,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			case PIE_PLOT:
 				stop =pd->num_points;
 				points_shown =pd->num_points;
+				working_width = pd->height;
 				break;
 			default:
 				stop = points_shown;
@@ -444,16 +457,35 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 				if(pd->num_points < stop){
 					stop = pd->num_points;
 				}
+				working_width = 705;
 				break;
 		}
-		if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
+		//if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
 			
-			fprintf(out,"<div style=\"float: left\">\n");
-		}else{
-			fprintf(out,"<div style=\"float: none\">\n");
-		}
+		//	fprintf(out,"<div style=\"float: left\">\n");
+		//}else{
+		working_width = (float)pd->width   * (float)(stop-start )/ points_shown;
+		//fprintf(out,"<div style=\"float: left;width=705px>\n");//, working_width);
+		//}
 		while(1){
-			fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%f\"></canvas>\n",id , pd->height, (float)pd->width   * (float)(stop-start )/ points_shown);
+			fprintf(out,"<div style=\"float: left;width=%fpx\">\n",working_width);
+			fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%dpx\"></canvas>\n",id , pd->height, (int)(working_width* (float)(stop-start )/ points_shown));
+			fprintf(out,"</div>");
+			fprintf(out,"<div class=\"chart-legend\"  style=\"float: left;width: 235px\">\n");//, working_width / 10);
+			fprintf(out,"<ul>");
+			for(i = 0; i < pd->num_series; i++){//start ; i < stop;i++){
+				if(pd->show_series[j]){
+					//	fprintf(out,"<li class=\"box\" style=\"background-color: %s;\">X</li>",colors[i + pd->color_scheme]);
+					fprintf(out,"<style>#id%d:before { background-color: %s;}</style>\n",(((i+1) << 16) |   id),colors[i + pd->color_scheme]);
+					fprintf(out,"<li id=\"id%d\">%s</li>",(((i+1) << 16) |   id),pd->series_labels[i] );
+				}
+			}
+			
+			fprintf(out,"</ul>");
+			fprintf(out,"</div>");
+			fprintf(out,"<div style=\"clear:both;\"></div>");
+
+			
 			fprintf(out,"<script>\n");
 			
 			fprintf(out,"var ChartData%d = {\n",id);
@@ -531,13 +563,21 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			}
 			
 			
-			
+						
 			
 			fprintf(out,"</script>\n");
+			
+			
+
+			
+						
 			if(stop == pd->num_points){
 				break;
 			}
-			fprintf(out,"<br>\n");
+			//if(!start){
+				
+			//}
+			//fprintf(out,"<br>\n");
 			start += pd->num_points_shown;
 			stop += pd->num_points_shown;
 			if(pd->num_points < stop){
@@ -545,13 +585,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			}
 			id++;
 		}
-		fprintf(out,"</div>");
-		if(pd->description[0] == 'N'  && pd->description[1] == 'A') {
-		}else{
-			fprintf(out,"<br>");
-			fprintf(out,"<div style=\"clear:both;\"></div>");
-			fprintf(out,"%s\n",  pd->description);
-		}
+		fprintf(out,"<p>%s</p>\n",  pd->description);
 		id++;
 	}
 }

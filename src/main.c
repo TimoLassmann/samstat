@@ -63,7 +63,8 @@ struct seq_stats{
 	int total_reads;
 };
 
-struct hmm* init_samstat_hmm(int average_length);
+
+struct hmm* init_samstat_hmm(int average_length, int max_sequence_len);
 struct seq_stats* init_seq_stats(void);
 struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats);
 
@@ -134,6 +135,10 @@ int main (int argc,char * argv[])
 	int qual_key = 0;
 	int aln_len = 0;
 	int first_lot =1;
+	
+	sprintf(param->buffer,"Starting to collect data.\n");
+	param->messages = append_message(param->messages, param->buffer);
+
 	
 	while ((numseq = fp(ri, param,file)) != 0){
 		for(i = 0; i < numseq;i++){
@@ -219,7 +224,7 @@ int main (int argc,char * argv[])
 			
 			for(i =0 ; i < 3;i++){
 				hmms[i] = NULL;
-				hmms[i] = init_samstat_hmm(seq_stats->min_len);
+				hmms[i] = init_samstat_hmm(seq_stats->min_len, seq_stats->max_len);
 			}
 			
 			// run for Q20-40  and unmapped.
@@ -233,9 +238,13 @@ int main (int argc,char * argv[])
 				}
 			}
 			hmm_data->num_seq =j;
-			if(j > 10){
+			if(j > 1000){
+				sprintf(param->buffer,"Training a HMM on mapq > 20 reads.\n");
+				param->messages = append_message(param->messages, param->buffer);
 				hmms[0] = run_EM_iterations(hmms[0],hmm_data);
-				print_hmm_parameters(hmms[0]);
+				sprintf(param->buffer,"Done.\n");
+				param->messages = append_message(param->messages, param->buffer);
+				//print_hmm_parameters(hmms[0]);
 				//exit(0);
 			}else{
 				free_hmm(hmms[0]);
@@ -251,8 +260,12 @@ int main (int argc,char * argv[])
 				}
 			}
 			hmm_data->num_seq =j;
-			if(j > 10){
+			if(j > 1000){
+				sprintf(param->buffer,"Training a HMM on 0  <= mapq  < 20 reads.\n");
+				param->messages = append_message(param->messages, param->buffer);
 				hmms[1] = run_EM_iterations(hmms[1],hmm_data);
+				sprintf(param->buffer,"Done.\n");
+				param->messages = append_message(param->messages, param->buffer);
 			}else{
 				free_hmm(hmms[1]);
 				hmms[1] = 0;
@@ -269,7 +282,11 @@ int main (int argc,char * argv[])
 			}
 			hmm_data->num_seq =j;
 			if(j > 10){
+				sprintf(param->buffer,"Training a HMM on unmapped reads.\n");
+				param->messages = append_message(param->messages, param->buffer);
 				hmms[2] = run_EM_iterations(hmms[2],hmm_data);
+				sprintf(param->buffer,"Done.\n");
+				param->messages = append_message(param->messages, param->buffer);
 			}else{
 				free_hmm(hmms[2]);
 				hmms[2] = 0;
@@ -279,7 +296,6 @@ int main (int argc,char * argv[])
 			MFREE(hmm_data->score);
 			MFREE(hmm_data->string);
 			MFREE(hmm_data->weight);
-			
 			MFREE(hmm_data);
 			
 			
@@ -386,11 +402,13 @@ int main (int argc,char * argv[])
 	}
 	pclose(file);
 	
+#ifdef DEBUG
 	print_stats(seq_stats);
+#endif
 
 	struct plot_data* pd = 0;
-	pd = malloc_plot_data(10, 255);
-	
+	pd = malloc_plot_data(10,   seq_stats->max_len+2   );
+	pd->height = 250;
 	sprintf(pd->plot_title, "%s",shorten_pathname(param->infile[0]));
 	pd->description = make_file_stats(param->infile[0],pd->description);
 	print_html5_header(stdout,pd);
@@ -421,16 +439,15 @@ int main (int argc,char * argv[])
 	pd->data[0][0] =  seq_stats->alignments[4];
 	pd->data[0][1] =  (float)seq_stats->alignments[4] / (float)seq_stats->total_reads* 100.0;
 	
-	fprintf(stderr,"%d	%d\n", 0 ,1);
-	fprintf(stderr," %f %f\n", (float)seq_stats->alignments[4] , (float)seq_stats->total_reads);
-	fprintf(stderr,"%f\n",pd->data[0][1] );
 	sprintf(pd->series_labels[0], "MAPQ >= 30");
 	
 	pd->num_points = 1;
 	pd->num_series = 6;
 	pd->color_scheme = 4;
 	pd->width = 400;
-	sprintf(pd->description,"NA");
+	//sprintf(pd->description,"");
+	sprintf(pd->description,"Number of alignments in various mapping quality (MAPQ) intervals and number of unmapped sequences.");
+	
 //pd->description = 0;
 	sprintf(pd->plot_title, "Mapping stats:");
 	pd->plot_type = PIE_PLOT;
@@ -444,6 +461,10 @@ int main (int argc,char * argv[])
 	sprintf(pd->description,"Number of alignments in various mapping quality (MAPQ) intervals and number of unmapped sequences.");
 	
 	print_html_table(stdout, pd);
+	
+	
+	
+	
 	pd->color_scheme = 0;
 	pd->width = 900;
         
@@ -451,85 +472,86 @@ int main (int argc,char * argv[])
 		if(!seq_stats->alignments[i]){
 			pd->show_series[i] =0;
 		}
-		fprintf(stderr,"SANITY:show:%d	%d\n", i,pd->show_series[i]);
 	}
 	
 	
         int plots =0;
 	
-	for(i = 0; i < 6;i++){
-		for(j = seq_stats->min_len; j <= seq_stats->max_len;j++){
-			if(plots ==0){
-				sprintf(pd->labels[j-seq_stats->min_len], "%dnt",j+1);
-			}
-			pd->data[i][j-seq_stats->min_len] = seq_stats->seq_len[i][j];
-		}
-		for(j = 0; j < 6;j++){
-			fprintf(stderr,"%d %d %s\n",j,6,pd->series_labels[j] );
-		}
-        }
-	
-	pd->width = 700;
-	pd->color_scheme = 4;
-	pd->num_points = seq_stats->max_len - seq_stats->min_len;
-	if(pd->num_points < 20){
-		pd->num_points_shown =pd->num_points;
+	if(seq_stats->max_len == seq_stats->min_len){
+		fprintf(stdout,"<h2>Read Length: All reads are %dnt long</h2>\n",seq_stats->max_len);
+
 	}else{
-		pd->num_points_shown = 20;
-	}
-	pd->num_series = 6;
-	sprintf(pd->description,"NA");
-	sprintf(pd->plot_title, "Read Length Distributions");
-	pd->plot_type = LINE_PLOT;
-	print_html5_chart(stdout, pd);
+		plots =0;
+		for(i = 0; i < 6;i++){
+			if(plots ==0){
+				sprintf(pd->labels[0], "%dnt",seq_stats->min_len-1);
+			}
+			pd->data[i][0] = 0 ;
+			for(j = seq_stats->min_len; j <= seq_stats->max_len;j++){
+				if(plots ==0){
+					sprintf(pd->labels[j-seq_stats->min_len+1], "%dnt",j);
+				}
+				pd->data[i][j-seq_stats->min_len+1] = seq_stats->seq_len[i][j];
+			}
+		}
+		
+		pd->width = 700;
+		pd->color_scheme = 4;
+		pd->num_points = seq_stats->max_len - seq_stats->min_len+2;
+		if(pd->num_points < 20){
+			pd->num_points_shown =pd->num_points;
+		}else{
+			pd->num_points_shown = 20;
+		}
+		pd->num_series = 6;
+		sprintf(pd->description,"Distribution of read lengths separated by mapping quality thresholds.");
+		sprintf(pd->plot_title, "Read Length Distributions");
+		pd->plot_type = LINE_PLOT;
+		print_html5_chart(stdout, pd);
 	
-	pd->num_points = 0;
-	pd->num_series = 6;
-	for(i = 0; i < plots;i++){
-		fprintf(stderr,"%d %d %s\n",i,plots,pd->series_labels[i] );
-	}
-	sprintf(pd->description,"Distribution of read lengths separated by mapping quality thresholds.");
+		//pd->num_points = 0;
+		//pd->num_series = 6;
+		//sprintf(pd->description,"Distribution of read lengths separated by mapping quality thresholds.");
 	
-	print_html_table(stdout, pd);
+		//print_html_table(stdout, pd);
+	}
 	// BASE QUALITIES...
 	
-	
-	for(i = 0; i < 6;i++){
-		for(j = 0; j <= seq_stats->max_len;j++){
-			if(plots ==0){
-				sprintf(pd->labels[j], "%dnt",j+1);
-			}
-			if(seq_stats->alignments[i] ){
-				pd->data[i][j] =  (float)seq_stats->seq_quality[i][j] /   (float)seq_stats->seq_quality_count[i][j] - (float)seq_stats->base_quality_offset;
-			}else{
-				pd->data[i][j] = 0;
+	if (seq_stats->base_quality_offset != -1){
+		for(i = 0; i < 6;i++){
+			for(j = 0; j <= seq_stats->max_len;j++){
+				if(plots ==0){
+					sprintf(pd->labels[j], "%dnt",j+1);
+				}
+				if(seq_stats->alignments[i] ){
+					pd->data[i][j] =  (float)seq_stats->seq_quality[i][j] /   (float)seq_stats->seq_quality_count[i][j] - (float)seq_stats->base_quality_offset;
+				}else{
+					pd->data[i][j] = 0;
+				}
 			}
 		}
-		for(j = 0; j < 6;j++){
-			fprintf(stderr,"%d %d %s\n",j,6,pd->series_labels[j] );
+		
+	
+		pd->width = 700;
+		pd->color_scheme = 4;
+		pd->num_points = seq_stats->max_len;
+		if(pd->num_points < 20){
+			pd->num_points_shown =pd->num_points;
+		}else{
+			pd->num_points_shown = 20;
 		}
-        }
-	
-	
-	pd->width = 700;
-	pd->color_scheme = 4;
-	pd->num_points = seq_stats->max_len;
-	if(pd->num_points < 20){
-		pd->num_points_shown =pd->num_points;
-	}else{
-		pd->num_points_shown = 20;
+		pd->num_series = 6;
+		sprintf(pd->description,"Base quality distributions separated by mapping quality thresholds.");
+		sprintf(pd->plot_title, "Base Quality Distributions");
+		pd->plot_type = LINE_PLOT;
+		print_html5_chart(stdout, pd);
+		
+		//pd->num_points = 0;
+		//pd->num_series = 6;
+		//sprintf(pd->description,"Base quality distributions separated by mapping quality thresholds.");
+		
+		//print_html_table(stdout, pd);
 	}
-	pd->num_series = 6;
-	sprintf(pd->description,"NA");
-	sprintf(pd->plot_title, "Base Quality Distributions");
-	pd->plot_type = LINE_PLOT;
-	print_html5_chart(stdout, pd);
-
-	pd->num_points = 0;
-	pd->num_series = 6;
-	sprintf(pd->description,"Base quality distributions separated by mapping quality thresholds.");
-	
-	print_html_table(stdout, pd);
 	
 	
 		///HMM plots - need to count  nucleotide frequencies.. .
@@ -551,18 +573,23 @@ int main (int argc,char * argv[])
 			pd->show_series[i] = 1;
 		}
 		
-		sprintf(pd->plot_title, "Read Composition");
-		sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
-		fprintf(stderr,"Got here\n");
+		sprintf(pd->plot_title, "Composition of MAPQ >= 20 Reads.");
+		sprintf(pd->description,"A HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. \"L\" indicates the emission probabilities for a state modelling residiues in the middle of the reads. ");
+		//fprintf(stderr,"Got here\n");
 		for(j = 2; j <seq_stats->min_len +2;j++){
-			sprintf(pd->labels[j-2], "%d",j-1);
-			fprintf(stderr,"Got here %d (%d)\n",j ,seq_stats->min_len +2 );
+			
+			if(j ==  2 +seq_stats->min_len  / 2){
+				sprintf(pd->labels[j-2], "L");
+			}else{
+				sprintf(pd->labels[j-2], "%d",j-1);
+			}
+		//	fprintf(stderr,"Got here %d (%d)\n",j ,seq_stats->min_len +2 );
 			for(c = 0; c < 5;c++){
 				pd->data[c][j-2] =  log2f(scaledprob2prob(hmms[0]->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
 			}
 		}
-		fprintf(stderr,"Got here\n");
-		pd->num_points_shown = 30;
+		//fprintf(stderr,"Got here\n");
+		pd->num_points_shown = 20;
 		
 		pd->num_points = seq_stats->min_len;
 		pd->num_series = 4;
@@ -576,6 +603,11 @@ int main (int argc,char * argv[])
 		sum +=seq_stats->nuc_num[i];
 	}
 	pd->color_scheme = 0;
+	
+	if(seq_stats->min_len > 41){
+		seq_stats->min_len = 41;
+	}
+	
 	if(hmms[1]){
 		
 		sprintf(pd->series_labels[0],"A");
@@ -587,15 +619,19 @@ int main (int argc,char * argv[])
 			pd->show_series[i] = 1;
 		}
 		
-		sprintf(pd->plot_title, "Read Composition");
-		sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
+		sprintf(pd->plot_title, "Composition of  0 >= MAPQ <  20 Reads. ");
+		sprintf(pd->description,"A HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. \"L\" indicates the emission probabilities for a state modelling residiues in the middle of the reads. ");
 		for(j = 2; j <seq_stats->min_len +2;j++){
+			if(j ==  2 +seq_stats->min_len  / 2){
+				sprintf(pd->labels[j-2], "L");
+			}else{
 			sprintf(pd->labels[j-2], "%d",j-1);
+			}
 			for(c = 0; c < 5;c++){
 				pd->data[c][j-2] =  log2f(scaledprob2prob(hmms[1]->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
 			}
 		}
-		pd->num_points_shown = 30;
+		pd->num_points_shown = 20;
 		
 		pd->num_points = seq_stats->min_len;
 		pd->num_series = 4;
@@ -614,15 +650,19 @@ int main (int argc,char * argv[])
 			pd->show_series[i] = 1;
 		}
 		
-		sprintf(pd->plot_title, "Read Composition");
-		sprintf(pd->description,"<p style=\"font-weight: bold;font-size: 150%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> An HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. ",colors[0],colors[1],colors[2],colors[3] );
+		sprintf(pd->plot_title, "Composition of unmapped reads.");
+		sprintf(pd->description,"A HMM was trained on a subset of the sequences. Shown are log2 odds ratios comparing emission probabilities in match states to background nucleotide probabilities. Values above 0 indicate positional enrichment of a particular nucleotide. \"L\" indicates the emission probabilities for a state modelling residiues in the middle of the reads.");
 		for(j = 2; j <seq_stats->min_len +2;j++){
-			sprintf(pd->labels[j-2], "%d",j-1);
+			if(j ==  2 +seq_stats->min_len  / 2){
+				sprintf(pd->labels[j-2], "L");
+			}else{
+				sprintf(pd->labels[j-2], "%d",j-1);
+			}
 			for(c = 0; c < 5;c++){
 				pd->data[c][j-2] =  log2f(scaledprob2prob(hmms[2]->emissions[j][c] ) /( (float) seq_stats->nuc_num[c] / (float)sum));
 			}
 		}
-		pd->num_points_shown = 30;
+		pd->num_points_shown = 20;
 		
 		pd->num_points = seq_stats->min_len;
 		pd->num_series = 4;
@@ -651,26 +691,26 @@ int main (int argc,char * argv[])
                 switch (i) {
                         case 0:
                                 sprintf(pd->plot_title, "Distribution of Mismatches (MAPQ >= 30):");
-                                sprintf(pd->description,"Distribution of Mismatches in MAPQ >= 30 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
+                                sprintf(pd->description,"Distribution of Mismatches in MAPQ >= 30 reads.");
                                 break;
                         case 1:
                                 sprintf(pd->plot_title, "Distribution of Mismatches (MAPQ < 30):");
-                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 30 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
+                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 30 reads.");
                                 break;
                                 
                         case 2:
                                 sprintf(pd->plot_title, "Distribution of Mismatches (MAPQ < 20):");
-                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 20 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
+                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 20 reads.");
                                 break;
                                 
                         case 3:
                                 sprintf(pd->plot_title, "Distribution of Mismatches (MAPQ < 10):");
-                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 10 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
+                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 10 reads.");
                                 break;
                                 
                         case 4:
                                 sprintf(pd->plot_title, "Distribution of Mismatches(MAPQ < 3):");
-                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 3 reads.<p style=\"font-weight: bold;font-size: 200%%\"> Legend: <span style=\"color: %s;\">A</span><span style=\"color: %s;\">C</span><span style=\"color: %s;\">G</span><span style=\"color: %s;\">T</span></p> ",colors[0],colors[1],colors[2],colors[3] );
+                                sprintf(pd->description,"Distribution of Mismatches in MAPQ < 3 reads.");
                                 break;
                                 
                         default:
@@ -693,7 +733,7 @@ int main (int argc,char * argv[])
 	pd->width = 900;
 	pd->color_scheme = 0;
 	
-	fprintf(stderr,"Errors :\n");
+	//fprintf(stderr,"Errors :\n");
 	for(i = 0; i < 5;i++){
                 switch (i) {
                         case 0:
@@ -728,10 +768,12 @@ int main (int argc,char * argv[])
                                 sprintf(pd->labels[j], "%d",j);
                                 pd->data[0][j] = 100.0 * (float)seq_stats->errors[i][j]/ (float)seq_stats->alignments[i];
                         }
+			
+			sprintf(pd->series_labels[0],"Errors");
                         pd->num_points = seq_stats->max_error_per_read ;
                         pd->num_series = 1;
 			pd->width = 300;
-			pd->num_points_shown = seq_stats->max_error_per_read;
+			pd->num_points_shown = 10;//seq_stats->max_error_per_read;
                         
                         
                         pd->plot_type = BAR_PLOT;
@@ -767,7 +809,6 @@ char* make_file_stats(char* filename,char* buffer)
 	
 	char time_string[200];
 	int hour;
-	char am_or_pm;
 	struct tm *ptr;
 		
 	local_ret= stat ( filename, &buf );
@@ -776,11 +817,11 @@ char* make_file_stats(char* filename,char* buffer)
 		
 		ptr = localtime(&buf.st_mtime);
 		hour = ptr->tm_hour;
-		if (hour <= 11)
-			am_or_pm = 'a';
-		else {
+		if (hour <= 11){
+		//	am_or_pm = 'a';
+		}else {
 			hour -= 12;
-			am_or_pm = 'p';
+		//	am_or_pm = 'p';
 		}
 		if (hour == 0){
 			hour = 12;
@@ -833,23 +874,32 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
 			stop = i;
 		}
 	}
-#ifdef DEBUG
+
 	if(start == 33 && stop == 73 ){
+#ifdef DEBUG
 		fprintf(stderr,"S - Sanger\n");
+#endif
 	}
 	if(start == 49 && stop == 104){
+#ifdef DEBUG
 		fprintf(stderr,"X - SOLEXA\n");
+#endif
 	}
 	if(start == 64 && stop == 104){
+#ifdef DEBUG
 		fprintf(stderr,"Illumina 1.3+\n");
+#endif
 	}
 	if(start == 66&& stop == 104 ){
+#ifdef DEBUG
 		fprintf(stderr,"Illumina 1.5+\n");
+#endif
 	}
 	if(start == 33 && stop == 74){
+#ifdef DEBUG
 		fprintf(stderr,"Illumina 1.8+\n");
-	}
 #endif
+	}
 
 	seq_stats->base_quality_offset = start;
 	return seq_stats;
@@ -858,9 +908,15 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
 
 
 
-struct hmm* init_samstat_hmm(int average_length)
+struct hmm* init_samstat_hmm(int average_length, int max_sequence_len)
 {
-	struct hmm* hmm = malloc_hmm(average_length + 2, 5,100);
+	struct hmm* hmm = NULL;
+	
+	if(average_length > 41){
+		average_length = 41;
+	}
+	
+	hmm = malloc_hmm(average_length + 2, 5,max_sequence_len+2);
 	
 	init_logsum();
 	

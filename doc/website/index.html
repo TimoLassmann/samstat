@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en" >
+<head>
+	<title>SAMStat</title>
+	<meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
+	<meta name="google-site-verification" content="1Oa_6IuKcFrKdzH3izTM0DYdDNGSgKuEP7X2110572s" />
+	<meta name="google-site-verification" content="1Oa_6IuKcFrKdzH3izTM0DYdDNGSgKuEP7X2110572s" />
+	<style>
+	/* Makeshift CSS Reset */
+* {
+	margin: 0;
+	padding: 0;
+}
+
+/* Tell the browser to render HTML 5 elements as block */
+header, footer, section, aside, nav, article {
+	display: block;
+}
+
+body {
+	margin: 0 auto;
+	padding: 22px 0;
+	width: 940px;
+	font: 13px/22px Helvetica, Arial, sans-serif;
+	background: #F0F0F0;
+}
+
+h1, h2 {
+	font-size: 28px;
+	line-height: 44px;
+	padding: 22px 0;
+}
+
+h3 {
+	font-size: 18px;
+	line-height: 22px;
+	padding: 11px 0;
+}
+
+p {
+	padding-bottom: 22px;
+}
+
+img { border: 0; } 
+
+/*------------------------------
+=NAVIGATION
+------------------------------*/
+
+nav {
+	position: absolute;
+	left: 0;
+	width: 100%;
+	background: #000000; 
+}
+
+	nav ul {
+		margin: 0 auto;
+		width: 940px;
+		list-style: none;
+	}
+
+		nav ul li {
+			float: left;
+		}
+		
+			nav ul li a {
+				display: block;
+				margin-right: 20px;
+				width: 140px;
+				font-size: 14px;
+				line-height: 44px;
+				text-align: center;
+				text-decoration: none;
+				color: #777;
+			}
+			
+				nav ul li a:hover {
+					color: #fff;
+				}
+			
+			nav ul li.selected a {
+				color: #fff;
+			}
+			
+			nav ul li.subscribe a {
+				margin-left: 22px;
+				padding-left: 33px;
+				text-align: left;
+				background: url("images/rss.png") left center no-repeat;
+			}
+
+
+
+/*------------------------------
+=INTRODUCTION
+------------------------------*/
+
+#intro {
+	position: relative;
+	margin-top: 66px;
+	padding: 44px;
+	background: #3366AA;
+	
+	/* Background-size not implemented yet */
+	-webkit-background-size: 100%;
+	-o-background-size: 100%;
+	-khtml-background-size: 100%;
+
+	
+	/* Border-radius not implemented yet */
+	-moz-border-radius: 22px;
+	-webkit-border-radius: 22px;
+}
+
+	#intro h2, #intro p {
+		position: relative;
+		z-index: 9999;
+		width: 620px;
+	}
+	
+	#intro h2 {
+		padding: 0 0 22px 0;
+		font-weight: normal;
+		color: #fff;
+	}
+	
+	#intro p {
+		padding: 0;
+		color: #6699FF;
+	}
+	
+	#intro img {
+		position: absolute;
+		top: 0;
+		right: 0;
+		
+		height: 90%;
+	
+		/* Border-radius not implemented yet */
+		-moz-border-radius: 22px;
+		-webkit-border-radius: 22px;
+	}
+
+
+
+/*------------------------------
+=CONTENT AREA AND SIDEBAR LAYOUT
+------------------------------*/
+
+#content {
+	display: table;
+}
+
+	#mainContent {
+		display: table-cell;
+		width: 620px;
+		padding-right: 22px;
+		
+	}
+	
+	aside {
+		display: table-cell;
+		width: 300px;
+	}
+
+
+
+/*------------------------------
+=BLOG POST
+------------------------------*/
+.blogPost header p, .blogPost header p a {
+		font-size: 14px;
+		font-style: italic;
+		color: #777;
+	}
+	
+		.blogPost header p a:hover {
+			text-decoration: none;
+			color: #000;
+		}
+
+.blogPost div {
+	/* Column-count not implemented yet */
+	-moz-column-count: 1;
+	-webkit-column-count: 1;
+	
+	/* Column-gap not implemented yet */
+	-moz-column-gap: 22px;
+	-webkit-column-gap: 22px;
+}
+
+
+.blogPost1 div {
+	/* Column-count not implemented yet */
+	-moz-column-count: 1;
+	-webkit-column-count: 1;
+	
+	/* Column-gap not implemented yet */
+	-moz-column-gap: 22px;
+	-webkit-column-gap: 22px;
+}
+
+	
+.blogPost img {
+	margin: 22px 0;
+	-webkit-box-shadow: 3px 3px 7px #777;
+}
+.blogPost a{
+	color: #000;
+}
+.blogPost a:hover {
+					color: #777;
+				}
+
+
+.blogPost ul {
+	liststyle: circle;
+	}
+	
+	
+
+
+/*------------------------------
+=SIDEBAR
+------------------------------*/
+aside section {
+	margin: 22px 0 0 22px;
+	padding: 11px 22px;
+	background: #CCCCCC;
+	
+	/* Border-radius not implemented yet */
+	-moz-border-radius: 11px;
+	-webkit-border-radius: 11px;
+}
+
+	aside section ul {
+		margin: 0 0 0 22px;
+		list-style: none;
+	}
+	
+		aside section ul li a {
+			display: block;
+			text-decoration: none;
+			color: #000;
+		}
+		
+			aside section ul li a:hover {
+				text-decoration: underline;
+			}
+
+
+
+/*------------------------------
+=FOOTER
+------------------------------*/
+footer {
+	position: absolute;
+	left: 0;
+	width: 100%;
+	background: #222;
+}
+
+	footer div {
+		display: table;
+		margin: 0 auto;
+		padding: 44px 0;
+		width: 940px;
+		color: #777;
+	}
+	
+		footer div section {
+			display: table-cell;
+			width: 300px;
+		}
+		
+		footer div #about, footer div #blogroll {
+			padding-right: 20px;
+		}
+		
+	footer h3 {
+		color: #FFF;
+	}
+	
+	footer a {
+		color: #999;
+	}
+	
+		footer a:hover {
+			color: #FFF;
+			text-decoration: none;
+		}
+	
+	footer ul {
+		margin: 0 0 0 40px;
+		list-style: square;
+		color: #565656;
+	}
+	
+		footer ul li a {
+			display: block;
+		}
+	</style>
+	
+</head>
+<body>
+	<header>
+		<h1>SAMStat</h1>
+		
+	</header>
+	
+	<nav>
+		<ul>
+			<li class="selected"><a href="#introduction">Introduction</a></li>
+			<li><a href="http://sourceforge.net/projects/samstat/">Download</a></li>
+			<li><a href="#contact">Contact</a></li>
+		</ul>
+	</nav>
+	<section id="intro">
+		<header>
+			<h2>Displaying sequence statistics for next generation sequencing</h2>
+		</header>
+		<p>Works with large fasta, fastq and SAM/BAM files.</p>
+		<!--<img src="intro_background.png" />-->
+	</section>
+	<div id="content">
+		<div id="mainContent">
+			<section>
+			
+				<article class="blogPost" id="introduction" >
+					<header>
+						<h2>*Beta* Version 1.5 </h2>
+						<p>Posted on August 14th 2014 by Timo Lassmann</p>
+					</header>
+					<div>
+						<p> Version 1.5 is addressing several issues with the now 4 year old original version of SAMstat. Most prominently changes include:
+						</p>
+						
+						<p>
+						1) Better support for long reads.Version 1.5 uses a simple hidden Markov model to calculate the positon specific nucleotide over-representation profiles.
+						</p>
+						<p>
+						2) Better visualization using the excellent <a href=\"http://www.chartjs.org\">Chartjs library</a> for drawing plots.
+						</p>
+						
+						
+						
+						
+					</div>
+					<img style="width: 550px;"  src="fig1.jpg" />
+					<header>
+						<h2>Version 1.09</h2>
+						<p>Posted on July 8th 2013 by Timo Lassmann</p>
+					</header>
+					<div>
+						<p>Version 1.09: fixed compilation issues on Ubuntu Linux.</p>
+						
+						
+						
+					</div>
+					<header>
+						<p>Posted on March 23th 2011 by Timo Lassmann</p>
+						</header>
+					<div>
+					<p>Version 1.08 allows users to print a summary over multiple input files. Additionally several several minor bugs were fixed.</p>
+					
+
+						
+					</div>
+				</article>
+				<article class="blogPost" id="introduction" >
+					<header>
+						<h2>Introduction</h2>
+						<p>Posted on September 21th 2010 by Timo Lassmann</p>
+					</header>
+					<div>
+					<p>Next generation sequencing is being applied to understand individual variation, the RNA output of a cell and epigenetic regulation. The millions of sequenced reads are commonly stored in fasta, fastq and after mapping to a reference genome in the alignment / map format (<a href="http://samtools.sourceforge.net/">SAM/BAM</a>).
+					 To monitor the sequence quality over time and to identify problems it is necessary to report various statistics of the reads at different stages during processing.</p>
+					 <p> SAMStat is an efficient C program to quickly display statistics of large sequence files from next generation sequencing projects. When applied to <a href="#about">SAM/BAM</a> files all statistics are reported for unmapped, poorly and accurately mapped reads separately. This allows for identification of a variety of problems, such as remaining linker and adaptor sequences, causing poor mapping. Apart from this SAMStat can be used to verify individual processing steps in large analysis pipelines.</p>
+					
+
+						<p>SAMStat reports nucleotide composition, length distribution, base quality distribution, mapping statistics, mismatch, insertion and deletion error profiles, di-nucleotide and 10-mer over-representation. The output is a single html5 page which can be interpreted by a non-specialist. 
+						</p>
+
+						
+					</div>
+				</article>
+				
+				
+				<article class="blogPost1" id="usage">
+					<header>
+						<h2>Usage</h2>
+					</header>
+					<div>
+					<pre>samstat &lt;file.sam&gt;  &lt;file.bam&gt;  &lt;file.fa&gt;  &lt;file.fq&gt; .... </pre>
+					For each input file SAMStat will create a single html page named after the input file name plus a dot html suffix.
+						
+					</div>
+				</article>
+				<article class="blogPost1" id="install">
+					<header>
+						<h2>Installation</h2>
+					</header>
+					<div>
+					<pre>tar -zxcf samstat.tgz </pre>
+					<pre>cd samstat</pre>
+					<pre>make clean</pre>
+					<pre>make</pre>
+					<pre>sudo cp samstat /usr/local/bin/ </pre>
+						
+					</div>
+				</article>
+				
+				
+
+				
+				
+			</section>			
+		</div>
+		<aside>
+		<section>
+				<header>
+					<h3>Sections</h3>
+				</header>
+				<ul>
+					<li><a href="#introduction">Introduction</a></li>
+					<li><a href="#usage">Usage</a></li>
+					<li><a href="#install">Installation</a></li>
+					<li><a href="#about">About</a></li>
+					<li><a href="http://sourceforge.net/projects/samstat/">Download</a></li>
+					<li><a href="#contact">Contact</a></li>
+				</ul>
+			</section>
+			<section>
+				<header>
+					<h3>Links</h3>
+				</header>
+				<ul>
+					<li><a href="http://telethonkids.org.au">Telethon Kids Institute</a></li>
+					<li><a href="http://www.clst.riken.jp/en/">RIKEN CLST</a></li>
+					<li><a href="http://samtools.sourceforge.net/">Samtools</a></li>
+					<li><a href="http://code.google.com/p/bedtools/">BEDtools</a></li>
+					<li><a href="http://msa.sbc.su.se/">Kalign</a></li>
+					<li><a href="http://ngsview.sourceforge.net/">NGSview</a></li>
+				</ul>
+			</section>
+		</aside>
+	</div>
+	<footer>
+		<div>
+			<section id="about">
+				<h3>About</h3>
+				<p>The vast amount of data produced by next-generation sequencing machines necesitates the development of efficient visualization tools. SAMStat addresses the basic need to display information about the obtained reads both quickly and in a concise form.</p> <p>The layout of this page was derived from <a href="http://net.tutsplus.com/tutorials/html-css-techniques/html-5-and-css-3-the-techniques-youll-soon-be-using/">this tutorial</a>.</p>
+			</section>
+			<section id="contact">
+				
+					<h3>Contact</h3>
+				
+				<p>SAMStat V1.0 was developed by Timo Lassmann (timolassmann at gmail dot com) working at RIKEN Japan.</p>
+				<h3>Please cite:</h3>
+				
+				<p>Lassmann et al. (2010) "SAMStat: monitoring biases in next generation sequencing data." Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href ="http://www.ncbi.nlm.nih.gov/pubmed/21088025/">PMID: 21088025</a>] </p>
+			</section>
+			<section id="blogroll">
+				<h3>Links</h3>
+				<ul>
+					
+					<li><a href="http://telethonkids.org.au">Telethon Kids Institute</a></li>
+					<li><a href="http://www.clst.riken.jp/en/">RIKEN CLST</a></li>
+					<li><a href="http://samtools.sourceforge.net/">samtools</a></li>
+					<li><a href="http://code.google.com/p/bedtools/">BEDtools</a></li>
+					<li><a href="http://msa.sbc.su.se/">Kalign</a></li>
+					<li><a href="http://ngsview.sourceforge.net/">NGSview</a></li>
+					
+
+				</ul>
+			</section>
+			
+		</div>
+		<div style="text-align: center;"><a href="http://sourceforge.net"><img src="http://sflogo.sourceforge.net/sflogo.php?group_id=246254&amp;type=2" width="125" height="37" alt="SourceForge.net Logo" /></a></div>
+	</footer>
+	
+	
+</body>
+</html>

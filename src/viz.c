@@ -265,7 +265,7 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	fprintf(out,"	content: \"\";");
 	fprintf(out,"}\n");
 
-	
+		
 	
 	fprintf(out,"</style>\n");
 	fprintf(out,"</head>\n");
@@ -277,16 +277,17 @@ void print_html5_header(FILE* out,struct plot_data* pd)
 	//fprintf(out,"<li style=\"color: #999\" >%s</li>\n",pd->description);
 	//fprintf(out,"<li><a href=\"#contact\">Contact</a></li>\n");
 	//fprintf(out,"</ul>\n");
+	fprintf(out,"<h1>%s</h1><p>%s</p>\n",pd->plot_title,pd->description);
+	//fprintf(out,"<div style=\"clear:both;\"></div>");
 	
-	
-	fprintf(out,"<nav>\n");
+	/*fprintf(out,"<nav>\n");
 	fprintf(out,"<table style=\"margin: 0 auto;width: 940px;\">\n");
 	fprintf(out,"<tr>\n");
 	fprintf(out,"<td style=\"font-size: 2em;\">%s</td>\n",pd->plot_title);
 	fprintf(out,"<td style=\"vertical-align: bottom; \">%s</td>\n",pd->description);
 	fprintf(out,"</tr>\n");
 	        fprintf(out,"</table>\n");
-	fprintf(out,"</nav>\n");
+	fprintf(out,"</nav>\n");*/
 	
 	
 	//fprintf(out,"<section id=\"intro\">\n");
@@ -453,7 +454,6 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 				break;
 			default:
 				stop = points_shown;
-				
 				if(pd->num_points < stop){
 					stop = pd->num_points;
 				}
@@ -464,12 +464,15 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			
 		//	fprintf(out,"<div style=\"float: left\">\n");
 		//}else{
-		working_width = (float)pd->width   * (float)(stop-start )/ points_shown;
+		//working_width =  (int)(float)pd->width   * (float)(stop-start )/ points_shown;
 		//fprintf(out,"<div style=\"float: left;width=705px>\n");//, working_width);
 		//}
 		while(1){
-			fprintf(out,"<div style=\"float: left;width=%fpx\">\n",working_width);
-			fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%dpx\"></canvas>\n",id , pd->height, (int)(working_width* (float)(stop-start )/ points_shown));
+			
+			//fprintf(stderr,"WEIRD: B:%d		E:%d	%d	%f	%f\n",start,stop, points_shown,working_width ,(float)working_width   * (float)(stop-start )/ (float)points_shown );
+			
+			fprintf(out,"<div style=\"float: left;width=%dpx\">\n",(int)( (float)working_width   * (float)(stop-start )/ (float)points_shown));
+			fprintf(out,"<canvas id=\"canvas%d\" height=\"%d\" width=\"%dpx\"></canvas>\n",id , pd->height,(int)((float)working_width   * (float)(stop-start )/ (float)points_shown));
 			fprintf(out,"</div>");
 			fprintf(out,"<div class=\"chart-legend\"  style=\"float: left;width: 235px\">\n");//, working_width / 10);
 			fprintf(out,"<ul>");

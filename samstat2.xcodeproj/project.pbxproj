@@ -34,6 +34,8 @@
 		25D5B13F1965088F00A57D8D /* viz.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = viz.c; path = src/viz.c; sourceTree = "<group>"; };
 		276768391991EDB50097D604 /* pst.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = pst.c; path = src/pst.c; sourceTree = "<group>"; };
 		2767683A1991EDB50097D604 /* pst.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = pst.h; path = src/pst.h; sourceTree = "<group>"; };
+		278B776A19CFC19F002F1BE1 /* index.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; name = index.html; path = doc/website/index.html; sourceTree = "<group>"; };
+		278B776B19CFCD3E002F1BE1 /* README */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = README; sourceTree = "<group>"; };
 		A196F4D619493B6000C9B6F2 /* samstat2 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = samstat2; sourceTree = BUILT_PRODUCTS_DIR; };
 		A196F4E219493CAC00C9B6F2 /* malloc_macro.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = malloc_macro.h; path = src/malloc_macro.h; sourceTree = "<group>"; };
 		A196F4E319493CAC00C9B6F2 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = src/main.c; sourceTree = "<group>"; };
@@ -66,8 +68,10 @@
 		A196F4CD19493B6000C9B6F2 = {
 			isa = PBXGroup;
 			children = (
+				278B776B19CFCD3E002F1BE1 /* README */,
 				A196F4E819493CB500C9B6F2 /* configure.ac */,
 				A196F4E919493CB500C9B6F2 /* Makefile.am */,
+				278B776A19CFC19F002F1BE1 /* index.html */,
 				A196F4EA19493CBD00C9B6F2 /* src */,
 				A196F4D719493B6000C9B6F2 /* Products */,
 			);

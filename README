@@ -1,0 +1,15 @@
+SAMstat version 1.5
+
+Installation:
+
+Unpack the tarball:
+bash-3.1$ tar -zxvf samstat-XXX.tar.gz
+bash-3.1$ cd samstat
+bash-3.1$ ./configure
+
+bash-3.1$ make
+bash-3.1$ make check
+
+At this point the samstat executable appears in the src directory. You can copy it to any directory in your path. To install it system wide type:
+
+bash-3.1$ make install

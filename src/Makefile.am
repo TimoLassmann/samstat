@@ -1,4 +1,4 @@
-
+AUTOMAKE_OPTIONS = serial-tests
 bin_PROGRAMS = samstat
 
 

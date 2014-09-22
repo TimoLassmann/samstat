@@ -90,9 +90,9 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 				break;
 			
 		
-			case 'o':
-				param->outfile = optarg;
-				break;
+			//case 'o':
+			//	param->outfile = optarg;
+			//	break;
 			case 'h':
 				help = 1;
 				break;
@@ -120,7 +120,8 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	}
 	
 	MMALLOC(param->buffer,sizeof(char) * MAX_LINE);
-	
+	MMALLOC(param->outfile,sizeof(char) * MAX_LINE);
+
 	
 	sprintf(param->buffer , "%s %s, Copyright (C) 2014 Timo Lassmann <%s>\n",PACKAGE_NAME, PACKAGE_VERSION,PACKAGE_BUGREPORT);
 	param->messages = append_message(param->messages, param->buffer  );
@@ -150,7 +151,7 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	//if(param->matchstart)
 	//fprintf(stderr,"Viterbi: %d\n",param->viterbi);
 	
-	if(param->outfile == 0){
+	/*if(param->outfile == 0){
 		sprintf(param->buffer , "ERROR: You need to specify an output file prefix using the -o / -out option.\n");
 		param->messages = append_message(param->messages, param->buffer  );
 		sprintf(param->buffer , "\tfor additional help: tagdust -help\n");
@@ -159,7 +160,7 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 		free_param(param);
 		exit(EXIT_FAILURE);
 		
-	}	
+	}*/
 	
 	
 	
@@ -184,9 +185,12 @@ void usage()
 {
 	fprintf(stdout, "\n%s %s, Copyright (C) 2013 Timo Lassmann <%s>\n",PACKAGE_NAME, PACKAGE_VERSION,PACKAGE_BUGREPORT);
 	fprintf(stdout, "\n");
-	fprintf(stdout, "Usage:   simreads  <SAM/BAM/Fasta/Fastq file> -o <file> \n\n");
-	fprintf(stdout, "Options:\n");
-	fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-o","STR","", "Output file name.");
+	fprintf(stdout, "Usage:   samstat <file1> <file2>  ...  \n\n");
+	
+	fprintf(stdout, "SAMstat will produce a summary file (html) for each input file named\n <original filename>.samstat.html.\n");
+	
+	//fprintf(stdout, "Options:\n");
+	//fprintf (stdout,"\t%-17s%10s%7s%-30s\n","-o","STR","", "Output file name.");
 
 	
 	fprintf(stdout, "\n");
@@ -196,10 +200,10 @@ void usage()
 
 void free_param(struct parameters* param)
 {
-	char logfile[200];
-	FILE* outfile = 0;
+	//char logfile[200];
+	//FILE* outfile = 0;
 	//if(param->log){
-	if(param->outfile){
+	/*if(param->outfile){
 		sprintf (logfile, "%s_logfile.txt",param->outfile);
 		if ((outfile = fopen( logfile, "w")) == NULL){
 			fprintf(stderr,"can't open logfile\n");
@@ -209,12 +213,13 @@ void free_param(struct parameters* param)
 	
 		fclose(outfile);
 	
-	}
+	}*/
 	
 	
 	MFREE (param->infile);
 	MFREE(param->messages);
 	MFREE(param->buffer);
+	MFREE(param->outfile);
 	MFREE(param);
 }
 

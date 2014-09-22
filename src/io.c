@@ -101,7 +101,7 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 	param->fasta = 0;
 	
 	if(!file_exists(param->infile[file_num])){
-		sprintf(param->buffer,"Error: Cannot find input file: %s\n",param->infile[file_num] );
+		sprintf(param->buffer,"ERROR: Cannot find input file: %s\n",param->infile[file_num] );
 		param->messages = append_message(param->messages, param->buffer);
 		free_param(param);
 		exit(EXIT_FAILURE);
@@ -152,12 +152,16 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 		param->sam = 0;
 		param->bzipped  = 1;
 	}else{
+		sprintf(param->buffer,"ERROR: Cannot recognize format for file: %s\n", param->infile[file_num]);
+		param->messages = append_message(param->messages, param->buffer);
+		free_param(param);
+		exit(EXIT_FAILURE);
 		param->sam = -1;
 	}
 	
 	
 	if(param->gzipped && gzcat == -1){
-		sprintf(param->buffer,"Cannot find gzcat / zcat on your system. Try gzcat <infile> | samstat -f sam/bam/fa/fq\n");
+		sprintf(param->buffer,"ERROR: Cannot find gzcat / zcat on your system. Try gzcat <infile> | samstat -f sam/bam/fa/fq\n");
 		param->messages = append_message(param->messages, param->buffer);
 		free_param(param);
 		exit(EXIT_FAILURE);
@@ -176,8 +180,10 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 			sprintf (tmp, "%s ","-");
 			strcat ( command, tmp);
 			if (!(file = popen(command, "r"))) {
-				fprintf(stderr,"Cannot open bam file '%s' with command:%s\n",param->infile[file_num],command);
-				exit(-1);
+				sprintf(param->buffer,"ERROR: Cannot open bam file '%s' with command:%s\n",param->infile[file_num],command);
+				param->messages = append_message(param->messages, param->buffer);
+				free_param(param);
+				exit(EXIT_FAILURE);
 			}
 		}else if(param->sam == 1){
 			command[0] = 0;
@@ -191,8 +197,10 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 			sprintf (tmp, "%s ", "-");
 			strcat ( command, tmp);
 			if (!(file = popen(command, "r"))) {
-				fprintf(stderr,"Cannot open bam file '%s' with command:%s\n",param->infile[file_num],command);
-				exit(-1);
+				sprintf(param->buffer,"ERROR: Cannot open bam file '%s' with command:%s\n",param->infile[file_num],command);
+				param->messages = append_message(param->messages, param->buffer);
+				free_param(param);
+				exit(EXIT_FAILURE);
 			}
 		}else{
 			file = stdin;

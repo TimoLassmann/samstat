@@ -2,7 +2,7 @@
 VFLAGS = --track-origins=yes --tool=memcheck --leak-check=yes --error-exitcode=1
 
 
-AUTOMAKE_OPTIONS = subdir-objects
+AUTOMAKE_OPTIONS = subdir-objects serial-tests
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS}
 
 

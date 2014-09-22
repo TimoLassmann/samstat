@@ -2,9 +2,9 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(SAMstat,  2.0, timolassmann@gmail.com)
+AC_INIT(SAMstat,  1.5, timolassmann@gmail.com)
 AC_CONFIG_HEADER([src/config.h])
-AM_INIT_AUTOMAKE([1.9.6 -Wall no-define])
+AM_INIT_AUTOMAKE([ -Wno-portability ])
 
 CXXFLAGS="$CXXFLAGS"
 

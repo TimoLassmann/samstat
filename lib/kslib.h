@@ -14,7 +14,7 @@
 #define kslFAIL            1    /* failure                      */
 #define kslEMEM         2 /* memory failure */
 #define kslEWRT         3 /* write failure */
-#define kslETRD         3 /* thread failure */
+#define kslETRD         4 /* thread failure */
 
 
 #define MMALLOC(p, size) do {\

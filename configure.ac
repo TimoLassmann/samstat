@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(SAMstat,  1.5, timolassmann@gmail.com)
+AC_INIT(SAMstat,  1.5.1, timolassmann@gmail.com)
 AM_INIT_AUTOMAKE([ -Wno-portability ])
 
 CXXFLAGS="$CXXFLAGS"
@@ -102,6 +102,7 @@ AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([dev/Makefile])
 AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_HEADER([src/config.h])
 AC_CONFIG_FILES([lib/Makefile])

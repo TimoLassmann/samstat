@@ -7,7 +7,7 @@ ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS}
 
 
 
-SUBDIRS = lib src
+SUBDIRS = lib  src dev
 
 dist_noinst_SCRIPTS = autogen.sh
 

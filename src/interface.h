@@ -52,6 +52,7 @@ struct parameters {
 	int dust;
 	int sam;
 	int fasta;
+	int local_out;
 };
 
 struct parameters* interface(struct parameters* param,int argc, char *argv[]);

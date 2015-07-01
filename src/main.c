@@ -30,7 +30,7 @@
 #include "io.h"
 #include "hmm.h"
 #include "viz.h"
-#include "pst.h"
+
 
 #include <ctype.h>
 #include <time.h>
@@ -94,7 +94,6 @@ char* make_file_stats(char* filename,char* buffer);
 
 struct hmm_data* hmmdata_init(struct hmm_data* hmm_data, int size);
 void hmmdata_free(struct hmm_data* hmm_data);
-
 
 int main (int argc,char * argv[])
 {
@@ -206,11 +205,18 @@ int main (int argc,char * argv[])
 				}
 				if(ri[i]->qual && seq_stats->has_quality){
 					if(ri[i]->qual[0] != '*'){
-						
-						for(j = 0; j < ri[i]->len;j++){
-							seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]);
-							seq_stats->seq_quality_count[qual_key][j] += 1; //(int)(ri[i]->qual[j]);
-							seq_stats->base_qualities[(int)(ri[i]->qual[j])]++;
+						if(ri[i]->len >=  MAX_SEQ_LEN){
+							for(j = 0;j <  MAX_SEQ_LEN;j++){
+								seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]);
+								seq_stats->seq_quality_count[qual_key][j] += 1; //(int)(ri[i]->qual[j]);
+								seq_stats->base_qualities[(int)(ri[i]->qual[j])]++;
+							}
+						}else{
+							for(j = 0; j < ri[i]->len;j++){
+								seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]);
+								seq_stats->seq_quality_count[qual_key][j] += 1; //(int)(ri[i]->qual[j]);
+								seq_stats->base_qualities[(int)(ri[i]->qual[j])]++;
+							}
 						}
 					}else{
 						seq_stats->has_quality = 0;
@@ -364,15 +370,27 @@ int main (int argc,char * argv[])
 		
 		sprintf(param->outfile,"%s.samstat.html", param->infile[fileID]);
 		
+			
+			if(param->local_out){
+				if ((outfile = fopen(shorten_pathname(param->outfile), "w")) == NULL){
+					sprintf(param->buffer,"ERROR: Cannot open output file: %s\n",shorten_pathname(param->outfile));
+					param->messages = append_message(param->messages, param->buffer);
+					//fprintf(stderr,"can't open output\n");
+					free_param(param);
+					exit(EXIT_FAILURE);
+				}
+				
+			}else{
+			
 		if ((outfile = fopen(param->outfile, "w")) == NULL){
-			sprintf(param->buffer,"ERROR: Cannot open outpuf file: %s\n",param->outfile);
+			sprintf(param->buffer,"ERROR: Cannot open output file: %s\n",param->outfile);
 			param->messages = append_message(param->messages, param->buffer);
 			//fprintf(stderr,"can't open output\n");
 			free_param(param);
 			exit(EXIT_FAILURE);
 		}
 		
-
+			}
 		
 		KSL_DPRINTF1(("%d %d %d\n", seq_stats->min_len,seq_stats->hmm_length,seq_stats->max_len));
 		

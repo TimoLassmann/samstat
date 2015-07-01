@@ -68,6 +68,7 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	param->buffer = 0;
 	param->messages = 0;
 	param->filter = 0;
+	param->local_out = 0;
 	
 	while (1){	 
 		static struct option long_options[] ={
@@ -78,7 +79,7 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 		};
 		
 		int option_index = 0;
-		c = getopt_long_only (argc, argv,"Q:e:o:p:q:hvf:t:i:l:L:a:",long_options, &option_index);
+		c = getopt_long_only (argc, argv,"hvl",long_options, &option_index);
 		
 		if (c == -1){
 			break;
@@ -97,6 +98,9 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 				break;
 			case 'v':
 				version = 1;
+				break;
+			case 'l':
+				param->local_out = 1;
 				break;
 			case '?':
 				exit(1);
@@ -186,6 +190,8 @@ ERROR:
 		}
 		MFREE(param);
 	}
+	
+	
 	
 	return NULL;
 }

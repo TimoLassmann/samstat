@@ -477,7 +477,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			fprintf(out,"<div class=\"chart-legend\"  style=\"float: left;width: 235px\">\n");//, working_width / 10);
 			fprintf(out,"<ul>");
 			for(i = 0; i < pd->num_series; i++){//start ; i < stop;i++){
-				if(pd->show_series[j]){
+				if(pd->show_series[i]){
 					//	fprintf(out,"<li class=\"box\" style=\"background-color: %s;\">X</li>",colors[i + pd->color_scheme]);
 					fprintf(out,"<style>#id%d:before { background-color: %s;}</style>\n",(((i+1) << 16) |   id),colors[i + pd->color_scheme]);
 					fprintf(out,"<li id=\"id%d\">%s</li>",(((i+1) << 16) |   id),pd->series_labels[i] );
@@ -532,7 +532,7 @@ void print_html5_chart(FILE* out,struct plot_data* pd)
 			fprintf(out,"var pieData%d = [\n",id);
 			first = 0;
 			for(i = 0; i < pd->num_series; i++){//start ; i < stop;i++){
-				if(pd->show_series[j]){
+				if(pd->show_series[i]){
 					if(first!=0){
 						fprintf(out,",");
 					}

@@ -28,13 +28,11 @@
 
 #include "misc.h"
 
-#ifndef MMALLOC
-#include "malloc_macro.h"
-#endif
-
-#if HAVE_CONFIG_H
+#ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
+#include "kslib.h"
+
 
 
 /** \fn struct parameters* interface(struct parameters* param,int argc, char *argv[])
@@ -46,6 +44,7 @@
  */
 struct parameters* interface(struct parameters* param,int argc, char *argv[])
 {
+	int status;
 	int i,j,c;
 	int help = 0;
 	int version = 0;
@@ -174,6 +173,21 @@ struct parameters* interface(struct parameters* param,int argc, char *argv[])
 	}
 	param->infiles = c;
 	return param;
+ERROR:
+	if(param){
+		if(param->buffer){
+			MFREE(param->buffer);//,sizeof(char) * MAX_LINE);
+		}
+		if(param->outfile){
+			MFREE(param->outfile);//,,sizeof(char) * MAX_LINE);
+		}
+		if(param->infile){
+			MFREE(param->infile);//,,sizeof(char*)* (argc-optind));
+		}
+		MFREE(param);
+	}
+	
+	return NULL;
 }
 
 

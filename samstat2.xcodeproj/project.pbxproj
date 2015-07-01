@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		25D5B1401965088F00A57D8D /* viz.c in Sources */ = {isa = PBXBuildFile; fileRef = 25D5B13F1965088F00A57D8D /* viz.c */; };
+		270C72A91B4384A50012BAAE /* kslib.c in Sources */ = {isa = PBXBuildFile; fileRef = 270C72A61B4384A50012BAAE /* kslib.c */; };
 		2767683B1991EDB50097D604 /* pst.c in Sources */ = {isa = PBXBuildFile; fileRef = 276768391991EDB50097D604 /* pst.c */; };
 		A196F4E619493CAC00C9B6F2 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4E319493CAC00C9B6F2 /* main.c */; };
 		A196F4E719493CAC00C9B6F2 /* interface.c in Sources */ = {isa = PBXBuildFile; fileRef = A196F4E419493CAC00C9B6F2 /* interface.c */; };
@@ -32,6 +33,9 @@
 /* Begin PBXFileReference section */
 		25D5B13E1965088F00A57D8D /* viz.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = viz.h; path = src/viz.h; sourceTree = "<group>"; };
 		25D5B13F1965088F00A57D8D /* viz.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = viz.c; path = src/viz.c; sourceTree = "<group>"; };
+		270C72A61B4384A50012BAAE /* kslib.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = kslib.c; path = lib/kslib.c; sourceTree = "<group>"; };
+		270C72A71B4384A50012BAAE /* kslib.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = kslib.h; path = lib/kslib.h; sourceTree = "<group>"; };
+		270C72A81B4384A50012BAAE /* Makefile.am */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = Makefile.am; path = lib/Makefile.am; sourceTree = "<group>"; };
 		276768391991EDB50097D604 /* pst.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = pst.c; path = src/pst.c; sourceTree = "<group>"; };
 		2767683A1991EDB50097D604 /* pst.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = pst.h; path = src/pst.h; sourceTree = "<group>"; };
 		278B776A19CFC19F002F1BE1 /* index.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; name = index.html; path = doc/website/index.html; sourceTree = "<group>"; };
@@ -65,9 +69,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		270C72A51B43849A0012BAAE /* lib */ = {
+			isa = PBXGroup;
+			children = (
+				270C72A61B4384A50012BAAE /* kslib.c */,
+				270C72A71B4384A50012BAAE /* kslib.h */,
+				270C72A81B4384A50012BAAE /* Makefile.am */,
+			);
+			name = lib;
+			sourceTree = "<group>";
+		};
 		A196F4CD19493B6000C9B6F2 = {
 			isa = PBXGroup;
 			children = (
+				270C72A51B43849A0012BAAE /* lib */,
 				278B776B19CFCD3E002F1BE1 /* README */,
 				A196F4E819493CB500C9B6F2 /* configure.ac */,
 				A196F4E919493CB500C9B6F2 /* Makefile.am */,
@@ -166,6 +181,7 @@
 				25D5B1401965088F00A57D8D /* viz.c in Sources */,
 				A196F4E619493CAC00C9B6F2 /* main.c in Sources */,
 				2767683B1991EDB50097D604 /* pst.c in Sources */,
+				270C72A91B4384A50012BAAE /* kslib.c in Sources */,
 				A196F4E719493CAC00C9B6F2 /* interface.c in Sources */,
 				A196F4F119493E3600C9B6F2 /* misc.c in Sources */,
 			);

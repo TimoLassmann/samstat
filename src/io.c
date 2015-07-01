@@ -320,19 +320,23 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 
 int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 {
-	char line[MAX_LINE];
+	//char line[MAX_LINE];
 	int column = 0; 
 	int i,j,g,tmp;
-	int read = 0;
+	
 	int c = 0;
 	
 	ri = clear_read_info(ri, param->num_query);
 	
-	while(fgets(line, MAX_LINE, file)){
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t read;
+	while ((read = getline(&line, &len, file)) != -1) {
+	//while(fgets(line, MAX_LINE, file)){
 		if(line[0] != '@'){
 			column = 1; //<QNAME>
 			tmp = 0;
-			for(j = 0;j < MAX_LINE;j++){
+			for(j = 0;j < read;j++){
 				tmp++;
 				if(isspace((int)line[j])){
 					break;
@@ -340,7 +344,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 			}
 			
 			MMALLOC(ri[c]->name,sizeof(unsigned char)* tmp);
-			for(j = 0;j < MAX_LINE;j++){
+			for(j = 0;j < read;j++){
 				
 				if(isspace((int)line[j])){
 					ri[c]->name[j] = 0;
@@ -349,7 +353,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 				ri[c]->name[j] = line[j];
 			}
 			
-			for(i = 0; i < MAX_LINE;i++){
+			for(i = 0; i < read;i++){
 				if(line[i] == '\n'){
 					break;
 				}
@@ -385,7 +389,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 							break;
 						case 6: //  <CIGAR>
 							tmp = 0;
-							for(j = i+1;j < MAX_LINE;j++){
+							for(j = i+1;j < read;j++){
 								tmp++;
 								if(isspace((int)line[j])){
 									break;
@@ -394,7 +398,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 							
 							ri[c]->cigar = malloc(sizeof(unsigned char)* tmp);
 							g = 0;
-							for(j = i+1;j < MAX_LINE;j++){
+							for(j = i+1;j < read;j++){
 								if(isspace((int)line[j])){
 									ri[c]->cigar[g] = 0;
 									break;
@@ -412,7 +416,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 						case 10: // <SEQ>
 							
 							tmp = 0;
-							for(j = i+1;j < MAX_LINE;j++){
+							for(j = i+1;j < read;j++){
 								tmp++;
 								if(isspace((int)line[j])){
 									break;
@@ -423,7 +427,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 							MMALLOC(ri[c]->labels,sizeof(unsigned char)* tmp);
 							
 							g = 0;
-							for(j = i+1;j < MAX_LINE;j++){
+							for(j = i+1;j < read;j++){
 								
 								if(isspace((int)line[j])){
 									ri[c]->seq[g] = 0;
@@ -440,7 +444,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 							break;
 						case 11: // <QUAL>
 							tmp = 0;
-							for(j = i+1;j < MAX_LINE;j++){
+							for(j = i+1;j < read;j++){
 								tmp++;
 								if(isspace((int)line[j])){
 									break;
@@ -448,7 +452,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 							}
 							g= 0;
 							MMALLOC(ri[c]->qual,sizeof(unsigned char)* tmp);
-							for(j = i+1;j < MAX_LINE;j++){
+							for(j = i+1;j < read;j++){
 								
 								if(isspace((int)line[j])){
 									ri[c]->qual[g] = 0;
@@ -461,7 +465,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 						default: 
 							
 									
-							i = MAX_LINE;
+							i = (int) read;
 							break;
 					}				}
 
@@ -479,7 +483,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 			tmp = byg_end("MD:Z:", line  );
 			if(tmp){
 				g = 0;
-				for(j = tmp ;j < MAX_LINE;j++){
+				for(j = tmp ;j < read;j++){
 					g++;
 					if(isspace((int)line[j])){
 						break;
@@ -488,7 +492,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 				}
 				ri[c]->md = malloc(sizeof(unsigned char)* g);
 				g = 0;
-				for(j = tmp ;j < MAX_LINE;j++){
+				for(j = tmp ;j < read;j++){
 					
 					if(isspace((int)line[j])){
 						ri[c]->md[g] = 0;
@@ -504,12 +508,13 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 			//ri[c]->hits[hit] = 0xFFFFFFFFu;
 			
 			c++;
-			read++;
 			if(c == param->num_query){
+				MFREE(line);
 				return c;
 			}
 		}
 	}
+	MFREE(line);
 	return c;
 }
 
@@ -693,7 +698,7 @@ struct read_info** clear_read_info(struct read_info** ri, int numseq)
 		ri[i]->qual = 0;
 		ri[i]->labels = 0;
 		ri[i]->len = 0;
-		ri[i]->mapq = -1.0;
+		ri[i]->mapq = 0;
 		ri[i]->cigar = 0;
 		ri[i]->errors = 0;
 		ri[i]->strand = 0;

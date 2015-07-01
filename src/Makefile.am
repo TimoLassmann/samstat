@@ -1,5 +1,8 @@
-AUTOMAKE_OPTIONS = serial-tests
+
+AM_CPPFLAGS = -I$(top_srcdir)/lib
+
 bin_PROGRAMS = samstat
+
 
 
 samstat_SOURCES = \
@@ -16,11 +19,9 @@ io.h \
 hmm.c \
 hmm.h \
 viz.h \
-viz.c \
-pst.h \
-pst.c
+viz.c
 
-samstat_LDADD = -lm -lpthread
+samstat_LDADD = -lm -lpthread  $(abs_top_builddir)/lib/libks.a
 
 TESTS = hmm_ITEST
 

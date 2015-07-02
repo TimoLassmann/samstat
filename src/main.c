@@ -52,8 +52,8 @@
 struct seq_stats{
 	int** seq_len;
 	int*** nuc_composition;
-	int** seq_quality;
-	int** seq_quality_count;
+	long long int** seq_quality;
+	long long int** seq_quality_count;
 	int* aln_quality;
 	int* alignments;
 	int* nuc_num;
@@ -201,19 +201,20 @@ int main (int argc,char * argv[])
 					ri[i]->seq = reverse_complement(ri[i]->seq,ri[i]->len);
 					if(ri[i]->qual[0] != '*'){
 						reverse_sequence(ri[i]->qual, ri[i]->len);
+						
 					}
 				}
 				if(ri[i]->qual && seq_stats->has_quality){
 					if(ri[i]->qual[0] != '*'){
 						if(ri[i]->len >=  MAX_SEQ_LEN){
 							for(j = 0;j <  MAX_SEQ_LEN;j++){
-								seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]);
+								seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]) -53;
 								seq_stats->seq_quality_count[qual_key][j] += 1; //(int)(ri[i]->qual[j]);
 								seq_stats->base_qualities[(int)(ri[i]->qual[j])]++;
 							}
 						}else{
 							for(j = 0; j < ri[i]->len;j++){
-								seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]);
+								seq_stats->seq_quality[qual_key][j] += (int)(ri[i]->qual[j]) -53;
 								seq_stats->seq_quality_count[qual_key][j] += 1; //(int)(ri[i]->qual[j]);
 								seq_stats->base_qualities[(int)(ri[i]->qual[j])]++;
 							}
@@ -532,7 +533,7 @@ int main (int argc,char * argv[])
 							sprintf(pd->labels[j], "%dnt",j+1);
 						}
 						if(seq_stats->alignments[i] ){
-							pd->data[i][j] =  (float)seq_stats->seq_quality[i][j] /   (float)seq_stats->seq_quality_count[i][j] - (float)seq_stats->base_quality_offset;
+							pd->data[i][j] =  ((float)seq_stats->seq_quality[i][j] /   (float)seq_stats->seq_quality_count[i][j]) + 53   - (float)seq_stats->base_quality_offset;
 						}else{
 							pd->data[i][j] = 0;
 						}
@@ -682,8 +683,6 @@ int main (int argc,char * argv[])
 			print_html5_chart(outfile, pd);
 			
 		}
-		
-		
 		
 		
 		
@@ -905,7 +904,7 @@ char* make_file_stats(char* filename,char* buffer)
 		}
 		strftime(time_string, 200, "%F %H:%M:%S\t", ptr);
 
-		sprintf(buffer,"size:%9d bytes, created %s",(int)buf.st_size, time_string);
+		sprintf(buffer,"size:%lld bytes, created %s",(long long)buf.st_size, time_string);
 	}else{
 		fprintf(stderr,"Failed getting stats for file:%s\n",filename );
 	}
@@ -965,33 +964,31 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
 	
 	
 
-	if(start == 33 && stop == 73 ){
-#ifdef DEBUG
-		fprintf(stderr,"S - Sanger\n");
-#endif
+	if(start >= 33 && stop <= 126 ){
+		KSL_DPRINTF1(("S - Sanger\n"));
+		seq_stats->base_quality_offset = 33;
 	}
-	if(start == 49 && stop == 104){
-#ifdef DEBUG
-		fprintf(stderr,"X - SOLEXA\n");
-#endif
+	if(start >= 59 && stop <= 126){
+		KSL_DPRINTF1(("X - SOLEXA\n"));
+		seq_stats->base_quality_offset = 59;
 	}
-	if(start == 64 && stop == 104){
-#ifdef DEBUG
-		fprintf(stderr,"Illumina 1.3+\n");
-#endif
-	}
-	if(start == 66&& stop == 104 ){
-#ifdef DEBUG
-		fprintf(stderr,"Illumina 1.5+\n");
-#endif
-	}
-	if(start == 33 && stop == 74){
-#ifdef DEBUG
-		fprintf(stderr,"Illumina 1.8+\n");
-#endif
-	}
+	if(start >= 64 && stop <= 126){
+		KSL_DPRINTF1(("Illumina 1.3+\n"));
 
-	seq_stats->base_quality_offset = start;
+		seq_stats->base_quality_offset = 64;
+	}
+	if(start >= 66&& stop <= 126 ){
+		KSL_DPRINTF1(("Illumina 1.5+\n"));
+
+		seq_stats->base_quality_offset = 66;
+	}
+	if(start >= 33 && stop <= 126){
+		KSL_DPRINTF1(("Illumina 1.8+\n"));
+
+		seq_stats->base_quality_offset = 33;
+	}
+	KSL_DPRINTF1(("%d %d\n",start, stop ));
+
 	return seq_stats;
 }
 
@@ -1129,8 +1126,8 @@ struct seq_stats* init_seq_stats(void)
 	
 	MMALLOC(seq_stats->seq_len,sizeof(int*)* 6);
 	MMALLOC(seq_stats->nuc_composition,sizeof(int**)* 6);
-	MMALLOC(seq_stats->seq_quality,sizeof(int*)* 6);
-	MMALLOC(seq_stats->seq_quality_count,sizeof(int*)* 6);
+	MMALLOC(seq_stats->seq_quality,sizeof(long long int*)* 6);
+	MMALLOC(seq_stats->seq_quality_count,sizeof(long long int*)* 6);
 	MMALLOC(seq_stats->aln_quality,sizeof(int)*6);
 	MMALLOC(seq_stats->nuc_num,sizeof(int) * 6);
 	//seq_stats->overall_kmers= malloc(sizeof(float) * KMERALLOC);
@@ -1171,8 +1168,8 @@ struct seq_stats* init_seq_stats(void)
 		
 		MMALLOC(seq_stats->seq_len[c],sizeof(int)* MAX_SEQ_LEN);
 		MMALLOC(seq_stats->nuc_composition[c],sizeof(int*)* MAX_SEQ_LEN);
-		MMALLOC(seq_stats->seq_quality[c],sizeof(int)* MAX_SEQ_LEN);
-		MMALLOC(seq_stats->seq_quality_count[c],sizeof(int)* MAX_SEQ_LEN);
+		MMALLOC(seq_stats->seq_quality[c],sizeof(long long int)* MAX_SEQ_LEN);
+		MMALLOC(seq_stats->seq_quality_count[c],sizeof(long int)* MAX_SEQ_LEN);
 
 		
 		seq_stats->percent_identity[c] = 0.0f;
@@ -1353,7 +1350,7 @@ void free_seq_stats(struct seq_stats* seq_stats)
 		fprintf(stderr,"Class:%d\n",c);
 		for(i= 0; i <= seq_stats->max_len;i++){
 			
-			fprintf(stderr," %d",seq_stats->seq_quality[c][i] );
+			fprintf(stderr," %lld",seq_stats->seq_quality[c][i] );
 			
 		}
 		fprintf(stderr,"\n");
@@ -1438,7 +1435,6 @@ int parse_cigar_md(struct read_info* ri,struct seq_stats* seq_stats,int qual_key
 		read[i] = 0;
 	}
 	
-	KSL_DPRINTF3( ("%s\n%s\n%s\n",ri->name, ri->seq,ri->cigar));
 	
 	l = (int) strlen((char*)ri->cigar);
 	exit_loop = 0;
@@ -1509,7 +1505,6 @@ int parse_cigar_md(struct read_info* ri,struct seq_stats* seq_stats,int qual_key
 		
 	}
 	aln_len = rp;
-	KSL_DPRINTF3( ("aln_len:\n%d\n",aln_len));
 	i =0;
 	rp = 0;
 	

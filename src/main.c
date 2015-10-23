@@ -369,8 +369,7 @@ int main (int argc,char * argv[])
 			param->messages = append_message(param->messages, param->buffer);
 		}else{
 		
-		sprintf(param->outfile,"%s.samstat.html", param->infile[fileID]);
-		
+			sprintf(param->outfile,"%s.samstat.html", param->infile[fileID]);
 			
 			if(param->local_out){
 				if ((outfile = fopen(shorten_pathname(param->outfile), "w")) == NULL){
@@ -380,16 +379,15 @@ int main (int argc,char * argv[])
 					free_param(param);
 					exit(EXIT_FAILURE);
 				}
-				
 			}else{
 			
-		if ((outfile = fopen(param->outfile, "w")) == NULL){
-			sprintf(param->buffer,"ERROR: Cannot open output file: %s\n",param->outfile);
-			param->messages = append_message(param->messages, param->buffer);
-			//fprintf(stderr,"can't open output\n");
-			free_param(param);
-			exit(EXIT_FAILURE);
-		}
+				if ((outfile = fopen(param->outfile, "w")) == NULL){
+					sprintf(param->buffer,"ERROR: Cannot open output file: %s\n",param->outfile);
+					param->messages = append_message(param->messages, param->buffer);
+					//fprintf(stderr,"can't open output\n");
+					free_param(param);
+					exit(EXIT_FAILURE);
+				}
 		
 			}
 		

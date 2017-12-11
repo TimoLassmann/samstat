@@ -1,49 +1,12 @@
-/*
- 
-  Copyright (C) 2013 Timo Lassmann <timolassmann@gmail.com>
- 
-  This file is part of TagDust.
- 
-  TagDust is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
- 
-  TagDust is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
- 
-  You should have received a copy of the GNU General Public License
-  along with Tagdust.  If not, see <http://www.gnu.org/licenses/>.
- 
-*/
-
-/*! \file io.c
-  \brief functions for reading sequences.
- 
-  Initializes nucleotide alphabet needed to parse input. Calls parameter parser. Calls functions to process the data. \author Timo Lassmann \bug No known bugs.
-*/
-
-#include <ctype.h>
-
+#include "samstat.h"
 #include "nuc_code.h"
 #include "misc.h"
 
 #include "io.h"
+#define _BSD_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
 
-#ifndef MMALLOC
-#include "malloc_macro.h"
-#endif
-
-
-
-/** \fn int qsort_ri_prob_compare(const void *a, const void *b)
-    \brief Compares reads based their probability.
-    Used to sort arrays of string using qsort.
-    \param a void pointer to first @ref read_info.
-    \param b void pointer to second @ref read_info.
-*/
 int qsort_ri_mapq_compare(const void *a, const void *b)
 {
 	
@@ -516,6 +479,8 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
         }
         MFREE(line);
         return c;
+ERROR:
+        return FAIL;
 }
 
 int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file) 
@@ -639,6 +604,8 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
                 }
         }
         return size;
+ERROR:
+        return FAIL;
 }
 
 
@@ -664,6 +631,8 @@ struct read_info** malloc_read_info(struct read_info** ri, int numseq)
                 ri[i]->strand = 0;
         }
         return ri;
+ERROR:
+        return NULL;
 }
 
 struct read_info** clear_read_info(struct read_info** ri, int numseq)

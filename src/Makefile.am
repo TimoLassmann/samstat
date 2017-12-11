@@ -1,13 +1,21 @@
 
-AM_CPPFLAGS = -I$(top_srcdir)/lib
+LIB_TLDEVELDIR = @LIB_TLDEVELDIR@ 
+
+MYLIBDIRS = ../tldevel/libthrpool.a \
+../tldevel/libtldevel.a 
+
+
+MYINCDIRS = -I${top_builddir}/${LIB_TLDEVELDIR} \
+-I${top_srcdir}/${LIB_TLDEVELDIR}
+
+AM_CPPFLAGS=${MYINCDIRS} 
 
 bin_PROGRAMS = samstat
 
 
 
 samstat_SOURCES = \
-malloc_macro.h \
-interface.h \
+samstat.h \
 interface.c \
 nuc_code.h \
 nuc_code.c \
@@ -21,7 +29,8 @@ hmm.h \
 viz.h \
 viz.c
 
-samstat_LDADD = -lm -lpthread  $(abs_top_builddir)/lib/libks.a
+
+samstat_LDADD = ${MYLIBDIRS}
 
 TESTS = hmm_ITEST
 
@@ -34,8 +43,8 @@ check_PROGRAMS = hmm_ITEST
 
 
 hmm_ITEST_SOURCES = hmm.c hmm.h
-hmm_ITEST_LDADD = $(samstat_LDADD)
-hmm_ITEST_CPPFLAGS  =  -DITEST
+hmm_ITEST_LDADD = ${MYLIBDIRS}
+hmm_ITEST_CPPFLAGS  = ${MYINCDIRS}  -DITEST
 
 
 

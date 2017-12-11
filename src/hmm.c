@@ -864,8 +864,7 @@ int main (int argc,char * argv[])
 	
         fprintf(stderr,"%f time\n", cpu_time_used);
         
-        return EXIT_SUCCESS;
-        
+        return EXIT_SUCCESS;       
 ERROR:
         return EXIT_FAILURE;
 }

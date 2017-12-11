@@ -49,4 +49,7 @@ struct parameters* interface(int argc, char *argv[]);
 void free_param(struct parameters* param);
 
 
+unsigned int nuc_code[256];
+unsigned int rev_nuc_code[5];
+
 #endif

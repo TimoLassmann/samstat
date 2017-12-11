@@ -17,8 +17,6 @@ bin_PROGRAMS = samstat
 samstat_SOURCES = \
 samstat.h \
 interface.c \
-nuc_code.h \
-nuc_code.c \
 misc.h \
 misc.c \
 main.c \

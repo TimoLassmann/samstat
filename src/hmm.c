@@ -4,23 +4,26 @@
 #include <pthread.h>
 
 
-struct hmm* run_EM_iterations(struct hmm* hmm,struct hmm_data* data)
+int run_EM_iterations(struct hmm* hmm,struct hmm_data* data)
 {
         int i;
+        
         data->run_mode = MODE_BAUM_WELCH;
 	
         for(i = 0; i < data->iterations;i++ ){
-                hmm = run_pHMM(hmm, data);
-                hmm= reestimate_hmm_parameters(hmm);
+                RUN(run_pHMM(hmm, data));
+                RUN(reestimate_hmm_parameters(hmm));
 #ifdef DEBUG
                 fprintf(stderr,"Iteration:%d\n",i);
                 print_hmm_parameters(hmm);
 #endif
         }
-        return hmm;
+        return OK;
+ERROR:
+        return FAIL;
 }
 
-struct hmm* run_pHMM(struct hmm* hmm,struct hmm_data* data)
+int  run_pHMM(struct hmm* hmm,struct hmm_data* data)
 {
         struct thread_data* thread_data = NULL;
         int t;
@@ -107,9 +110,9 @@ struct hmm* run_pHMM(struct hmm* hmm,struct hmm_data* data)
         }
 	
         MFREE(thread_data);
-        return hmm;
+        return OK;
 ERROR:
-        return NULL;
+        return FAIL;
 }
 
 void* do_baum_welch(void *threadarg)
@@ -225,37 +228,40 @@ struct hmm* malloc_hmm(int num_states, int alphabet_len, int max_seq_len)
 	
         return hmm;
 ERROR:
+        free_hmm(hmm);
         return NULL;
 }
 
 void free_hmm(struct hmm* hmm)
 {
         int i;
-        for(i = 0; i < hmm->num_states;i++){
-                if(hmm->emissions[i]){
-                        MFREE(hmm->emissions[i]);
-                        MFREE(hmm->emissions_e[i]);
+        if(hmm){
+                for(i = 0; i < hmm->num_states;i++){
+                        if(hmm->emissions[i]){
+                                MFREE(hmm->emissions[i]);
+                                MFREE(hmm->emissions_e[i]);
+                        }
+                        MFREE(hmm->transitions[i]);
+                        MFREE(hmm->transitions_e[i]);
+                        MFREE(hmm->tindex[i]);
+		
+                        //MFREE(hmm->F[i]);
+                        //MFREE(hmm->B[i]);
+		
                 }
-                MFREE(hmm->transitions[i]);
-                MFREE(hmm->transitions_e[i]);
-                MFREE(hmm->tindex[i]);
-		
-                //MFREE(hmm->F[i]);
-                //MFREE(hmm->B[i]);
-		
+	
+                MFREE(hmm->F);
+                MFREE(hmm->B);
+                MFREE(hmm->F_memory);
+                MFREE(hmm->B_memory);
+	
+                MFREE(hmm->transitions);
+                MFREE(hmm->tindex);
+                MFREE(hmm->transitions_e);
+                MFREE(hmm->emissions);
+                MFREE(hmm->emissions_e);
+                MFREE(hmm);
         }
-	
-        MFREE(hmm->F);
-        MFREE(hmm->B);
-        MFREE(hmm->F_memory);
-        MFREE(hmm->B_memory);
-	
-        MFREE(hmm->transitions);
-        MFREE(hmm->tindex);
-        MFREE(hmm->transitions_e);
-        MFREE(hmm->emissions);
-        MFREE(hmm->emissions_e);
-        MFREE(hmm);
 }
 
 
@@ -346,11 +352,13 @@ void print_hmm_parameters(struct hmm* hmm)
 	
 }
 
-struct hmm* reestimate_hmm_parameters(struct hmm* hmm)
+int reestimate_hmm_parameters(struct hmm* hmm)
 {
         float sum = 0.0f;
         int i,j;
-	
+
+        ASSERT(hmm != NULL,"No Hmm");
+        
         for(i = 2; i < hmm->num_states ;i++){
                 //if(hmm->emissions[i]){
                 sum = -INFINITY;// prob2scaledprob(0.0f);
@@ -420,7 +428,9 @@ struct hmm* reestimate_hmm_parameters(struct hmm* hmm)
 	
 	
 	
-        return hmm;
+        return OK;
+ERROR:
+        return FAIL;
 }
 
 

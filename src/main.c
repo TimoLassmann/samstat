@@ -1,12 +1,11 @@
 #include "samstat.h"
 
-#include "nuc_code.h"
 #include "misc.h"
 #include "io.h"
 #include "hmm.h"
 #include "viz.h"
 
-#define MAX_SEQ_LEN 1000
+#define MAX_SEQ_LEN 512
 #define MAXERROR 100
 
 #define MAQgt30 0
@@ -30,6 +29,8 @@ struct seq_stats{
         int*** insertions;
         int** deletions;
         int* base_qualities;
+
+        int alloc_len; 
         int base_quality_offset;
         int sam;
         int md;
@@ -49,8 +50,8 @@ struct seq_stats{
 
 struct hmm* init_samstat_hmm(int average_length, int max_sequence_len);
 struct seq_stats* init_seq_stats(void);
-struct seq_stats* clear_seq_stats(struct seq_stats* seq_stats);
-struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats);
+int clear_seq_stats(struct seq_stats* seq_stats);
+int reformat_base_qualities(struct seq_stats* seq_stats);
 
 void free_seq_stats(struct seq_stats* seq_stats);
 void print_stats(struct seq_stats* seq_stats);
@@ -59,19 +60,24 @@ int parse_cigar_md(struct read_info* ri,struct seq_stats* seq_stats,int qual_key
 char* make_file_stats(char* filename,char* buffer);
 
 
-struct hmm_data* hmmdata_init(struct hmm_data* hmm_data, int size);
+struct hmm_data* hmmdata_init(int size);
 void hmmdata_free(struct hmm_data* hmm_data);
+
+unsigned int nuc_code[256];
+
+unsigned int rev_nuc_code[5];
+
+int init_nuc_code(void);
 
 int main (int argc,char * argv[])
 {
-        int status;
-	
         struct parameters* param = NULL;
         struct seq_stats* seq_stats = NULL;
         struct plot_data* pd = NULL;
         struct hmm_data* hmm_data= NULL;
         struct hmm** hmms = NULL;
-	
+        struct read_info** ri = NULL;
+        
         int (*fp)(struct read_info** ,struct parameters*,FILE* ) = NULL;
         FILE* file = NULL;
         FILE* outfile = NULL;
@@ -101,7 +107,7 @@ int main (int argc,char * argv[])
 	
 	
 	
-        init_nuc_code();
+        RUN(init_nuc_code());
 	
         RUNP(param = interface(argc,argv));
 	
@@ -111,23 +117,23 @@ int main (int argc,char * argv[])
 #else
         param->num_query = 1000000;
 #endif
-        struct read_info** ri = NULL;
-        ri = malloc_read_info(ri, param->num_query );
+
+        RUNP(ri = malloc_read_info(ri, param->num_query ));
 	
-        seq_stats = init_seq_stats();
+        RUNP(seq_stats = init_seq_stats());
 	
 	
-        hmm_data = hmmdata_init(hmm_data, param->num_query );
+        RUNP(hmm_data = hmmdata_init( param->num_query ));
 	
 	
 	
         for(fileID = 0; fileID < param->infiles;fileID++){
                 sprintf(param->buffer,"%s\n--------------------------------------------------\n", shorten_pathname(param->infile[fileID]));
                 param->messages = append_message(param->messages, param->buffer);
-                seq_stats =  clear_seq_stats(seq_stats);
+                RUN(clear_seq_stats(seq_stats));
                 //outfile
 		
-                file =  io_handler(file, fileID,param);
+                RUNP(file = io_handler(file, fileID,param));
                 if(param->sam == 0){
                         fp = &read_fasta_fastq;
                 }else {
@@ -233,7 +239,7 @@ int main (int argc,char * argv[])
                         if(first_lot){
                                 first_lot = 0;
                                 seq_stats->average_len = (int) floor((double) seq_stats->average_len / (double) numseq   + 0.5);
-                                seq_stats = reformat_base_qualities(seq_stats);
+                                RUN(reformat_base_qualities(seq_stats));
 				
                                 seq_stats->hmm_length =seq_stats->min_len;
                                 if((seq_stats->min_len & 1) == 0){
@@ -251,7 +257,7 @@ int main (int argc,char * argv[])
 				
                                 for(i =0 ; i < 3;i++){
                                         hmms[i] = NULL;
-                                        hmms[i] = init_samstat_hmm(seq_stats->hmm_length, seq_stats->max_len);
+                                        RUNP(hmms[i] = init_samstat_hmm(seq_stats->hmm_length, seq_stats->max_len));
                                 }
 				
                                 // run for Q20-40  and unmapped.
@@ -268,7 +274,7 @@ int main (int argc,char * argv[])
                                 if(j > 100){
                                         sprintf(param->buffer,"Training a HMM on mapq > 20 reads.\n");
                                         param->messages = append_message(param->messages, param->buffer);
-                                        hmms[0] = run_EM_iterations(hmms[0],hmm_data);
+                                        RUN(run_EM_iterations(hmms[0],hmm_data));
                                         sprintf(param->buffer,"Done.\n");
                                         param->messages = append_message(param->messages, param->buffer);
                                         //print_hmm_parameters(hmms[0]);
@@ -290,7 +296,7 @@ int main (int argc,char * argv[])
                                 if(j > 100){
                                         sprintf(param->buffer,"Training a HMM on 0  <= mapq  < 20 reads.\n");
                                         param->messages = append_message(param->messages, param->buffer);
-                                        hmms[1] = run_EM_iterations(hmms[1],hmm_data);
+                                        RUN(run_EM_iterations(hmms[1],hmm_data));
                                         sprintf(param->buffer,"Done.\n");
                                         param->messages = append_message(param->messages, param->buffer);
                                 }else{
@@ -311,7 +317,7 @@ int main (int argc,char * argv[])
                                 if(j > 100){
                                         sprintf(param->buffer,"Training a HMM on unmapped reads.\n");
                                         param->messages = append_message(param->messages, param->buffer);
-                                        hmms[2] = run_EM_iterations(hmms[2],hmm_data);
+                                        RUN(run_EM_iterations(hmms[2],hmm_data));
                                         sprintf(param->buffer,"Done.\n");
                                         param->messages = append_message(param->messages, param->buffer);
                                 }else{
@@ -353,8 +359,6 @@ int main (int argc,char * argv[])
                                 }
 		
                         }
-		
-                        
 		
                         pd = malloc_plot_data(10,   seq_stats->max_len+2   );
                         pd->height = 250;
@@ -800,10 +804,12 @@ ERROR:
         return EXIT_FAILURE;
 }
 
-struct hmm_data* hmmdata_init(struct hmm_data* hmm_data, int size)
+struct hmm_data* hmmdata_init(int size)
 {
-        int status;
+        struct hmm_data* hmm_data = NULL;
         int i;
+        ASSERT(size >0, "No size");
+        
         MMALLOC(hmm_data, sizeof(struct hmm_data));
         hmm_data->length = 0;
         hmm_data->score = 0;
@@ -826,16 +832,27 @@ struct hmm_data* hmmdata_init(struct hmm_data* hmm_data, int size)
 
         return hmm_data;
 ERROR:
+        hmmdata_free(hmm_data);
         return NULL;
 }
 
 void hmmdata_free(struct hmm_data* hmm_data)
 {
-        MFREE(hmm_data->length);//,sizeof(int) *size);
-        MFREE(hmm_data->weight);//,sizeof(float) *size);
-        MFREE(hmm_data->score);//,sizeof(float) *size);
-        MFREE(hmm_data->string);// , sizeof(char* ) * size);
-        MFREE(hmm_data);//
+        if(hmm_data){
+                if(hmm_data->length){
+                        MFREE(hmm_data->length);//,sizeof(int) *size);
+                }
+                if(hmm_data->weight){
+                        MFREE(hmm_data->weight);//,sizeof(float) *size);
+                }
+                if(hmm_data->score){
+                        MFREE(hmm_data->score);//,sizeof(float) *size);
+                }
+                if(hmm_data->string){
+                        MFREE(hmm_data->string);// , sizeof(char* ) * size);
+                }
+                MFREE(hmm_data);//
+        }
 }
 
 
@@ -876,7 +893,7 @@ char* make_file_stats(char* filename,char* buffer)
 }
 
 
-struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
+int reformat_base_qualities(struct seq_stats* seq_stats)
 {
         //From wikipedia:
         /*SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS.....................................................
@@ -904,6 +921,7 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
         int stop = -1;
         //fprintf(stderr,"Got here\n");
         int i;
+        ASSERT(seq_stats != NULL,"No stats");
         for(i =0;i < 256;i++){
                 if(seq_stats->base_qualities[i]){
                         if(start == -1){
@@ -941,7 +959,9 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
         if(start >= 33 && stop <= 126){
                 seq_stats->base_quality_offset = 33;
         }
-        return seq_stats;
+        return OK;
+ERROR:
+        return FAIL;
 }
 
 
@@ -949,10 +969,16 @@ struct seq_stats* reformat_base_qualities(struct seq_stats* seq_stats)
 
 struct hmm* init_samstat_hmm(int average_length, int max_sequence_len)
 {
-        int status;
         struct hmm* hmm = NULL;
-	
-	
+        int i,j,c;
+
+        float sum = 0.0;
+  
+        init_logsum();
+
+        sum = prob2scaledprob(0.0);
+  
+        
         if((average_length & 1) == 0){
                 average_length--;
         }
@@ -960,14 +986,10 @@ struct hmm* init_samstat_hmm(int average_length, int max_sequence_len)
         if(average_length > 41){
                 average_length = 41;
         }
+        
+	      RUNP(hmm = malloc_hmm(average_length + 2, 5,max_sequence_len+2));
 	
-	
-	
-        hmm = malloc_hmm(average_length + 2, 5,max_sequence_len+2);
-	
-        init_logsum();
-	
-        int i,j,c;
+        
         for(i = 0; i < hmm->num_states;i++){
                 for(j = 0; j < hmm->num_states;j++){
                         hmm->transitions[i][j] = prob2scaledprob(0.0);
@@ -984,7 +1006,6 @@ struct hmm* init_samstat_hmm(int average_length, int max_sequence_len)
         hmm->transitions[hmm->num_states-1][ENDSTATE] = prob2scaledprob(1.0f);
 	
         //norm;
-        float sum = prob2scaledprob(0.0);
         for(i = 0; i < hmm->num_states;i++){
                 if(i != 1){
                         sum = prob2scaledprob(0.0);
@@ -1019,24 +1040,21 @@ struct hmm* init_samstat_hmm(int average_length, int max_sequence_len)
                         }
                 }
                 hmm->tindex[i][0] = c+1;
-        }
-	
-        //print_hmm_parameters(hmm);
-        //exit(-1);
+        }	
         return hmm;
 ERROR:
+        free_hmm(hmm);
         return NULL;
-
 }
 
 struct seq_stats* init_seq_stats(void)
 {
-        int status;
         struct seq_stats* seq_stats = NULL;
         int i,j,c;
-	
+   	
         MMALLOC(seq_stats, sizeof(struct seq_stats));
-	
+
+        seq_stats->alloc_len = MAX_SEQ_LEN;
         seq_stats->alignments = NULL;
         seq_stats->aln_quality = NULL;
         seq_stats->deletions = NULL;
@@ -1092,18 +1110,15 @@ struct seq_stats* init_seq_stats(void)
                 seq_stats->seq_quality[c] = NULL;
                 seq_stats->seq_quality_count[c] = NULL;
 	
-		
-		
-		
-                MMALLOC(seq_stats->mismatches[c],sizeof(int*)* MAX_SEQ_LEN);
-                MMALLOC(seq_stats->insertions[c],sizeof(int*) * MAX_SEQ_LEN);
-                MMALLOC(seq_stats->deletions[c],sizeof(int) * MAX_SEQ_LEN);
+                MMALLOC(seq_stats->mismatches[c],sizeof(int*)* seq_stats->alloc_len);
+                MMALLOC(seq_stats->insertions[c],sizeof(int*) * seq_stats->alloc_len);
+                MMALLOC(seq_stats->deletions[c],sizeof(int) * seq_stats->alloc_len);
                 MMALLOC(seq_stats->errors[c],sizeof(float)* MAXERROR );
 		
-                MMALLOC(seq_stats->seq_len[c],sizeof(int)* MAX_SEQ_LEN);
-                MMALLOC(seq_stats->nuc_composition[c],sizeof(int*)* MAX_SEQ_LEN);
-                MMALLOC(seq_stats->seq_quality[c],sizeof(long long int)* MAX_SEQ_LEN);
-                MMALLOC(seq_stats->seq_quality_count[c],sizeof(long int)* MAX_SEQ_LEN);
+                MMALLOC(seq_stats->seq_len[c],sizeof(int)* seq_stats->alloc_len);
+                MMALLOC(seq_stats->nuc_composition[c],sizeof(int*)* seq_stats->alloc_len);
+                MMALLOC(seq_stats->seq_quality[c],sizeof(long long int)* seq_stats->alloc_len);
+                MMALLOC(seq_stats->seq_quality_count[c],sizeof(long int)* seq_stats->alloc_len);
 
 		
                 seq_stats->percent_identity[c] = 0.0f;
@@ -1113,7 +1128,7 @@ struct seq_stats* init_seq_stats(void)
 			
                 }
 		
-                for(i= 0; i < MAX_SEQ_LEN;i++){
+                for(i= 0; i < seq_stats->alloc_len;i++){
                         seq_stats->deletions[c][i] = 0;
                         seq_stats->mismatches[c][i] = NULL;
                         seq_stats->insertions[c][i] = NULL;
@@ -1142,14 +1157,14 @@ struct seq_stats* init_seq_stats(void)
         seq_stats->max_error_per_read =-1000000000;
         return seq_stats;
 ERROR:
+        free_seq_stats(seq_stats);
         return NULL;
 }
 
-struct seq_stats* clear_seq_stats(struct seq_stats* seq_stats)
+int clear_seq_stats(struct seq_stats* seq_stats)
 {
-        //struct seq_stats* seq_stats = NULL;
         int i,j,c;
-	
+        ASSERT(seq_stats != NULL,"No seqstats");
         seq_stats->total_reads = 0;
 	
         for(i= 0; i < 256;i++){
@@ -1188,56 +1203,59 @@ struct seq_stats* clear_seq_stats(struct seq_stats* seq_stats)
         seq_stats->min_len = 1000000000;
         seq_stats->max_len = -1000000000;
         seq_stats->max_error_per_read =-1000000000;
-        return seq_stats;
+        return OK;
+ERROR:
+        return FAIL;
+        
 }
 
 void free_seq_stats(struct seq_stats* seq_stats)
 {
         int i,j;
-	
-        for(j = 0; j < 6;j++){
-                for(i= 0; i < MAX_SEQ_LEN;i++){
-                        free(seq_stats->mismatches[j][i]);// = malloc(sizeof(int)*5);
-                        free(seq_stats->insertions[j][i]);// = malloc(sizeof(int)*5);
+        if(seq_stats){
+                for(j = 0; j < 6;j++){
+                        for(i= 0; i < MAX_SEQ_LEN;i++){
+                                free(seq_stats->mismatches[j][i]);// = malloc(sizeof(int)*5);
+                                free(seq_stats->insertions[j][i]);// = malloc(sizeof(int)*5);
+                        }
+                        free(seq_stats->mismatches[j]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
+                        free(seq_stats->insertions[j]);// = malloc(sizeof(int*) * MAX_SEQ_LEN);
+                        free(seq_stats->deletions[j]);// = malloc(sizeof(int) * MAX_SEQ_LEN);
                 }
-                free(seq_stats->mismatches[j]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
-                free(seq_stats->insertions[j]);// = malloc(sizeof(int*) * MAX_SEQ_LEN);
-                free(seq_stats->deletions[j]);// = malloc(sizeof(int) * MAX_SEQ_LEN);
-        }
-        free(seq_stats->mismatches);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
-        free(seq_stats->insertions);// = malloc(sizeof(int*) * MAX_SEQ_LEN);
-        free(seq_stats->deletions);// = malloc(sizeof(int) * MAX_SEQ_LEN);
+                free(seq_stats->mismatches);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
+                free(seq_stats->insertions);// = malloc(sizeof(int*) * MAX_SEQ_LEN);
+                free(seq_stats->deletions);// = malloc(sizeof(int) * MAX_SEQ_LEN);
 	
-        for(i = 0; i < 6;i++){
+                for(i = 0; i < 6;i++){
 		
-                for(j = 0; j < MAX_SEQ_LEN;j++){
-                        free(seq_stats->nuc_composition[i][j]);// = malloc(sizeof(int*)* 5);
-                        //free(seq_stats->seq_quality[i][j]);// = malloc(sizeof(int)* 6);
+                        for(j = 0; j < MAX_SEQ_LEN;j++){
+                                free(seq_stats->nuc_composition[i][j]);// = malloc(sizeof(int*)* 5);
+                                //free(seq_stats->seq_quality[i][j]);// = malloc(sizeof(int)* 6);
 			
+                        }
+                        //free(seq_stats->seq_quality[i]);
+                        free(seq_stats->seq_len[i]);// = malloc(sizeof(int)* MAX_SEQ_LEN);
+                        free(seq_stats->nuc_composition[i]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
+                        free(seq_stats->seq_quality[i]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
+                        free(seq_stats->seq_quality_count[i]);
                 }
-                //free(seq_stats->seq_quality[i]);
-                free(seq_stats->seq_len[i]);// = malloc(sizeof(int)* MAX_SEQ_LEN);
-                free(seq_stats->nuc_composition[i]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
-                free(seq_stats->seq_quality[i]);// = malloc(sizeof(int*)* MAX_SEQ_LEN);
-                free(seq_stats->seq_quality_count[i]);
-        }
-        for(i = 0; i < 6;i++){
-                free(seq_stats->errors[i]);
-                //free(seq_stats->percent_identity[i]);
+                for(i = 0; i < 6;i++){
+                        free(seq_stats->errors[i]);
+                        //free(seq_stats->percent_identity[i]);
 		
+                }
+                free(seq_stats->errors);
+                free(seq_stats->percent_identity);
+                free(seq_stats->base_qualities);
+                free(seq_stats->alignments);
+                free(seq_stats->nuc_num);
+                free(seq_stats->seq_len);// = malloc(sizeof(int*)* 6);
+                free(seq_stats->nuc_composition);// = malloc(sizeof(int**)* 6);
+                free(seq_stats->seq_quality);// = malloc(sizeof(int**)* 6);
+                free(seq_stats->seq_quality_count);
+                free(seq_stats->aln_quality);// = malloc(sizeof(int)*6);
+                free(seq_stats);// = malloc(sizeof(struct seq_stats));
         }
-        free(seq_stats->errors);
-        free(seq_stats->percent_identity);
-        free(seq_stats->base_qualities);
-        free(seq_stats->alignments);
-        free(seq_stats->nuc_num);
-        free(seq_stats->seq_len);// = malloc(sizeof(int*)* 6);
-        free(seq_stats->nuc_composition);// = malloc(sizeof(int**)* 6);
-        free(seq_stats->seq_quality);// = malloc(sizeof(int**)* 6);
-        free(seq_stats->seq_quality_count);
-        free(seq_stats->aln_quality);// = malloc(sizeof(int)*6);
-        free(seq_stats);// = malloc(sizeof(struct seq_stats));
-	
 }
 
 void print_stats(struct seq_stats* seq_stats)
@@ -1564,6 +1582,35 @@ int parse_cigar_md(struct read_info* ri,struct seq_stats* seq_stats,int qual_key
 
 
 
+int init_nuc_code()
+{
+        int i;
+        for(i = 0;i < 256;i++){
+                nuc_code[i] = 4;
+        }
+	
+	
+        nuc_code[46] = 5;/// dot - will initialize N to p = 1
+	
+        nuc_code[65] = 0;//A Adenine
+        nuc_code[67] = 1;//C	Cytosine
+        nuc_code[71] = 2;//G	Guanine
+        nuc_code[84] = 3;//T	Thymine
+        nuc_code[85] = 3;//U	Uracil
+
+        nuc_code[65+32] = 0;//A Adenine
+        nuc_code[67+32] = 1;//C	Cytosine
+        nuc_code[71+32] = 2;//G	Guanine
+        nuc_code[84+32] = 3;//T	Thymine
+        nuc_code[85+32] = 3;//U	Uracil
+	
+        rev_nuc_code[0] = 3;//A Adenine
+        rev_nuc_code[1] = 2;//C	Cytosine
+        rev_nuc_code[2] = 1;//G	Guanine
+        rev_nuc_code[3] = 0;//T	Thymine
+        rev_nuc_code[4] = 4;//U	Uracil
+        return OK;
+}
 
 
 

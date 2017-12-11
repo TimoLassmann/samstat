@@ -1,6 +1,5 @@
 
 #include "samstat.h"
-#include "nuc_code.h"
 
 #include "misc.h"
 #include <ctype.h>
@@ -702,6 +701,7 @@ int validate_bpm_sse(unsigned char**  query, int* query_lengths,unsigned char* t
 char* reverse_complement(char* p,int len)
 {
         char* tmp = 0;
+        
         MMALLOC(tmp,sizeof(char)*(len +2));
         int i,c;
         c = 0;

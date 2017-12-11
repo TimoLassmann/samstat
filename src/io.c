@@ -1,9 +1,7 @@
 #include "samstat.h"
-#include "nuc_code.h"
 #include "misc.h"
 
 #include "io.h"
-#define _BSD_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -27,20 +25,6 @@ int qsort_ri_mapq_compare(const void *a, const void *b)
         else
                 return 0;
 }
-
-
-
-/** \fn FILE* io_handler(FILE* file, int file_num,struct parameters* param)
-    \brief Opens stream to files. 
- 
-    Recognizes file types by prefix. 
- 
-    Used to sort arrays of string using qsort.
-    \param file empty file pointer.
-    \param file_num index of input file.
-    \param param @ref parameters.
-
-*/
 
 FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 {
@@ -359,7 +343,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                         }
                                                 }
 							
-                                                ri[c]->cigar = malloc(sizeof(unsigned char)* tmp);
+                                                MMALLOC(ri[c]->cigar,sizeof(unsigned char)* tmp);
                                                 g = 0;
                                                 for(j = i+1;j < read;j++){
                                                         if(isspace((int)line[j])){
@@ -453,10 +437,9 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                         }
 					
                                 }
-                                ri[c]->md = malloc(sizeof(unsigned char)* g);
+                                MMALLOC(ri[c]->md,sizeof(unsigned char)* g);
                                 g = 0;
                                 for(j = tmp ;j < read;j++){
-					
                                         if(isspace((int)line[j])){
                                                 ri[c]->md[g] = 0;
                                                 break;
@@ -632,6 +615,8 @@ struct read_info** malloc_read_info(struct read_info** ri, int numseq)
         }
         return ri;
 ERROR:
+        free_read_info(ri,numseq);
+
         return NULL;
 }
 
@@ -678,33 +663,36 @@ struct read_info** clear_read_info(struct read_info** ri, int numseq)
 void free_read_info(struct read_info** ri, int numseq)
 {
         int i;
-	
-        for(i = 0; i < numseq;i++){
-                if(ri[i]->cigar){
-                        MFREE(ri[i]->cigar);
-                }
+	      if(ri != NULL){
+                for(i = 0; i < numseq;i++){
+                        if(ri[i]){
+                                if(ri[i]->cigar){
+                                        MFREE(ri[i]->cigar);
+                                }
 		
-                if(ri[i]->md){
-                        MFREE(ri[i]->md);
-                }
+                                if(ri[i]->md){
+                                        MFREE(ri[i]->md);
+                                }
 		
-                if(ri[i]->labels){
-                        MFREE(ri[i]->labels);
-                }
-                if(ri[i]->name){
-                        MFREE(ri[i]->name);
-                }
+                                if(ri[i]->labels){
+                                        MFREE(ri[i]->labels);
+                                }
+                                if(ri[i]->name){
+                                        MFREE(ri[i]->name);
+                                }
 		
-                if(ri[i]->seq){
-                        MFREE(ri[i]->seq);
-                }
-                if(ri[i]->qual){
-                        MFREE(ri[i]->qual );
-                }
+                                if(ri[i]->seq){
+                                        MFREE(ri[i]->seq);
+                                }
+                                if(ri[i]->qual){
+                                        MFREE(ri[i]->qual );
+                                }
 		
-                MFREE(ri[i]);
+                                MFREE(ri[i]);
+                        }
+                }
+                MFREE(ri);
         }
-        MFREE(ri);
 }
 
 

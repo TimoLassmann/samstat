@@ -57,11 +57,11 @@ struct thread_data{
 
 
 /* convenience fiunctions */
-struct hmm* run_EM_iterations (struct hmm* hmm,struct hmm_data* data);
+int run_EM_iterations (struct hmm* hmm,struct hmm_data* data);
 
 /* Main driver functions */
 
-struct hmm* run_pHMM(struct hmm* hmm,struct hmm_data* data);
+int run_pHMM(struct hmm* hmm,struct hmm_data* data);
 void* do_baum_welch(void *threadarg);
 void* do_forward(void *threadarg);
 
@@ -69,7 +69,7 @@ void* do_forward(void *threadarg);
 struct hmm* backward(struct hmm* hmm, char* a, int len);
 struct hmm* forward(struct hmm* hmm, char* a, int len);
 struct hmm* collect_estimated(struct hmm* hmm, char* a,float weight, int len);
-struct hmm* reestimate_hmm_parameters(struct hmm* hmm);
+int reestimate_hmm_parameters(struct hmm* hmm);
 
 
 /* hmm manipulations */

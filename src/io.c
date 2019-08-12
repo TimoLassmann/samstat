@@ -7,21 +7,21 @@
 
 int qsort_ri_mapq_compare(const void *a, const void *b)
 {
-	
+
         //struct mys **a = (struct mys **)i1;
         //struct mys **b = (struct mys **)i2;
         //return (*b)->id - (*a)->id;
-	
+
         const struct read_info **elem1 = (const struct read_info**) a;
-	
+
         const struct read_info **elem2 = (const struct read_info**) b;
-	
+
         if ( (*elem1)->mapq > (*elem2)->mapq)
                 return -1;
-	
+
         else if ((*elem1)->mapq < (*elem2)->mapq)
                 return 1;
-	
+
         else
                 return 0;
 }
@@ -46,14 +46,14 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
         param->bzipped = 0;
         param->sam = 0;
         param->fasta = 0;
-	
+
         if(!file_exists(param->infile[file_num])){
                 sprintf(param->buffer,"ERROR: Cannot find input file: %s\n",param->infile[file_num] );
                 param->messages = append_message(param->messages, param->buffer);
                 free_param(param);
                 exit(EXIT_FAILURE);
         }
-	
+
         if(!strcmp(".sam", param->infile[file_num] + (strlen(param->infile[file_num] ) - 4))){
                 param->sam = 1;
         }else if (!strcmp(".bam", param->infile[file_num] + (strlen(param->infile[file_num] ) - 4))){
@@ -105,22 +105,22 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                 exit(EXIT_FAILURE);
                 param->sam = -1;
         }
-	
-	
+
+
         if(param->gzipped && gzcat == -1){
                 sprintf(param->buffer,"ERROR: Cannot find gzcat / zcat on your system. Try gzcat <infile> | samstat -f sam/bam/fa/fq\n");
                 param->messages = append_message(param->messages, param->buffer);
                 free_param(param);
                 exit(EXIT_FAILURE);
         }
-	
+
         if(file_num == -1){
                 if(param->sam == 2){
                         command[0] = 0;
                         if(!param->filter){
-                                strcat ( command, "samtools view -F 768 "); 
+                                strcat ( command, "samtools view -F 768 ");
                         }else{
-                                strcat ( command, "samtools view -F "); 
+                                strcat ( command, "samtools view -F ");
                                 sprintf (tmp, "%s ",param->filter);
                                 strcat ( command, tmp);
                         }
@@ -135,9 +135,9 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                 }else if(param->sam == 1){
                         command[0] = 0;
                         if(!param->filter){
-                                strcat ( command, "samtools view -SF 768 "); 
+                                strcat ( command, "samtools view -SF 768 ");
                         }else{
-                                strcat ( command, "samtools view -SF "); 
+                                strcat ( command, "samtools view -SF ");
                                 sprintf (tmp, "%s ",param->filter);
                                 strcat ( command, tmp);
                         }
@@ -155,7 +155,7 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
         }else{
                 if(param->sam == 2){
                         command[0] = 0;
-			
+
                         if(param->bzipped){
                                 strcat ( command, "bzcat ");
                                 if(!param->filter){
@@ -167,12 +167,12 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                                         sprintf (tmp, "%s - ",param->filter);
                                         strcat ( command, tmp);
                                 }
-				
+
                         }else if(param->gzipped){
                                 if(gzcat == 1){
-                                        strcat ( command, "gzcat "); 
+                                        strcat ( command, "gzcat ");
                                 }else{
-                                        strcat ( command, "zcat "); 
+                                        strcat ( command, "zcat ");
                                 }
                                 if(!param->filter){
                                         sprintf (tmp, "%s | samtools view -F 768 - ", param->infile[file_num]);
@@ -185,9 +185,9 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                                 }
                         }else{
                                 if(!param->filter){
-                                        strcat ( command, "samtools view -F 768 "); 
+                                        strcat ( command, "samtools view -F 768 ");
                                 }else{
-                                        strcat ( command, "samtools view -F "); 
+                                        strcat ( command, "samtools view -F ");
                                         sprintf (tmp, "%s ",param->filter);
                                         strcat ( command, tmp);
                                 }
@@ -204,9 +204,9 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                         command[0] = 0;
                         if(param->gzipped){
                                 if(gzcat == 1){
-                                        strcat ( command, "gzcat "); 
+                                        strcat ( command, "gzcat ");
                                 }else{
-                                        strcat ( command, "zcat "); 
+                                        strcat ( command, "zcat ");
                                 }
                                 if(!param->filter){
                                         sprintf (tmp, "%s | samtools view -SF 768 - ", param->infile[file_num]);
@@ -219,9 +219,9 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                                 }
                         }else{
                                 if(!param->filter){
-                                        strcat ( command, "samtools view -SF 768 "); 
+                                        strcat ( command, "samtools view -SF 768 ");
                                 }else{
-                                        strcat ( command, "samtools view -SF "); 
+                                        strcat ( command, "samtools view -SF ");
                                         sprintf (tmp, "%s ",param->filter);
                                         strcat ( command, tmp);
                                 }
@@ -238,7 +238,7 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
                         command[0] = 0;
                         if(param->bzipped){
                                 strcat ( command, "bzcat ");
-				
+
                         }else if(param->gzipped){
                                 if(gzcat == 1){
                                         strcat ( command, "gzcat ");
@@ -267,17 +267,18 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 
 int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 {
-        //char line[MAX_LINE];
-        int column = 0; 
+        char line[MAX_LINE];
+        int column = 0;
         int i,j,g,tmp;
-	
+
         int c = 0;
-	
+
         ri = clear_read_info(ri, param->num_query);
-	
-        char *line = NULL;
+
+        //char *line = NULL;
         size_t len = 0;
         ssize_t read;
+
         while ((read = getline(&line, &len, file)) != -1) {
                 //while(fgets(line, MAX_LINE, file)){
                 if(line[0] != '@'){
@@ -289,17 +290,17 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                         break;
                                 }
                         }
-			
+
                         MMALLOC(ri[c]->name,sizeof(unsigned char)* tmp);
                         for(j = 0;j < read;j++){
-				
+
                                 if(isspace((int)line[j])){
                                         ri[c]->name[j] = 0;
                                         break;
                                 }
                                 ri[c]->name[j] = line[j];
                         }
-			
+
                         for(i = 0; i < read;i++){
                                 if(line[i] == '\n'){
                                         break;
@@ -312,7 +313,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                 ri[i]->strand = (tmp & 0x10);
 
                                                 //WARNING - read should be reverse complemented if mapped to negative strand before tagdusting...
-							
+
                                                 /*tmp = atoi(line+i+1);
                                                   ri[c]->strand[hit] = (tmp & 0x10);
                                                   if(tmp == 4){
@@ -321,18 +322,18 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                   ri[c]->hits[hit] = 1;
                                                   }
                                                   hit++;*/
-							
+
                                                 break;
-                                        case 3: // <RNAME> 
-							
+                                        case 3: // <RNAME>
+
                                                 break;
                                         case 4: // <POS>
-							
+
                                                 break;
                                         case 5: //  <MAPQ>
-							
-                                                ri[c]->mapq =  atof(line +i +1); 
-							
+
+                                                ri[c]->mapq =  atof(line +i +1);
+
                                                 break;
                                         case 6: //  <CIGAR>
                                                 tmp = 0;
@@ -342,7 +343,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                                 break;
                                                         }
                                                 }
-							
+
                                                 MMALLOC(ri[c]->cigar,sizeof(unsigned char)* tmp);
                                                 g = 0;
                                                 for(j = i+1;j < read;j++){
@@ -361,7 +362,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                         case 9: //  <ISIZE>
                                                 break;
                                         case 10: // <SEQ>
-							
+
                                                 tmp = 0;
                                                 for(j = i+1;j < read;j++){
                                                         tmp++;
@@ -369,13 +370,13 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                                 break;
                                                         }
                                                 }
-							
+
                                                 MMALLOC(ri[c]->seq,sizeof(unsigned char)* tmp);
                                                 MMALLOC(ri[c]->labels,sizeof(unsigned char)* tmp);
-							
+
                                                 g = 0;
                                                 for(j = i+1;j < read;j++){
-								
+
                                                         if(isspace((int)line[j])){
                                                                 ri[c]->seq[g] = 0;
                                                                 ri[c]->labels[g] = 0;
@@ -386,7 +387,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 
                                                         g++;
                                                 }
-							
+
                                                 ri[c]->len = g;
                                                 break;
                                         case 11: // <QUAL>
@@ -400,7 +401,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                 g= 0;
                                                 MMALLOC(ri[c]->qual,sizeof(unsigned char)* tmp);
                                                 for(j = i+1;j < read;j++){
-								
+
                                                         if(isspace((int)line[j])){
                                                                 ri[c]->qual[g] = 0;
                                                                 break;
@@ -409,9 +410,9 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                                         g++;
                                                 }
                                                 break;
-                                        default: 
-							
-									
+                                        default:
+
+
                                                 i = (int) read;
                                                 break;
                                         }				}
@@ -423,7 +424,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                 //if(ri[c]->errors > 20){
                                 ///fprintf(stderr,"%s\n,%c,%c,%c,%d\n",line, *(line +tmp), *(line +tmp+1),*(line +tmp+2), ri[c]->errors);
                                 //}
-				
+
                         }else{
                                 ri[c]->errors = -1;
                         }
@@ -435,7 +436,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                         if(isspace((int)line[j])){
                                                 break;
                                         }
-					
+
                                 }
                                 MMALLOC(ri[c]->md,sizeof(unsigned char)* g);
                                 g = 0;
@@ -448,11 +449,11 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
                                         g++;
                                 }
                         }
-						
-			
-			
+
+
+
                         //ri[c]->hits[hit] = 0xFFFFFFFFu;
-			
+
                         c++;
                         if(c == param->num_query){
                                 MFREE(line);
@@ -466,7 +467,7 @@ ERROR:
         return FAIL;
 }
 
-int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file) 
+int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
 {
         int park_pos = -1;
         char line[MAX_LINE];
@@ -475,12 +476,12 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
         int set = 0;
         int len = 0;
         int size = 0;
-	
+
         ri = clear_read_info(ri, param->num_query);
         while(fgets(line, MAX_LINE, file)){
                 if((line[0] == '@' && !set)|| (line[0] == '>' && !set)){
                         //set sequence length of previous read
-			
+
                         //check if there is still space....
                         //if(param->num_query == size){
                         //	fseek (file , -  strlen(line) , SEEK_CUR);
@@ -494,14 +495,14 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
                                 if(iscntrl((int)line[i])){
                                         break;
                                 }
-				
+
                         }
-			
+
                         //ri[park_pos]->hits[0] = 0;
                         //ri[park_pos]->strand[0] = 0;
                         MMALLOC(ri[park_pos]->name,sizeof(unsigned char)* (len+1));
                         for(i = 1;i < MAX_LINE;i++){
-				
+
                                 if(iscntrl((int)line[i])){
                                         ri[park_pos]->name[i-1] = 0;
                                         break;
@@ -509,19 +510,19 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
                                 if(isspace((int)line[i])){
                                         ri[park_pos]->name[i-1] = ';';
                                 }
-				
+
                                 ri[park_pos]->name[i-1] = line[i];
                         }
                         //fprintf(stderr,"LEN:%d	%s\n",len,ri[park_pos]->name);
-			
+
                         set = 1;
                         size++;
-                        //get ready to read quality if present  
+                        //get ready to read quality if present
                 }else if(line[0] == '+' && !set){
                         seq_p = 0;
                         set = 1;
-                        //reading sequence or quality  
-                }else{	
+                        //reading sequence or quality
+                }else{
                         if(set){
                                 if(seq_p){
                                         len = 0;
@@ -533,9 +534,9 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
                                         }
                                         //fprintf(stderr,"SEQ LEN:%d	%s\n",len,line);
                                         MMALLOC(ri[park_pos]->seq,sizeof(unsigned char)* (len+1));
-					
+
                                         MMALLOC(ri[park_pos]->labels, sizeof(unsigned char)* (len+1));
-					
+
                                         for(i = 0;i < MAX_LINE;i++){
                                                 if(iscntrl((int)line[i])){
                                                         ri[park_pos]->seq[i] = 0;
@@ -553,16 +554,16 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
                                                 if(iscntrl((int)line[i])){
                                                         break;
                                                 }
-						
+
                                         }
-					
+
                                         if(len-1 != ri[park_pos]->len ){
                                                 sprintf(param->buffer,"ERROR: Length of sequence and base qualities differ!.\n");
                                                 param->messages = append_message(param->messages, param->buffer);
                                                 free_param(param);
                                                 exit(EXIT_FAILURE);
                                         }
-					
+
                                         //fprintf(stderr,"QUAL LEN:%d\n",len);
                                         MMALLOC(ri[park_pos]->qual,sizeof(unsigned char)* (len+1));
                                         for(i = 0;i < MAX_LINE;i++){
@@ -581,7 +582,7 @@ int read_fasta_fastq(struct read_info** ri,struct parameters* param,FILE *file)
                                 return size;
                         }
                         if(param->fasta && ri[park_pos]->seq){
-			   
+
                                 return size;
                         }
                 }
@@ -596,11 +597,11 @@ struct read_info** malloc_read_info(struct read_info** ri, int numseq)
 {
         int i;
         MMALLOC(ri, sizeof(struct read_info*) * numseq);
-	
+
         for(i = 0; i < numseq;i++){
                 ri[i] = 0;
                 MMALLOC(ri[i], sizeof(struct read_info));
-		
+
                 ri[i]->seq = 0;
                 ri[i]->name = 0;
                 ri[i]->qual = 0;
@@ -623,7 +624,7 @@ ERROR:
 struct read_info** clear_read_info(struct read_info** ri, int numseq)
 {
         int i;
-	
+
         for(i = 0; i < numseq;i++){
                 if(ri[i]->md){
                         MFREE(ri[i]->md);
@@ -635,9 +636,9 @@ struct read_info** clear_read_info(struct read_info** ri, int numseq)
                 if(ri[i]->seq){
                         MFREE(ri[i]->seq);
                 }
-		
-		
-		
+
+
+
                 if(ri[i]->name){
                         MFREE(ri[i]->name);
                 }
@@ -669,25 +670,25 @@ void free_read_info(struct read_info** ri, int numseq)
                                 if(ri[i]->cigar){
                                         MFREE(ri[i]->cigar);
                                 }
-		
+
                                 if(ri[i]->md){
                                         MFREE(ri[i]->md);
                                 }
-		
+
                                 if(ri[i]->labels){
                                         MFREE(ri[i]->labels);
                                 }
                                 if(ri[i]->name){
                                         MFREE(ri[i]->name);
                                 }
-		
+
                                 if(ri[i]->seq){
                                         MFREE(ri[i]->seq);
                                 }
                                 if(ri[i]->qual){
                                         MFREE(ri[i]->qual );
                                 }
-		
+
                                 MFREE(ri[i]);
                         }
                 }

@@ -267,7 +267,7 @@ FILE* io_handler(FILE* file, int file_num,struct parameters* param)
 
 int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 {
-        char line[MAX_LINE];
+        //char line[MAX_LINE];
         int column = 0;
         int i,j,g,tmp;
 
@@ -275,7 +275,7 @@ int read_sam_chunk(struct read_info** ri,struct parameters* param,FILE* file)
 
         ri = clear_read_info(ri, param->num_query);
 
-        //char *line = NULL;
+        char *line = NULL;
         size_t len = 0;
         ssize_t read;
 

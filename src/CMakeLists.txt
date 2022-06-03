@@ -11,9 +11,9 @@ set(htslib_PREFIX ${CMAKE_SOURCE_DIR}/thirdparty/htslib/htslib)
 
 set(htslib_LIB ${CMAKE_SOURCE_DIR}/thirdparty/htslib/libhts.so)
 
-if(NOT EXISTS ${htslib_PREFIX}/sam.h)
-  message(SEND_ERROR "Can't find sam.h in ${htslib_PREFIX}")
-endif()
+# if(NOT EXISTS ${htslib_PREFIX}/sam.h)
+#   message(SEND_ERROR "Can't find sam.h in ${htslib_PREFIX}")
+# endif()
 
 #include_directories(${htslib_PREFIX})
 

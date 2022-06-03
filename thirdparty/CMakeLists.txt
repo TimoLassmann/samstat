@@ -42,7 +42,7 @@ ExternalProject_Add_Step(
 
 ExternalProject_Add_Step(
   htslib autoconf
-  COMMAND "autoconf"  
+  COMMAND autoreconf -i  
   WORKING_DIRECTORY "${htslib_PREFIX}"
   DEPENDERS autoheader
   DEPENDEES download

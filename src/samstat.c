@@ -1,8 +1,7 @@
 #include "tld.h"
 
-#include "htslib/hts.h"
-#include "htslib/sam.h"
-
+#include "sam.h"
+#include "hts.h"
 
 
 #define TEST_BAM "~/tmp/SRR528324_strim.fq.all.bam"

@@ -1,6 +1,6 @@
 [submodule "tldevel"]
 	path = tldevel
 	url = https://github.com/TimoLassmann/tldevel.git
-[submodule "thirdparty/htslib"]
-	path = thirdparty/htslib
-	url = https://github.com/samtools/htslib.git
+[submodule "thirdparty/tld"]
+	path = thirdparty/tld
+	url = https://github.com/timolassmann/tld.git

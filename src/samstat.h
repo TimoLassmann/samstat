@@ -1,7 +1,6 @@
-
 #ifndef SAMSTAT_HEADER
 
-#define SAMSTAT_HEADER 
+#define SAMSTAT_HEADER
 
 
 #ifdef HAVE_CONFIG_H
@@ -21,7 +20,7 @@
 #include <math.h>
 
 #include "tldevel.h"
-#include "thr_pool.h"
+/* #include "thr_pool.h" */
 
 
 struct parameters {
@@ -49,7 +48,7 @@ struct parameters* interface(int argc, char *argv[]);
 void free_param(struct parameters* param);
 
 
-unsigned int nuc_code[256];
+/*unsigned int nuc_code[256];
 unsigned int rev_nuc_code[5];
-
+*/
 #endif

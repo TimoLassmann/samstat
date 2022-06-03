@@ -29,6 +29,9 @@ if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")    
 endif()
 
+include(ExternalProject)
+include("thirdparty/htslib.cmake")
+
 #option(BUILD_SHARED_LIBS "Build all libraries as shared" OFF)
 add_subdirectory(thirdparty)
 

@@ -4,6 +4,3 @@
 [submodule "thirdparty/tld"]
 	path = thirdparty/tld
 	url = https://github.com/timolassmann/tld.git
-[submodule "thirdparty/htslib"]
-	path = thirdparty/htslib
-	url = https://github.com/samtools/htslib.git

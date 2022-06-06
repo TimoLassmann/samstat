@@ -1,7 +1,6 @@
 #ifndef HTSGLUE_H
 #define HTSGLUE_H
 
-#include "seq/tld-seq.h"
 #include "tld.h"
 #include "sam.h"
 #include "hts.h"
@@ -14,9 +13,13 @@
 #endif
 
 struct aln_data {
+        tld_strbuf* md;
+        uint32_t* cigar;
         int num_hits;
         int map_q;
         int error;
+        int n_cigar;
+        int n_alloc_cigar;
         uint64_t start;
         uint64_t stop;
 };

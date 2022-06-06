@@ -1,7 +1,10 @@
 #include "alloc/tld-alloc.h"
 #include "core/tld-core.h"
+#include "sam.h"
 #include "seq/tld-seq.h"
+#include "string/str.h"
 #include "tld.h"
+#include <stdint.h>
 #include <stdio.h>
 
 #define HTSGLUE_IMPORT
@@ -62,7 +65,8 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                                 fprintf(stdout,"%c","=ACMGRSVTWYHKDBN"[bam_seqi(seq, i)]);
                         }
                         fprintf(stdout,"\n");
-                        snprintf(s->name,TL_SEQ_MAX_NAME_LEN,"%s",bam_get_qname(b));
+                        tld_append(s->name, bam_get_qname(b));
+                        /* snprintf(s->name,TL_SEQ_MAX_NAME_LEN,"%s",bam_get_qname(b)); */
 
                         /* snprintf(sb_ptr->name, MAX_SEQ_NAME_LEN,"%s",bam_get_qname(b)); */
                         a->num_hits = 0;
@@ -98,6 +102,17 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
 
                         }
 
+                        a->n_cigar = b->core.n_cigar;
+                        if(a->n_cigar > a->n_alloc_cigar){
+                                a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
+                                gfree(a->cigar);
+                                a->cigar = NULL;
+                                galloc(&a->cigar, a->n_alloc_cigar);
+                        }
+                        uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
+                        for(int i = 0; i < a->n_cigar;i++){
+                                a->cigar[i] = tmp[i];
+                        }
                         sb->num_seq++;
                         if(sb->num_seq ==  sb->malloc_num){
                                 /* exit(0); */
@@ -159,7 +174,14 @@ int alloc_aln_data(struct aln_data **aln_d)
         a->start = 0;
         a->map_q = 0;
         a->num_hits = 0;
+        a->md = NULL;
+        a->cigar = NULL;
+        a->n_cigar = 0;
+        a->n_alloc_cigar= 16;
+        RUN(tld_strbuf_alloc(&a->md, 16));
 
+        galloc(&a->cigar, a->n_alloc_cigar);
+        /* RUN(tld_strbuf_alloc(&a->cigar, 16)); */
         *aln_d = a;
         return OK;
 ERROR:
@@ -171,6 +193,13 @@ ERROR:
 void free_aln_data(struct aln_data *a)
 {
         if(a){
+                if(a->md){
+                        tld_strbuf_free(a->md);
+                }
+
+                if(a->cigar){
+                        gfree(a->cigar);
+                }
                 MFREE(a);
         }
 }

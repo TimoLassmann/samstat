@@ -1,5 +1,6 @@
 #include "htsinterface/htsglue.h"
 #include "seq/tld-seq.h"
+#include "string/str.h"
 #include "tld.h"
 
 #include <stdint.h>
@@ -33,13 +34,26 @@ int main(int argc, char *argv[])
                 }
                 for(int i = 0 ; i < sb->num_seq;i++){
                         struct aln_data* a = (struct aln_data*) sb->sequences[i]->data;
-                        fprintf(stdout,"%s\n%s\n%d\n", sb->sequences[i]->name,
+                        fprintf(stdout,"%s\n%s\n%d\n", TLD_STR( sb->sequences[i]->name),
                                 sb->sequences[i]->seq,
                                 a->error
                                 );
+                        for(int j = 0;j< a->n_cigar;j++){
+                                if (bam_cigar_opchr(a->cigar[j]) == 'H')
+                                        printf ("hard clipped, number of bases: %d\n", bam_cigar_oplen(a->cigar[j]));
+                                else if (bam_cigar_opchr(a->cigar[j]) == 'D')
+                                        printf ("deletion, number of bases: %d\n", bam_cigar_oplen(a->cigar[j]));
+                                else if (bam_cigar_opchr(a->cigar[j]) == 'I')
+                                        printf ("insertion, number of bases: %d\n", bam_cigar_oplen(a->cigar[j]));
+                                else if (bam_cigar_opchr(a->cigar[j]) == 'M')
+                                        printf ("match/mismatch, number of bases: %d\n", bam_cigar_oplen(a->cigar[j]));
+                                else if (bam_cigar_opchr(a->cigar[j]) == 'S')
+                                        printf ("soft clipped, number of bases: %d\n", bam_cigar_oplen(a->cigar[j]));
+                        }
                 }
                 break;
-                sb->num_seq = 0;
+                /* sb->num_seq = 0; */
+                reset_tl_seq_buffer(sb);
         }
         RUN(close_bam(f_handle));
 

@@ -12,5 +12,13 @@ target_link_libraries(samstat PRIVATE z)
 target_link_libraries(samstat PRIVATE bz2)
 target_link_libraries(samstat PRIVATE lzma)
 target_link_libraries(samstat PRIVATE curl)
-target_link_libraries(samstat PRIVATE hts)
+
+if(APPLE)  
+  target_link_libraries(samstat PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
+else()
+  target_link_libraries(samstat PRIVATE hts)
+endif()
+
+
+#target_link_libraries(samstat PRIVATE hts)
 target_link_libraries(samstat PRIVATE tld-dev)

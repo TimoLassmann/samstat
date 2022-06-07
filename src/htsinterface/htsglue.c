@@ -4,6 +4,7 @@
 #include "seq/tld-seq.h"
 #include "string/str.h"
 #include "tld.h"
+#include <htslib/sam.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -50,7 +51,7 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
         int r = 0;
 
         while ((r = sam_read1(f_handle->in, h, b)) >= 0){
-                if(b->core.qual >= 1){
+                if(b->core.qual >= 0){
                         struct tl_seq* s = NULL;
                         struct aln_data* a = NULL;
                         uint8_t * seq =    bam_get_seq(b);
@@ -96,10 +97,18 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         }
                         /* extra stuff  */
                         if(! (BAM_FUNMAP & b->core.flag)){
-                                uint8_t * aux =  bam_aux_get(b,"NH");
-                                LOG_MSG("NM: %d", bam_aux2i(aux));
-                                a->error = bam_aux2i(aux);
+                                uint8_t * aux =  bam_aux_get(b,"NM");
+                                if(aux){
+                                        /* LOG_MSG("NM: %d", bam_aux2i(aux)); */
+                                        a->error = bam_aux2i(aux);
+                                }
+                                aux =  bam_aux_get(b,"MD");
+                                if(aux){
+                                        /* LOG_MSG("NM: %d", bam_aux2i(aux)); */
+                                        /* LOG_MSG("%s",bam_aux2Z(aux)); */
+                                        tld_append(a->md,bam_aux2Z(aux));
 
+                                }
                         }
 
                         a->n_cigar = b->core.n_cigar;
@@ -113,6 +122,10 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         for(int i = 0; i < a->n_cigar;i++){
                                 a->cigar[i] = tmp[i];
                         }
+
+                        a->reverse = bam_is_rev(b);
+
+
                         sb->num_seq++;
                         if(sb->num_seq ==  sb->malloc_num){
                                 /* exit(0); */
@@ -178,6 +191,7 @@ int alloc_aln_data(struct aln_data **aln_d)
         a->cigar = NULL;
         a->n_cigar = 0;
         a->n_alloc_cigar= 16;
+        a->reverse = 0;
         RUN(tld_strbuf_alloc(&a->md, 16));
 
         galloc(&a->cigar, a->n_alloc_cigar);

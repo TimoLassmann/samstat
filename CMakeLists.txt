@@ -7,7 +7,6 @@ set (CMAKE_C_STANDARD 11)
 add_compile_options("$<$<CONFIG:RELEASE>:-W;-Wall;-pedantic>")
 add_compile_options("$<$<CONFIG:DEBUG>:-W;-Wall;-O0;-pedantic;-DDEBUG>")
 
-
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
   if (MSVC)
     # warning level 4 and all warnings as errors

@@ -22,6 +22,7 @@ struct aln_data {
         int n_alloc_cigar;
         uint64_t start;
         uint64_t stop;
+        uint8_t reverse;
 };
 
 struct sam_bam_file {

@@ -183,16 +183,22 @@ int alloc_aln_data(struct aln_data **aln_d)
 {
         struct aln_data* a = NULL;
         MMALLOC(a, sizeof(struct aln_data));
-        a->stop = 0;
-        a->start = 0;
+        a->aln_len_alloc = 256;
+        a->aln_len = 0;
         a->map_q = 0;
         a->num_hits = 0;
         a->md = NULL;
         a->cigar = NULL;
+        a->genome = NULL;
+        a->read = NULL;
         a->n_cigar = 0;
         a->n_alloc_cigar= 16;
         a->reverse = 0;
         RUN(tld_strbuf_alloc(&a->md, 16));
+        galloc(&a->read, a->aln_len_alloc);
+        galloc(&a->genome, a->aln_len_alloc);
+        LOG_MSG("%p %p", a->genome,a->read);
+        /* RUN(tld_strbuf_alloc(&a->genome, 256)); */
 
         galloc(&a->cigar, a->n_alloc_cigar);
         /* RUN(tld_strbuf_alloc(&a->cigar, 16)); */
@@ -209,6 +215,13 @@ void free_aln_data(struct aln_data *a)
         if(a){
                 if(a->md){
                         tld_strbuf_free(a->md);
+                }
+
+                if(a->genome){
+                        gfree(a->genome);
+                }
+                if(a->read){
+                        gfree(a->read);
                 }
 
                 if(a->cigar){

@@ -47,6 +47,7 @@ ERROR:
         return FAIL;
 }
 
+
 int parse_alignment(struct tl_seq *s)
 {
         struct aln_data* a = NULL;
@@ -63,14 +64,59 @@ int parse_alignment(struct tl_seq *s)
         aln_len = 0;
 
         for(int i = 0;i < a->n_cigar;i++){
-                Oplen = bam_cigar_oplen(a->cigar[i]);
-                aln_len += Oplen;
+                Op = bam_cigar_opchr(a->cigar[i]);
+                switch (Op) {
+                case 'N':
+                        break;
+                case 'P':
+                        /* We'll ignore padding */
+                        break;
+                case 'H':
+                        /* We'll ignore hard clipping as we have nothing to work on */
+                        break;
+                case 'S':
+                        break;
+                case 'M':
+                case '=':
+                case 'X':
+                case 'I':
+                case 'D':
+                        Oplen = bam_cigar_oplen(a->cigar[i]);
+                        aln_len += Oplen;
+                        break;
+                default:
+                        break;
+                }
         }
+        a->aln_len = aln_len;
         aln_len++;
 
+        /* if(a->error == 0){ */
+        /*         LOG_MSG("No errors - no need to parse"); */
+        /*         return OK; */
+        /* }else  */
+        if(a->md == NULL){
+                LOG_MSG("No MD - no need to parse");
+                return OK;
+        }
+        /* LOG_MSG("%p %p", a->genome, a->read); */
+        if(a->aln_len >= a->aln_len_alloc){
+                /* LOG_MSG("READLLOPC"); */
+                a->aln_len_alloc = MACRO_MAX(a->aln_len_alloc + a->aln_len_alloc / 2, a->aln_len_alloc + a->aln_len - a->aln_len_alloc + 1);
+                gfree(a->read);
+                gfree(a->genome);
+                a->read = NULL;
+                a->genome = NULL;
+                galloc(&a->genome, a->aln_len_alloc);
+                galloc(&a->read, a->aln_len_alloc);
+        }
 
-        galloc(&genome, aln_len);
-        galloc(&read, aln_len);
+        genome = a->genome;
+        read = a->read;
+
+        /* galloc(&genome, aln_len); */
+        /* galloc(&read, aln_len); */
+        /* LOG_MSG("%p %p", genome, read); */
         for(int i = 0;i < aln_len;i++){
                 genome[i] = 0;
                 read[i] = 0;
@@ -97,6 +143,8 @@ int parse_alignment(struct tl_seq *s)
                 case '=':
                 case 'X':
                         for(int j = 0; j < Oplen;j++){
+                                /* tld_append_char(a->read,s->seq[sp]); */
+                                /* a->read  */
                                 read[rp] = s->seq[sp];
                                 sp++;
                                 rp++;
@@ -105,7 +153,9 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 case 'I':
                         for(int j = 0; j < Oplen;j++){
+                                /* tld_append_char(a->read,s->seq[sp]); */
                                 read[rp] = s->seq[sp];
+                                /* tld_append_char(a->genome,'-'); */
                                 genome[rp] =255;
                                 sp++;
                                 rp++;
@@ -113,6 +163,7 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 case 'D':
                         for(int j = 0; j < Oplen;j++){
+                                /* tld_append_char(a->read,'-'); */
                                 read[rp] = 255;
                                 rp++;
                         }
@@ -121,6 +172,7 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 }
         }
+        /* log_MSG("RP: %d", rp); */
         aln_len = rp;
 
         /* for(int i = 0; i < aln_len;i++){ */
@@ -149,6 +201,12 @@ int parse_alignment(struct tl_seq *s)
 
                                 //fprintf(stderr,"MD:%d\n",c);
                                 for(j = 0; j < c;j++){
+                                        /* if(a->genome->str[pos] != '-'){ */
+                                        /*         a->genome->str[pos] = a->read->str[pos]; */
+                                        /* }else{ */
+                                        /*         c++; */
+                                        /* } */
+
                                         if(genome[pos] != 255){
                                                 genome[pos] = read[pos];
                                         }else{
@@ -157,6 +215,7 @@ int parse_alignment(struct tl_seq *s)
                                         pos++;
                                 }
                         }else if(isalpha((int)md[i])){
+                                /* a->genome->str[pos] = md[i]; */
                                 genome[pos] = (int)md[i];
                                 pos++;
                                 i++;
@@ -168,7 +227,8 @@ int parse_alignment(struct tl_seq *s)
                         }
                 }
         }
-        /* LOG_MSG("GFINADSA : -------------------"); */
+        /* LOG_MSG("%s\n", TLD_STR(a->genome)); */
+        /* LOG_MSG("%s\n", TLD_STR(a->read)); */
         /* for(int i = 0; i < aln_len;i++){ */
         /*         LOG_MSG("%d %d",genome[i],read[i]); */
         /* } */
@@ -197,13 +257,17 @@ int parse_alignment(struct tl_seq *s)
         fprintf(stdout,"\n");
 
         fprintf(stdout, "%s (read)\n",read);
-        gfree(genome);
-        gfree(read);
+
+        if(a->reverse){
+
+        }
+        /* gfree(genome); */
+        /* gfree(read); */
 
         return OK;
 ERROR:
-        gfree(genome);
-        gfree(read);
+        /* gfree(genome); */
+        /* gfree(read); */
         return FAIL;
 }
 

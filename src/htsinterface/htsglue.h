@@ -15,13 +15,17 @@
 struct aln_data {
         tld_strbuf* md;
         uint32_t* cigar;
+        uint8_t* genome;
+        uint8_t* read;
         int num_hits;
         int map_q;
         int error;
         int n_cigar;
         int n_alloc_cigar;
-        uint64_t start;
-        uint64_t stop;
+        int aln_len;
+        int aln_len_alloc;
+        /* uint64_t start; */
+        /* uint64_t stop; */
         uint8_t reverse;
 };
 

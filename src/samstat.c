@@ -41,6 +41,7 @@ int main(int argc, char *argv[])
                                 /* a->error, */
                                 /* a->reverse */
                                 );
+
                         parse_alignment(sb->sequences[i]);
                         /* get_readable_cigar(a, NULL); */
                 }

@@ -1,4 +1,5 @@
 #include "sambamparse/sam_bam_parse.h"
+#include "seq/tld-seq.h"
 #include "string/str.h"
 #include "tld.h"
 
@@ -29,6 +30,7 @@ int main(int argc, char *argv[])
 
         RUN(open_bam(&f_handle, argv[1]));
         while(1){
+
                 RUN(read_bam_chunk(f_handle, sb));
                 if(sb->num_seq == 0){
                         break;
@@ -44,6 +46,24 @@ int main(int argc, char *argv[])
 
                         parse_alignment(sb->sequences[i]);
                         /* get_readable_cigar(a, NULL); */
+                        char* cig = NULL;
+                        get_readable_cigar(a, &cig);
+                        fprintf(stdout,"Cigar: %s\n",cig);
+                        fprintf(stdout,"   MD: %s\n",TLD_STR(a->md));
+                        gfree(cig);
+
+                        fprintf(stdout, "%s (genome)\n",a->genome);
+                        for(int i = 0; i < a->aln_len;i++){
+                                if(a->genome[i] == a->read[i]){
+                                        fprintf(stdout,"|");
+                                }else{
+                                        fprintf(stdout," ");
+                                }
+                        }
+                        fprintf(stdout,"\n");
+
+                        fprintf(stdout, "%s (read)\n",a->read);
+
                 }
                 break;
 /* sb->num_seq = 0; */

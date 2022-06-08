@@ -96,6 +96,7 @@ int parse_alignment(struct tl_seq *s)
         /*         return OK; */
         /* }else  */
         if(a->md == NULL){
+                a->aln_len = 0;
                 LOG_MSG("No MD - no need to parse");
                 return OK;
         }

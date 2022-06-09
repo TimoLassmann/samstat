@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+  <script src="https://d3js.org/d3.v4.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <body>
+    <h2>D3.js Scatter-Plot</h2>
+
+    <svg id="myPlot" style="width:500px;height:500px"></svg>
+
+    <script>
+      // Set Dimensions
+      const xSize = 500; 
+      const ySize = 500;
+      const margin = 40;
+      const xMax = xSize - margin*2;
+      const yMax = ySize - margin*2;
+
+      // Create Random Points
+      const numPoints = 100;
+      const data = [];
+      for (let i = 0; i < numPoints; i++) {
+          data.push([Math.random() * xMax, Math.random() * yMax]);
+      }
+
+      // Append SVG Object to the Page
+      const svg = d3.select("#myPlot")
+            .append("svg")
+            .append("g")
+            .attr("transform","translate(" + margin + "," + margin + ")");
+
+      // X Axis
+      const x = d3.scaleLinear()
+            .domain([0, 500]) .range([0, xMax]);
+
+      svg.append("g")
+    .attr("transform", "translate(0," + yMax + ")")
+    .call(d3.axisBottom(x));
+
+      // Y Axis
+      const y = d3.scaleLinear()
+            .domain([0, 500])
+            .range([ yMax, 0]);
+
+      svg.append("g")
+    .call(d3.axisLeft(y));
+
+      // Dots
+      svg.append('g')
+    .selectAll("dot")
+    .data(data).enter()
+    .append("circle")
+    .attr("cx", function (d) { return d[0] } )
+    .attr("cy", function (d) { return d[1] } )
+    .attr("r", 3)
+    .style("fill", "Red");
+    </script>
+    <h2>ploty</h2>
+    <div id="myPlot3" style="width:100%;max-width:700px"></div>
+    <h2>plotyss </h2>
+    <div id="myDiv" style="width:100%;max-width:700px"></div>
+    <script>
+      var xArray = [50,60,70,80,90,100,110,120,130,140,150];
+      var yArray = [7,8,8,9,9,9,10,11,14,14,15];
+
+      // Define Data
+      var data5 = [{
+          x:xArray,
+          y:yArray,
+          mode:"markers"
+      }];
+
+      // Define Layout
+      var layout = {
+          xaxis: {range: [40, 160], title: "Square Meters"},
+          yaxis: {range: [5, 16], title: "Price in Millions"},  
+          title: "House Prices vs. Size"
+      };
+
+      // Display using Plotly
+      Plotly.newPlot("myPlot3", data5, layout);
+
+      var trace1 = {
+          x: ['giraffes', 'orangutans', 'monkeys'],
+          y: [20, 14, 23],
+          name: 'SF Zoo',
+          type: 'bar'
+      };
+
+      var trace2 = {
+          x: ['giraffes', 'orangutans', 'monkeys'],
+          y: [12, 18, 29],
+          name: 'LA Zoo',
+          type: 'bar'
+
+      };
+      var data45 = [trace1, trace2];
+
+
+      var layout2 = {barmode: 'stack'};
+
+
+      Plotly.newPlot('myDiv', data45, layout2);
+
+
+      
+    </script>
+
+
+
+  </body>
+</html>

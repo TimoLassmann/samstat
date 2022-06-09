@@ -1,12 +1,12 @@
+
 #include "core/tld-core.h"
-#include "misc/misc.h"
 #include "seq/tld-seq.h"
-#include "string/str.h"
 #include "tld.h"
 #include "sambamparse/sam_bam_parse.h"
 
 #include "htslib/sam.h"
 #include "htsinterface/htsglue.h"
+#include "param/param.h"
 #include <stdint.h>
 
 #define FILE_TYPE_SAMBAM 0
@@ -14,14 +14,17 @@
 #define FILE_TYPE_UNKNOWN 2
 
 int detect_file_type(char *filename, int* type);
-int process_sam_bam_file(char *filename);
-int process_fasta_fastq_file(char *filename);
+int process_sam_bam_file(struct samstat_param* p, int id);
+int process_fasta_fastq_file(struct samstat_param* p, int id);
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 /* #define TEST_BAM "/Users/Timo/tmp/77.bam" */
 /* #define TEST_BAM "/home/timo/tmp/SYD-40350604.dedup.realigned.recalibrated_UPFB3.bam" */
 /* #define TEST_BAM "/home/timo/tmp/test.sam" */
 int main(int argc, char *argv[])
 {
+        struct samstat_param* param = NULL;
+        parse_param(argc, argv, &param);
+
         fprintf(stdout,"Hello world\n");
         fprintf(stdout,"HTS version:%d\n", HTS_VERSION);
         int* g = NULL;
@@ -33,18 +36,19 @@ int main(int argc, char *argv[])
 
         gfree(g);
 
-        for(int i = 1 ; i < argc;i++){
+        for(int i = 0 ; i < param->n_infile;i++){
                 int t = -1;
-                RUN(detect_file_type(argv[i], &t));
-                fprintf(stdout,"%s ->type %d\n", argv[i],t);
+                RUN(detect_file_type(param->infile[i], &t));
+                fprintf(stdout,"%s ->type %d\n", param->infile[i],t);
                 if(t == FILE_TYPE_FASTAQ){
-                        process_fasta_fastq_file(argv[i]);
+                        process_fasta_fastq_file(param,i);
                 }else if(t == FILE_TYPE_SAMBAM){
-                        process_sam_bam_file(argv[i]);
+                        process_sam_bam_file(param,i);
                 }
 
         }
 
+        param_free(param);
         exit(0);
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
@@ -143,19 +147,20 @@ int detect_file_type(char *filename, int* type)
 ERROR:
         return FAIL;
 }
-
-int process_sam_bam_file(char *filename)
+int process_sam_bam_file(struct samstat_param* p, int id)
 {
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
 
-        create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA);
+        ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        RUN(alloc_tl_seq_buffer(&sb, 20));
+        RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
+        RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA));
+        sb->data = a;
 
-        RUN(open_bam(&f_handle, filename));
+        RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
 
                 RUN(read_bam_chunk(f_handle, sb));
@@ -173,7 +178,10 @@ int process_sam_bam_file(char *filename)
         }
         RUN(close_bam(f_handle));
 
-
+        if(sb->data){
+                a = sb->data;
+                free_alphabet(a);
+        }
         free_aln_data(sb);
         free_tl_seq_buffer(sb);
         return OK;
@@ -181,18 +189,33 @@ ERROR:
         return FAIL;
 }
 
-int process_fasta_fastq_file(char *filename)
+int process_fasta_fastq_file(struct samstat_param* p, int id)
 {
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
+        struct alphabet* a = NULL;
+        ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        RUN(open_fasta_fastq_file(&f_handle, filename, TLSEQIO_READ));
+        RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
+        RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
 
         while(1){
 
-                RUN(read_fasta_fastq_file(f_handle, &sb, 1000));
+                RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
+
                 LOG_MSG("%d", sb->base_quality_offset);
                 detect_format(sb);
+                if(!sb->data){
+                        LOG_MSG("Setting alphabet");
+                        if(sb->L == TL_SEQ_BUFFER_DNA){
+                                RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA));
+                        }else if(sb->L == TL_SEQ_BUFFER_PROTEIN){
+                                RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_PROTEIN));
+                        }else{
+                                ERROR_MSG("Bio polymer size %d not recognized", sb->L);
+                        }
+                        sb->data = a;
+                }
                 LOG_MSG("%d", sb->base_quality_offset);
                 //total_r+= sb->num_seq;
                 LOG_MSG("Finished reading chunk: found %d ",sb->num_seq);
@@ -205,6 +228,10 @@ int process_fasta_fastq_file(char *filename)
                 /*         fprintf(stdout, "%s\n", sb->sequences[i]->seq); */
                 /* } */
                 reset_tl_seq_buffer(sb);
+        }
+        if(sb->data){
+                a = sb->data;
+                free_alphabet(a);
         }
         free_tl_seq_buffer(sb);
         RUN(close_seq_file(&f_handle));

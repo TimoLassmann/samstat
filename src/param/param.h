@@ -16,7 +16,7 @@ struct samstat_param {
         int quiet;
 };
 
-
+EXTERN int parse_param(int argc, char *argv[], struct samstat_param **param);
 EXTERN  int param_init(struct samstat_param **param);
 EXTERN void param_free(struct samstat_param *p);
 

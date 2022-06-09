@@ -1,5 +1,6 @@
 #include <getopt.h>
 #include "H5Cpublic.h"
+#include "alloc/tld-alloc.h"
 #include "tld.h"
 #define PARAM_IMPORT
 #include "param.h"
@@ -87,16 +88,11 @@ ERROR:
 
 void usage()
 {
-
-        fprintf(stdout, "\n%s %s, Copyright (C) 2022 Timo Lassmann\n",PACKAGE_NAME, PACKAGE_VERSION);
-
-        fprintf(stdout, "\n");
-        fprintf(stdout, "Usage:   samstat <file1> <file2>  ...  \n\n");
-
-        fprintf(stdout, "SAMstat will produce a summary file (html) for each input file named\n <original filename>.samstat.html.\n");
-
-        fprintf(stdout, "\n");
-
+        fprintf(stderr, "\n%s %s, Copyright (C) 2022 Timo Lassmann\n",PACKAGE_NAME, PACKAGE_VERSION);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Usage:   samstat <file1> <file2>  ...  \n\n");
+        fprintf(stderr, "SAMstat will produce a summary file (html) for each input file named\n <original filename>.samstat.html.\n");
+        fprintf(stderr, "\n");
 }
 
 
@@ -123,6 +119,9 @@ void param_free(struct samstat_param *p)
 {
 
         if(p){
+                if(p->infile){
+                        MFREE(p->infile);
+                }
                 MFREE(p);
         }
 

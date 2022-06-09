@@ -1,12 +1,10 @@
-
-#include "core/tld-core.h"
-#include "seq/tld-seq.h"
 #include "tld.h"
 #include "sambamparse/sam_bam_parse.h"
 
 #include "htslib/sam.h"
 #include "htsinterface/htsglue.h"
 #include "param/param.h"
+#include "metrics/metrics.h"
 #include <stdint.h>
 
 #define FILE_TYPE_SAMBAM 0
@@ -153,12 +151,17 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
 
+        struct metrics* metrics = NULL;
+
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
         RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA));
         sb->data = a;
+
+
+        RUN(metrics_alloc(&metrics));
 
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
@@ -170,14 +173,19 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 if(sb->num_seq == 0){
                         break;
                 }
+                get_metrics(sb,metrics);
                 /* LOG_MSG("L: %d",sb->L); */
-                //debug_seq_buffer_print(sb);
+                //debug_seq_buffier_print(sb);
                 /* break; */
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
         }
         RUN(close_bam(f_handle));
 
+
+        RUN(debug_metrics_print(metrics));
+
+        metrics_free(metrics);
         if(sb->data){
                 a = sb->data;
                 free_alphabet(a);
@@ -194,10 +202,15 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
+
+        struct metrics* metrics = NULL;
+
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
         RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
+
+        RUN(metrics_alloc(&metrics));
 
         while(1){
 
@@ -222,6 +235,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 if(sb->num_seq == 0){
                         break;
                 }
+                RUN(get_metrics(sb,metrics));
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffer_print(sb);
                 /* for(int i = 0; i < sb->num_seq;i++){ */
@@ -229,6 +243,8 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 /* } */
                 reset_tl_seq_buffer(sb);
         }
+        RUN(debug_metrics_print(metrics));
+        metrics_free(metrics);
         if(sb->data){
                 a = sb->data;
                 free_alphabet(a);

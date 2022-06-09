@@ -134,7 +134,9 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         }
 
                         a->reverse = bam_is_rev(b);
-
+                        if(s->len > sb->max_len){
+                                sb->max_len = s->len;
+                        }
 
                         sb->num_seq++;
                         if(sb->num_seq ==  sb->malloc_num){

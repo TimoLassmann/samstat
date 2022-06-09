@@ -3,8 +3,8 @@ add_executable(samstat
   htsinterface/htsglue.c
   sambamparse/sam_bam_parse.c
   param/param.c
+  metrics/metrics.c
   )
-
 
 target_link_directories(samstat PUBLIC ${HTSLIB_SRC_DIR})
 

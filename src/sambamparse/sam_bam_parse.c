@@ -91,18 +91,14 @@ int parse_alignment(struct tl_seq *s)
         a->aln_len = aln_len;
         aln_len++;
 
-        /* if(a->error == 0){ */
-        /*         LOG_MSG("No errors - no need to parse"); */
-        /*         return OK; */
-        /* }else  */
+
         if(a->md == NULL){
                 a->aln_len = 0;
-                LOG_MSG("No MD - no need to parse");
+
                 return OK;
         }
-        /* LOG_MSG("%p %p", a->genome, a->read); */
+        /* LOG_MSG("%p %p  %d %d ", a->genome, a->read, a->aln_len, a->aln_len_alloc); */
         if(a->aln_len >= a->aln_len_alloc){
-                /* LOG_MSG("READLLOPC"); */
                 a->aln_len_alloc = MACRO_MAX(a->aln_len_alloc + a->aln_len_alloc / 2, a->aln_len_alloc + a->aln_len - a->aln_len_alloc + 1);
                 gfree(a->read);
                 gfree(a->genome);
@@ -114,15 +110,10 @@ int parse_alignment(struct tl_seq *s)
 
         genome = a->genome;
         read = a->read;
-
-        /* galloc(&genome, aln_len); */
-        /* galloc(&read, aln_len); */
-        /* LOG_MSG("%p %p", genome, read); */
         for(int i = 0;i < aln_len;i++){
                 genome[i] = 0;
                 read[i] = 0;
         }
-
         rp = 0;
         sp = 0;
         for(int i = 0;i < a->n_cigar;i++){
@@ -173,13 +164,11 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 }
         }
-        /* log_MSG("RP: %d", rp); */
+        /* LOG_MSG("RP: %d", rp); */
         aln_len = rp;
 
-        /* for(int i = 0; i < aln_len;i++){ */
-        /*         LOG_MSG("%d %d",genome[i],read[i]); */
-        /* } */
         int l = a->md->len;
+
         if(l){
                 int pos = 0;
                 int i = 0;
@@ -199,15 +188,7 @@ int parse_alignment(struct tl_seq *s)
                                 tmp_num[j] = 0;
 
                                 int c = atoi(tmp_num);
-
-                                //fprintf(stderr,"MD:%d\n",c);
                                 for(j = 0; j < c;j++){
-                                        /* if(a->genome->str[pos] != '-'){ */
-                                        /*         a->genome->str[pos] = a->read->str[pos]; */
-                                        /* }else{ */
-                                        /*         c++; */
-                                        /* } */
-
                                         if(genome[pos] != 255){
                                                 genome[pos] = read[pos];
                                         }else{
@@ -216,7 +197,6 @@ int parse_alignment(struct tl_seq *s)
                                         pos++;
                                 }
                         }else if(isalpha((int)md[i])){
-                                /* a->genome->str[pos] = md[i]; */
                                 genome[pos] = (int)md[i];
                                 pos++;
                                 i++;
@@ -228,11 +208,6 @@ int parse_alignment(struct tl_seq *s)
                         }
                 }
         }
-        /* LOG_MSG("%s\n", TLD_STR(a->genome)); */
-        /* LOG_MSG("%s\n", TLD_STR(a->read)); */
-        /* for(int i = 0; i < aln_len;i++){ */
-        /*         LOG_MSG("%d %d",genome[i],read[i]); */
-        /* } */
         for(int i = 0; i < aln_len;i++){
                 if(genome[i] == 255){
                         genome[i] = '-';
@@ -241,30 +216,6 @@ int parse_alignment(struct tl_seq *s)
                         read[i] = '-';
                 }
         }
-        char* cig = NULL;
-        get_readable_cigar(a, &cig);
-        fprintf(stdout,"Cigar: %s\n",cig);
-        fprintf(stdout,"   MD: %s\n",TLD_STR(a->md));
-        gfree(cig);
-
-        fprintf(stdout, "%s (genome)\n",genome);
-        for(int i = 0; i < aln_len;i++){
-                if(genome[i] == read[i]){
-                        fprintf(stdout,"|");
-                }else{
-                        fprintf(stdout," ");
-                }
-        }
-        fprintf(stdout,"\n");
-
-        fprintf(stdout, "%s (read)\n",read);
-
-        if(a->reverse){
-
-        }
-        /* gfree(genome); */
-        /* gfree(read); */
-
         return OK;
 ERROR:
         /* gfree(genome); */

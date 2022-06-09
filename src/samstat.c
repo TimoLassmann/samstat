@@ -1,3 +1,4 @@
+#include "core/tld-core.h"
 #include "misc/misc.h"
 #include "seq/tld-seq.h"
 #include "string/str.h"
@@ -147,6 +148,9 @@ int process_sam_bam_file(char *filename)
 {
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
+        struct alphabet* a = NULL;
+
+        create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA);
 
         RUN(alloc_tl_seq_buffer(&sb, 20));
         add_aln_data(sb);
@@ -155,17 +159,22 @@ int process_sam_bam_file(char *filename)
         while(1){
 
                 RUN(read_bam_chunk(f_handle, sb));
+                sb->L = TL_SEQ_BUFFER_DNA;
+                sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
+
                 if(sb->num_seq == 0){
                         break;
                 }
-                debug_seq_buffer_print(sb);
+                /* LOG_MSG("L: %d",sb->L); */
+                //debug_seq_buffer_print(sb);
                 /* break; */
+                clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
         }
         RUN(close_bam(f_handle));
 
 
-        clear_aln_data(sb);
+        free_aln_data(sb);
         free_tl_seq_buffer(sb);
         return OK;
 ERROR:
@@ -176,18 +185,22 @@ int process_fasta_fastq_file(char *filename)
 {
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
+
         RUN(open_fasta_fastq_file(&f_handle, filename, TLSEQIO_READ));
 
         while(1){
+
                 RUN(read_fasta_fastq_file(f_handle, &sb, 1000));
+                LOG_MSG("%d", sb->base_quality_offset);
                 detect_format(sb);
+                LOG_MSG("%d", sb->base_quality_offset);
                 //total_r+= sb->num_seq;
                 LOG_MSG("Finished reading chunk: found %d ",sb->num_seq);
                 if(sb->num_seq == 0){
                         break;
                 }
-
-                debug_seq_buffer_print(sb);
+                /* LOG_MSG("L: %d",sb->L); */
+                //debug_seq_buffer_print(sb);
                 /* for(int i = 0; i < sb->num_seq;i++){ */
                 /*         fprintf(stdout, "%s\n", sb->sequences[i]->seq); */
                 /* } */

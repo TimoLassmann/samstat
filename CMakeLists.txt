@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.1)
 
 project(samstat LANGUAGES C VERSION "2.0")
 
+
+
 set (CMAKE_C_STANDARD 11)
 
 add_compile_options("$<$<CONFIG:RELEASE>:-W;-Wall;-pedantic>")
@@ -28,6 +30,22 @@ if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")    
 endif()
 
+message(STATUS "${CMAKE_PROJECT_NAME} NAME ")
+
+message(STATUS "${CMAKE_PROJECT_VERSION} vERSINO ")
+
+if(NOT PACKAGE_NAME)
+set(PACKAGE_NAME ${CMAKE_PROJECT_NAME})
+endif()
+
+if(NOT PACKAGE_VERSION)
+set(PACKAGE_VERSION ${CMAKE_PROJECT_VERSION})
+endif()
+
+
+
+configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/src/config.h.in"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/config.h" )
 include(ExternalProject)
 include("thirdparty/htslib.cmake")
 

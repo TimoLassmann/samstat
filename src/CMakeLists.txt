@@ -2,6 +2,7 @@ add_executable(samstat
   samstat.c
   htsinterface/htsglue.c
   sambamparse/sam_bam_parse.c
+  param/param.c
   )
 
 

@@ -40,6 +40,7 @@ struct sam_bam_file {
 
 EXTERN int add_aln_data(struct tl_seq_buffer *sb);
 EXTERN int clear_aln_data(struct tl_seq_buffer *sb);
+EXTERN int free_aln_data(struct tl_seq_buffer *sb);
 
 EXTERN int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb);
 EXTERN int open_bam(struct sam_bam_file **file, char *filename);

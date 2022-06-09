@@ -11,7 +11,7 @@
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
 
-static void free_aln_data(struct aln_data *a);
+static void free_aln_data_struct(struct aln_data *a);
 static int alloc_aln_data(struct aln_data **aln_d);
 
 
@@ -35,7 +35,22 @@ int clear_aln_data(struct tl_seq_buffer *sb)
 {
         for(int i = 0; i < sb->malloc_num;i++){
                 if(sb->sequences[i]->data){
-                        free_aln_data(sb->sequences[i]->data);
+                        struct aln_data* a = NULL;
+                        a = sb->sequences[i]->data;
+                        a->md->len = 0;
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+
+int free_aln_data(struct tl_seq_buffer *sb)
+{
+        for(int i = 0; i < sb->malloc_num;i++){
+                if(sb->sequences[i]->data){
+                        free_aln_data_struct(sb->sequences[i]->data);
                         sb->sequences[i]->data = NULL;
                 }
         }
@@ -43,6 +58,7 @@ int clear_aln_data(struct tl_seq_buffer *sb)
 ERROR:
         return FAIL;
 }
+
 
 int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
 {
@@ -56,16 +72,10 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         struct aln_data* a = NULL;
                         uint8_t * seq =    bam_get_seq(b);
                         uint8_t* qual_ptr = bam_get_qual(b);
-                        int len =b->core.l_qseq;
 
                         s = sb->sequences[sb->num_seq];
                         a = (struct aln_data* )s->data;
 
-
-                        for (int i = 0; i < len; ++i){
-                                fprintf(stdout,"%c","=ACMGRSVTWYHKDBN"[bam_seqi(seq, i)]);
-                        }
-                        fprintf(stdout,"\n");
                         tld_append(s->name, bam_get_qname(b));
                         /* snprintf(s->name,TL_SEQ_MAX_NAME_LEN,"%s",bam_get_qname(b)); */
 
@@ -183,34 +193,30 @@ int alloc_aln_data(struct aln_data **aln_d)
 {
         struct aln_data* a = NULL;
         MMALLOC(a, sizeof(struct aln_data));
-        a->aln_len_alloc = 256;
-        a->aln_len = 0;
-        a->map_q = 0;
-        a->num_hits = 0;
         a->md = NULL;
         a->cigar = NULL;
         a->genome = NULL;
         a->read = NULL;
+        a->aln_len_alloc = 256;
+        a->aln_len = 0;
+        a->map_q = 0;
+        a->num_hits = 0;
         a->n_cigar = 0;
-        a->n_alloc_cigar= 16;
+        a->n_alloc_cigar = 16;
         a->reverse = 0;
         RUN(tld_strbuf_alloc(&a->md, 16));
         galloc(&a->read, a->aln_len_alloc);
         galloc(&a->genome, a->aln_len_alloc);
-        LOG_MSG("%p %p", a->genome,a->read);
-        /* RUN(tld_strbuf_alloc(&a->genome, 256)); */
-
         galloc(&a->cigar, a->n_alloc_cigar);
-        /* RUN(tld_strbuf_alloc(&a->cigar, 16)); */
         *aln_d = a;
         return OK;
 ERROR:
-        free_aln_data(a);
+        free_aln_data_struct(a);
         return FAIL;
 }
 
 
-void free_aln_data(struct aln_data *a)
+void free_aln_data_struct(struct aln_data *a)
 {
         if(a){
                 if(a->md){

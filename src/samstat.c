@@ -26,12 +26,11 @@ int main(int argc, char *argv[])
         fprintf(stdout,"Hello world\n");
         fprintf(stdout,"HTS version:%d\n", HTS_VERSION);
         int* g = NULL;
-        galloc(&g,100);
 
+        galloc(&g,100);
         for(int i = 0; i < 100;i++){
                 g[i] = i;
         }
-
         gfree(g);
 
         for(int i = 0 ; i < param->n_infile;i++){

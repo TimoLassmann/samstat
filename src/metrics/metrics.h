@@ -23,9 +23,16 @@ struct seq_composition {
         uint32_t n_counts;
 };
 
+struct qual_composition {
+        uint32_t** data;
+        int len;
+        int L;
+        uint32_t n_counts;
+};
 
 struct metrics {
         struct seq_composition** seq_comp;
+        struct qual_composition** qual_comp;
         struct mapqual_bins* mapq_map;
         uint32_t min_len;
         uint32_t max_len;

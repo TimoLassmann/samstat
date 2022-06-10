@@ -99,8 +99,12 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                 s->seq[s->len ] = 0;
 
                 if(qual_ptr[0] == 0xFF){
-                        s->qual[0] = '*';
-                        s->qual[1] = 0;
+                        /* s->qual[0] = '*'; */
+                        /* s->qual[1] = 0; */
+                        for (int i = 0; i < s->len; ++i){
+                                s->qual[i] = 'J';
+                        }
+                        s->qual[s->len] = 0 ;
                 }else{
                         for (int i = 0; i < s->len; ++i){
                                 s->qual[i] = qual_ptr[i] + 33;

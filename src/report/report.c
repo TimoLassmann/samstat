@@ -12,7 +12,7 @@ static int report_footer(tld_strbuf *out_buffer);
 
 static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
 static int base_composition_section(tld_strbuf *o, struct metrics *m);
-
+static int base_quality_section(tld_strbuf *o, struct metrics *m);
 
 int report_header(tld_strbuf *out_buffer)
 {
@@ -21,12 +21,10 @@ int report_header(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<script src=\"https://d3js.org/d3.v4.js\"></script>\n"));
         RUN(tld_append(out_buffer, "<script src=\"https://cdn.plot.ly/plotly-latest.min.js\"></script>\n"));
         RUN(tld_append(out_buffer, "<body>\n"));
-
         return OK;
 ERROR:
         return FAIL;
 }
-
 
 int report_footer(tld_strbuf *out_buffer)
 {
@@ -80,9 +78,49 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o, "showlegend: true\n"));
         RUN(tld_append(o, "}\n"));
 
-
         RUN(tld_append(o, "Plotly.newPlot('MappingStats', mapping_data, mapping_layout)\n"));
 
+        RUN(tld_append(o,"</script>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int base_quality_section(tld_strbuf *o, struct metrics *m)
+{
+        struct qual_composition* q = NULL;
+        char buf[256];
+
+        q = m->qual_comp[0];
+
+        RUN(tld_append(o, "<h2>Base quality distribution</h2>\n"));
+        RUN(tld_append(o, "<div id=\"qualcomp \" style=\"width:100%;max-width:1400px\"></div>\n"));
+        RUN(tld_append(o, "<script>\n"));
+        RUN(tld_append(o, "var basex = [\n"));
+        for(int i = 0 ; i < q->len;i++){
+                for(int j = 0; j < q->L;j++){
+                        snprintf(buf, 256,"%d,",i);
+                        RUN(tld_append(o,buf));
+                }
+        }
+        o->len--;
+        RUN(tld_append(o, "]\n"));
+
+
+
+        /* } */
+        /* {} */
+
+
+        /*         RUN(tld_append(o,"x: [")); */
+        /*         snprintf(buf, 256,"%d",1); */
+        /*         RUN(tld_append(o,buf)); */
+        /*         for(int j = 1 ; j < seq_comp->len;j++){ */
+        /*                 snprintf(buf, 256,",%d",j+1); */
+        /*                 RUN(tld_append(o,buf)); */
+        /*         } */
+        /*         RUN(tld_append(o,"],\n")); */
+        /* } */
         RUN(tld_append(o,"</script>\n"));
         return OK;
 ERROR:
@@ -120,7 +158,6 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
                         snprintf(buf, 256,"basecomp%d", mapq_idx);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
-
                         RUN(tld_append(o,"<script>\n"));
 
                         for(int i = 0; i < seq_comp->L;i++){
@@ -148,7 +185,6 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
                                         RUN(tld_append(o,buf));
                                 }
                                 RUN(tld_append(o,"type: 'bar'\n"));
-
                                 RUN(tld_append(o,"};\n"));
                         }
 
@@ -184,7 +220,6 @@ ERROR:
         return FAIL;
 }
 
-
 int create_report(struct metrics *m, struct samstat_param *p)
 {
         tld_strbuf* out = NULL;
@@ -193,8 +228,9 @@ int create_report(struct metrics *m, struct samstat_param *p)
 
         RUN(report_header(out));
 
-        mapping_quality_overview_section(out,m);
-        base_composition_section(out, m);
+        RUN(mapping_quality_overview_section(out,m));
+        RUN(base_composition_section(out, m));
+        RUN(base_quality_section(out,m));
 
         RUN(report_footer(out));
 

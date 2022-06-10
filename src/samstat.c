@@ -166,14 +166,11 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         metrics->is_aligned = 1;
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
-                if(p->file_type[id] == FILE_TYPE_SAMBAM){
-                        RUN(read_bam_chunk(f_handle, sb));
-                        sb->L = TL_SEQ_BUFFER_DNA;
-                        sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
 
-                }else if(p->file_type[id] == FILE_TYPE_FASTAQ){
+                RUN(read_bam_chunk(f_handle, sb));
+                sb->L = TL_SEQ_BUFFER_DNA;
+                sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
 
-                }
                 if(sb->num_seq == 0){
                         break;
                 }

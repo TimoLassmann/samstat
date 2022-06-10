@@ -19,6 +19,7 @@ if(APPLE)
   target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR})
   target_link_libraries(samstat PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
 else()
+  target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR})
   target_link_libraries(samstat PRIVATE hts)
 endif()
 

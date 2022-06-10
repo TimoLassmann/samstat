@@ -1,5 +1,7 @@
 
 
+#include "H5public.h"
+#include "alloc/tld-alloc.h"
 #include "tld.h"
 
 #include "../htsinterface/htsglue.h"
@@ -10,14 +12,60 @@
 
 
 static int collect_seq_comp(struct metrics *m, struct tl_seq *s);
+static int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset);
+
 static int alloc_seq_comp(struct seq_composition **seq_comp, int L, int max_len);
 static int resize_seq_comp(struct seq_composition* s,int newL, int new_max_len);
 static void free_seq_comp(struct seq_composition *s);
+
+static int alloc_qual_comp(struct qual_composition **qual_comp, int max_len);
+static int resize_qual_comp(struct qual_composition* q, int new_max_len);
+static void free_qual_comp(struct qual_composition *q);
 
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
 
 static int reverse_complement(struct tl_seq *s);
+
+int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
+{
+        /*  */
+        /* Sanity checks  */
+
+        int len_change = 0;
+        for(int i = 0; i < sb->num_seq;i++){
+                if(m->max_len < (uint32_t)sb->sequences[i]->len){
+                        m->max_len = sb->sequences[i]->len;
+                        len_change = 1;
+                }
+                if(m->min_len > (uint32_t)sb->sequences[i]->len){
+                        m->min_len = sb->sequences[i]->len;
+                }
+        }
+        /* Sequence composition */
+        for(int i = 0; i < 6;i++){
+                if(!m->seq_comp[i]){
+                        RUN(alloc_seq_comp(&m->seq_comp[i], sb->L, m->max_len));
+                        RUN(alloc_qual_comp(&m->qual_comp[i], m->max_len));
+                }else if(len_change){   /* need to resize as a longer sequence was found  */
+                        RUN(resize_seq_comp(m->seq_comp[i], sb->L, m->max_len));
+                        RUN(resize_qual_comp(m->qual_comp[i], m->max_len));
+                }
+
+        }
+
+        for(int i = 0; i < sb->num_seq;i++){
+                collect_seq_comp(m, sb->sequences[i]);
+
+                collect_qual_comp(m, sb->sequences[i], sb->base_quality_offset);
+        }
+
+
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 int get_mapqual_bins(struct mapqual_bins **map)
 {
@@ -92,39 +140,6 @@ void free_mapqual_bins(struct mapqual_bins *m)
 /*         return FAIL; */
 /* } */
 
-int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
-{
-        /*  */
-        /* Sanity checks  */
-
-        int len_change = 0;
-        for(int i = 0; i < sb->num_seq;i++){
-                if(m->max_len < (uint32_t)sb->sequences[i]->len){
-                        m->max_len = sb->sequences[i]->len;
-                        len_change = 1;
-                }
-                if(m->min_len > (uint32_t)sb->sequences[i]->len){
-                        m->min_len = sb->sequences[i]->len;
-                }
-        }
-        /* Sequence composition */
-        for(int i = 0; i < 6;i++){
-                if(!m->seq_comp[i]){
-                        RUN(alloc_seq_comp(&m->seq_comp[i], sb->L, m->max_len));
-                }else if(len_change){   /* need to resize as a longer sequence was found  */
-                        RUN(resize_seq_comp(m->seq_comp[i], sb->L, m->max_len));
-                }
-        }
-
-        for(int i = 0; i < sb->num_seq;i++){
-                collect_seq_comp(m, sb->sequences[i]);
-        }
-
-
-        return OK;
-ERROR:
-        return FAIL;
-}
 
 int collect_seq_comp(struct metrics *m, struct tl_seq *s)
 {
@@ -136,6 +151,7 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
                 if(a->reverse){
                         /* LOG_MSG("Oh no I should reverse!"); */
                         reverse_complement(s);
+                        a->reverse  = 0;
                 }
                 mapq_idx = m->mapq_map->map[ a->map_q];
         }
@@ -165,6 +181,35 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
                         c->data[4][i]++;
                         break;
                 }
+        }
+        c->n_counts++;
+        return OK;
+}
+
+int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
+{
+        struct qual_composition* c = NULL;
+        int mapq_idx = 0;
+        if(s->data){
+                struct aln_data* a = NULL;
+                a = s->data;
+                if(a->reverse){
+                        /* LOG_MSG("Oh no I should reverse!"); */
+                        reverse_complement(s);
+                        a->reverse  = 0;
+                }
+
+                mapq_idx = m->mapq_map->map[ a->map_q];
+        }
+        /* s->seq */
+        c = m->qual_comp[mapq_idx];
+
+        for(int i = 0;i < s->len;i++){
+                int q = (int)s->qual[i] - offset;
+                if(q > 41){
+                        q = 41;
+                }
+                c->data[q][i]++;
         }
         c->n_counts++;
         return OK;
@@ -235,9 +280,11 @@ int metrics_alloc(struct metrics **metrics)
         RUN(get_mapqual_bins(&m->mapq_map));
 
         MMALLOC(m->seq_comp, sizeof(struct seq_composition*) * 6);
+        MMALLOC(m->qual_comp, sizeof(struct qual_composition*) * 6);
 
         for(int i = 0; i < 6;i++){
                 m->seq_comp[i] = NULL;
+                m->qual_comp[i] = NULL;
         }
 
         *metrics = m;
@@ -257,10 +304,74 @@ void metrics_free(struct metrics *m)
                         if(m->seq_comp[i]){
                                 free_seq_comp(m->seq_comp[i]);
                         }
+                        if(m->qual_comp[i]){
+                                free_qual_comp(m->qual_comp[i]);
+                        }
 
                 }
                 MFREE(m->seq_comp);
+                MFREE(m->qual_comp);
                 MFREE(m);
+        }
+}
+
+int alloc_qual_comp(struct qual_composition **qual_comp, int max_len)
+{
+        struct qual_composition* q = NULL;
+
+        MMALLOC(q, sizeof(struct qual_composition));
+        q->len = max_len;
+        q->L = 42;
+        q->n_counts = 0;
+        q->data = NULL;
+
+
+        galloc(&q->data, q->L, q->len);
+        for(int i = 0;i < q->L; i++){
+                for(int j = 0 ; j < q->len;j++){
+                        q->data[i][j] = 0;
+                }
+        }
+        *qual_comp = q;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int resize_qual_comp(struct qual_composition* q, int new_max_len)
+{
+
+        ASSERT(new_max_len >= q->len,"New len is shorter??");
+
+        uint32_t** new = NULL;
+
+        galloc(&new, q->L, new_max_len);
+
+        for(int i = 0; i < q->L ;i++){
+                for(int j = 0; j < new_max_len;j++){
+                        new[i][j] = 0;
+                }
+        }
+        for(int i = 0;i < q->L;i++){
+                for(int j = 0; j < q->len;j++){
+                        new[i][j] = q->data[i][j];
+                }
+        }
+        gfree(q->data);
+        q->data = new;
+        q->len = new_max_len;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+void free_qual_comp(struct qual_composition *q)
+{
+        if(q){
+                if(q->data){
+                        gfree(q->data);
+                }
+                MFREE(q);
         }
 }
 

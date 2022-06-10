@@ -4,6 +4,7 @@ add_executable(samstat
   sambamparse/sam_bam_parse.c
   param/param.c
   metrics/metrics.c
+  report/report.c
   )
 
 target_link_directories(samstat PUBLIC ${HTSLIB_SRC_DIR})

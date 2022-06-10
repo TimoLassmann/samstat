@@ -1,16 +1,21 @@
 #ifndef PARAM_H
 #define PARAM_H
 
+#include <stdint.h>
 #ifdef PARAM_IMPORT
 #define EXTERN
 #else
 #define EXTERN extern
 #endif
 
+#define FILE_TYPE_SAMBAM 0
+#define FILE_TYPE_FASTAQ 1
+#define FILE_TYPE_UNKNOWN 2
 
 struct samstat_param {
-        char** infile; /**< @brief Names of input files. */
+        char** infile;
         char* outfile;
+        uint8_t* file_type;
         int buffer_size;
         int n_infile;
         int quiet;

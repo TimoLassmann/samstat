@@ -5,11 +5,9 @@
 #include "htsinterface/htsglue.h"
 #include "param/param.h"
 #include "metrics/metrics.h"
+#include "report/report.h"
 #include <stdint.h>
 
-#define FILE_TYPE_SAMBAM 0
-#define FILE_TYPE_FASTAQ 1
-#define FILE_TYPE_UNKNOWN 2
 
 int detect_file_type(char *filename, int* type);
 int process_sam_bam_file(struct samstat_param* p, int id);
@@ -32,11 +30,16 @@ int main(int argc, char *argv[])
                 g[i] = i;
         }
         gfree(g);
-
         for(int i = 0 ; i < param->n_infile;i++){
                 int t = -1;
                 RUN(detect_file_type(param->infile[i], &t));
-                fprintf(stdout,"%s ->type %d\n", param->infile[i],t);
+                param->file_type[i] = t;
+        }
+
+        for(int i = 0 ; i < param->n_infile;i++){
+                int t = -1;
+                /* RUN(detect_file_type(param->infile[i], &t)); */
+                t = param->file_type[i];
                 if(t == FILE_TYPE_FASTAQ){
                         process_fasta_fastq_file(param,i);
                 }else if(t == FILE_TYPE_SAMBAM){
@@ -53,10 +56,8 @@ int main(int argc, char *argv[])
         RUN(alloc_tl_seq_buffer(&sb, 20));
         add_aln_data(sb);
 
-
         RUN(open_bam(&f_handle, argv[1]));
         while(1){
-
                 RUN(read_bam_chunk(f_handle, sb));
                 if(sb->num_seq == 0){
                         break;
@@ -144,6 +145,7 @@ int detect_file_type(char *filename, int* type)
 ERROR:
         return FAIL;
 }
+
 int process_sam_bam_file(struct samstat_param* p, int id)
 {
         struct sam_bam_file* f_handle = NULL;
@@ -161,14 +163,17 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
 
         RUN(metrics_alloc(&metrics));
-
+        metrics->is_aligned = 1;
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
+                if(p->file_type[id] == FILE_TYPE_SAMBAM){
+                        RUN(read_bam_chunk(f_handle, sb));
+                        sb->L = TL_SEQ_BUFFER_DNA;
+                        sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
 
-                RUN(read_bam_chunk(f_handle, sb));
-                sb->L = TL_SEQ_BUFFER_DNA;
-                sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
+                }else if(p->file_type[id] == FILE_TYPE_FASTAQ){
 
+                }
                 if(sb->num_seq == 0){
                         break;
                 }
@@ -182,8 +187,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         RUN(close_bam(f_handle));
 
 
-        RUN(debug_metrics_print(metrics));
-
+        /* RUN(debug_metrics_print(metrics)); */
+        create_report(metrics, p);
         metrics_free(metrics);
         if(sb->data){
                 a = sb->data;
@@ -210,6 +215,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
 
         RUN(metrics_alloc(&metrics));
+        metrics->is_aligned = 0;
 
         while(1){
 
@@ -242,8 +248,9 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 /* } */
                 reset_tl_seq_buffer(sb);
         }
-        RUN(debug_metrics_print(metrics));
+        /* RUN(debug_metrics_print(metrics)); */
         metrics_free(metrics);
+        create_report(metrics, p);
         if(sb->data){
                 a = sb->data;
                 free_alphabet(a);

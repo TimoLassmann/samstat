@@ -1,6 +1,5 @@
 #include <getopt.h>
-#include "H5Cpublic.h"
-#include "alloc/tld-alloc.h"
+
 #include "tld.h"
 #define PARAM_IMPORT
 #include "param.h"
@@ -79,6 +78,11 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 c++;
         }
         p->n_infile = c;
+
+        galloc(&p->file_type, p->n_infile);
+        for(int i = 0; i < p->n_infile;i++){
+                p->file_type[i] = FILE_TYPE_UNKNOWN;
+        }
         *param = p;
         return OK;
 ERROR:
@@ -106,6 +110,7 @@ int param_init(struct samstat_param **param)
         p->n_infile = 0;
         p->infile = NULL;
         p->outfile = NULL;
+        p->file_type = NULL;
 
         *param = p;
         return OK;
@@ -119,6 +124,9 @@ void param_free(struct samstat_param *p)
 {
 
         if(p){
+                if(p->file_type){
+                        gfree(p->file_type);
+                }
                 if(p->infile){
                         MFREE(p->infile);
                 }

@@ -1,7 +1,9 @@
 #include "core/tld-core.h"
 #include "seq/tld-seq.h"
+#include "stats/basic.h"
 #include "string/str.h"
 #include "tld.h"
+#include <math.h>
 #include <stdio.h>
 
 #define REPORT_IMPORT
@@ -49,18 +51,18 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o, "var mapping_data = [{ \n"));
         RUN(tld_append(o, "type: \"pie\",\n"));
         RUN(tld_append(o, "values: ["));
-        snprintf(buf, 256, "%d",m->seq_comp[0]->n_counts);
+        snprintf(buf, 256, "%d",m->seq_comp_R1[0]->n_counts);
         RUN(tld_append(o,buf));
         for(int i = 1; i < 6;i++){
-                snprintf(buf, 256, ",%d",m->seq_comp[i]->n_counts);
+                snprintf(buf, 256, ",%d",m->seq_comp_R1[i]->n_counts);
                 RUN(tld_append(o,buf));
         }
         RUN(tld_append(o, "],"));
         RUN(tld_append(o, "labels: ["));
-        snprintf(buf, 256, "\"%s\"",m->mapq_map->description[0]);
+        snprintf(buf, 256, "\"%s (%d sequences)\"",m->mapq_map->description[0],m->seq_comp_R1[0]->n_counts);
         RUN(tld_append(o,buf));
-        for(int i = 1; i < 6;i++){
-                snprintf(buf, 256, ",\"%s\"",m->mapq_map->description[i]);
+        for(int i = 1; i < m->mapq_map->n_bin;i++){
+                snprintf(buf, 256, ",\"%s (%d sequences)\"",m->mapq_map->description[i],m->seq_comp_R1[i]->n_counts );
                 RUN(tld_append(o,buf));
         }
         RUN(tld_append(o, "],\n"));
@@ -90,11 +92,16 @@ int base_quality_section(tld_strbuf *o, struct metrics *m)
 {
         struct qual_composition* q = NULL;
         char buf[256];
+        double* mean = NULL;
+        double* stderr = NULL;
 
-        q = m->qual_comp[0];
+        q = m->qual_comp_R1[0];
+
+        galloc(&mean, q->len);
+        galloc(&stderr, q->len);
 
         RUN(tld_append(o, "<h2>Base quality distribution</h2>\n"));
-        RUN(tld_append(o, "<div id=\"qualcomp \" style=\"width:100%;max-width:1400px\"></div>\n"));
+        RUN(tld_append(o, "<div id=\"qualcomp\" style=\"width:100%;max-width:1400px\"></div>\n"));
         RUN(tld_append(o, "<script>\n"));
         RUN(tld_append(o, "var basex = [\n"));
         for(int i = 0 ; i < q->len;i++){
@@ -106,7 +113,117 @@ int base_quality_section(tld_strbuf *o, struct metrics *m)
         o->len--;
         RUN(tld_append(o, "]\n"));
 
+        for(int mapq_idx = 0; mapq_idx < 6; mapq_idx++){
+                q = m->qual_comp_R1[mapq_idx];
+                if(q->n_counts > 0){
 
+                        /* calc mean */
+
+                        for(int i = 0 ; i < q->len;i++){
+                                double total = 0.0;
+
+                                double n = 0.0;
+                                for(int j = 0; j < q->L;j++){
+                                        total += j * q->data[i][j];
+                                        n+= q->data[i][j];
+                                }
+                                mean[i] = total / n;
+                                total = 0.0;
+                                n = 0.0;
+                                for(int j = 0; j < q->L;j++){
+                                        double s = mean[i] - (double) j ;
+                                        total += q->data[i][j] *  s * s;
+                                        n+= q->data[i][j];
+                                }
+                                stderr[i] = sqrt(total / n) / sqrt(n);
+                                LOG_MSG("%d %f %f", i, mean[i], stderr[i]);
+                        }
+
+                        snprintf(buf, 256,"var qualtrace%d = {\n",mapq_idx);
+                        RUN(tld_append(o,buf));
+
+                        RUN(tld_append(o,"name: '"));
+                        snprintf(buf, 256,"%s",m->mapq_map->description[mapq_idx]);
+                        RUN(tld_append(o,buf));
+                        RUN(tld_append(o,"',\n"));
+
+
+                        RUN(tld_append(o,"x: ["));
+                        for(int i = 0 ; i < q->len;i++){
+                                snprintf(buf, 256,"%d,",i+1);
+                                RUN(tld_append(o,buf));
+                        }
+                        o->len--;
+                        RUN(tld_append(o,"],\n"));
+
+                        RUN(tld_append(o,"y: ["));
+                        for(int i = 0 ; i < q->len;i++){
+                                snprintf(buf, 256,"%f,",mean[i]);
+                                RUN(tld_append(o,buf));
+                        }
+                        o->len--;
+                        RUN(tld_append(o,"],\n"));
+
+                        RUN(tld_append(o,"error_y: {\n"));
+                        RUN(tld_append(o,"type: 'data',\n"));
+                        RUN(tld_append(o,"array : ["));
+                        for(int i = 0 ; i < q->len;i++){
+                                snprintf(buf, 256,"%f,",stderr[i]);
+                                RUN(tld_append(o,buf));
+                        }
+                        o->len--;
+                        RUN(tld_append(o,"],\n"));
+                        RUN(tld_append(o,"visible: true\n"));
+                        RUN(tld_append(o,"},\n"));
+
+                        RUN(tld_append(o,"type: 'scatter'\n"));
+                        RUN(tld_append(o,"}\n"));
+                        /* RUN(tld_append(o,"];\n")); */
+
+
+                        /* RUN(tld_append(o,"y: [")); */
+                        /* for(int i = 0 ; i < q->len;i++){ */
+                        /*         double mean; */
+                        /*         for(int j = 0; j < q->L;j++){ */
+                        /*                 snprintf(buf, 256,"%d,",q->data[j][i]); */
+                        /*                 RUN(tld_append(o,buf)); */
+                        /*         } */
+                        /* } */
+                        /* o->len--; */
+                        /* RUN(tld_append(o,"],\n")); */
+                        /* RUN(tld_append(o,"x: Basex,\n")); */
+                        /* snprintf(buf, 256,"name: '%s',\n", m->mapq_map->description[mapq_idx]); */
+                        /* RUN(tld_append(o,buf)); */
+                        /* RUN(tld_append(o,"type: 'box'\n")); */
+
+                        /* RUN(tld_append(o,"};\n")); */
+                }
+        }
+
+        RUN(tld_append(o,"var qualdata = ["));
+        for(int mapq_idx = 0; mapq_idx < 6; mapq_idx++){
+                q = m->qual_comp_R1[mapq_idx];
+                if(q->n_counts > 0){
+                        snprintf(buf, 256,"qualtrace%d,",mapq_idx);
+                        RUN(tld_append(o,buf));
+                }
+        }
+        o->len--;
+        RUN(tld_append(o,"];\n"));
+
+
+        RUN(tld_append(o,"var quallayout = {boxmode: 'group'};\n"));
+
+        RUN(tld_append(o,"Plotly.newPlot('qualcomp', qualdata, quallayout);\n"));
+
+
+/*         var trace1 = { */
+/*   y: [0.2, 0.2, 0.6, 1.0, 0.5, 0.4, 0.2, 0.7, 0.9, 0.1, 0.5, 0.3], */
+/*   x: x, */
+/*   name: 'kale', */
+/*   marker: {color: '#3D9970'}, */
+/*   type: 'box' */
+/* }; */
 
         /* } */
         /* {} */
@@ -122,8 +239,13 @@ int base_quality_section(tld_strbuf *o, struct metrics *m)
         /*         RUN(tld_append(o,"],\n")); */
         /* } */
         RUN(tld_append(o,"</script>\n"));
+
+        gfree(mean);
+        gfree(stderr);
         return OK;
 ERROR:
+        gfree(mean);
+        gfree(stderr);
         return FAIL;
 }
 
@@ -138,7 +260,7 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
         /* } */
 
         for(int mapq_idx = 0; mapq_idx < 6; mapq_idx++){
-                seq_comp = m->seq_comp[mapq_idx];
+                seq_comp = m->seq_comp_R1[mapq_idx];
                 if(seq_comp->n_counts > 0){
 
                         RUN(tld_append(o, "<h2>Base composition: "));

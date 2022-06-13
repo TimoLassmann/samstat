@@ -17,6 +17,7 @@ struct aln_data {
         uint32_t* cigar;
         uint8_t* genome;
         uint8_t* read;
+        uint16_t flag;
         int num_hits;
         int map_q;
         int error;

@@ -1,12 +1,6 @@
-#include "alloc/tld-alloc.h"
-#include "core/tld-core.h"
 #include "sam.h"
-#include "seq/tld-seq.h"
-#include "string/str.h"
 #include "tld.h"
 #include <htslib/sam.h>
-#include <stdint.h>
-#include <stdio.h>
 
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
@@ -70,85 +64,89 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
         int r = 0;
 
         while ((r = sam_read1(f_handle->in, h, b)) >= 0){
-                /* if(b->core.qual >= 0){ */
-                struct tl_seq* s = NULL;
-                struct aln_data* a = NULL;
-                uint8_t * seq =    bam_get_seq(b);
-                uint8_t* qual_ptr = bam_get_qual(b);
+                if(!(b->core.flag & BAM_FSECONDARY)){
+                        /* if(b->core.qual >= 0){ */
+                        struct tl_seq* s = NULL;
+                        struct aln_data* a = NULL;
+                        uint8_t * seq =    bam_get_seq(b);
+                        uint8_t* qual_ptr = bam_get_qual(b);
 
-                s = sb->sequences[sb->num_seq];
-                a = (struct aln_data* )s->data;
 
-                tld_append(s->name, bam_get_qname(b));
-                /* snprintf(s->name,TL_SEQ_MAX_NAME_LEN,"%s",bam_get_qname(b)); */
 
-                /* snprintf(sb_ptr->name, MAX_SEQ_NAME_LEN,"%s",bam_get_qname(b)); */
-                a->num_hits = 0;
-                a->map_q = b->core.qual;
+                        s = sb->sequences[sb->num_seq];
+                        a = (struct aln_data* )s->data;
 
-                s->len = b->core.l_qseq;
+                        a->flag =  b->core.flag;
+                        tld_append(s->name, bam_get_qname(b));
+                        /* snprintf(s->name,TL_SEQ_MAX_NAME_LEN,"%s",bam_get_qname(b)); */
 
-                /* read in the sequence... */
-                while(s->len+1 >= s->malloc_len){
-                        resize_tl_seq(s);
-                }
+                        /* snprintf(sb_ptr->name, MAX_SEQ_NAME_LEN,"%s",bam_get_qname(b)); */
+                        a->num_hits = 0;
+                        a->map_q = b->core.qual;
 
-                for (int i = 0; i < s->len; ++i){
-                        s->seq[i] = "=ACMGRSVTWYHKDBN"[bam_seqi(seq, i)];
-                }
-                s->seq[s->len ] = 0;
+                        s->len = b->core.l_qseq;
 
-                if(qual_ptr[0] == 0xFF){
-                        /* s->qual[0] = '*'; */
-                        /* s->qual[1] = 0; */
+                        /* read in the sequence... */
+                        while(s->len+1 >= s->malloc_len){
+                                resize_tl_seq(s);
+                        }
+
                         for (int i = 0; i < s->len; ++i){
-                                s->qual[i] = 'J';
+                                s->seq[i] = "=ACMGRSVTWYHKDBN"[bam_seqi(seq, i)];
                         }
-                        s->qual[s->len] = 0 ;
-                }else{
-                        for (int i = 0; i < s->len; ++i){
-                                s->qual[i] = qual_ptr[i] + 33;
-                                /* sb_ptr->base_qual[i] = qual_ptr[i] + 33; */
+                        s->seq[s->len ] = 0;
+
+                        if(qual_ptr[0] == 0xFF){
+                                /* s->qual[0] = '*'; */
+                                /* s->qual[1] = 0; */
+                                for (int i = 0; i < s->len; ++i){
+                                        s->qual[i] = 'J';
+                                }
+                                s->qual[s->len] = 0 ;
+                        }else{
+                                for (int i = 0; i < s->len; ++i){
+                                        s->qual[i] = qual_ptr[i] + 33;
+                                        /* sb_ptr->base_qual[i] = qual_ptr[i] + 33; */
+                                }
+                                s->qual[s->len] = 0 ;
                         }
-                        s->qual[s->len] = 0 ;
-                }
-                /* extra stuff  */
-                if(! (BAM_FUNMAP & b->core.flag)){
-                        uint8_t * aux =  bam_aux_get(b,"NM");
-                        if(aux){
-                                /* LOG_MSG("NM: %d", bam_aux2i(aux)); */
-                                a->error = bam_aux2i(aux);
+                        /* extra stuff  */
+                        if(! (BAM_FUNMAP & b->core.flag)){
+                                uint8_t * aux =  bam_aux_get(b,"NM");
+                                if(aux){
+                                        /* LOG_MSG("NM: %d", bam_aux2i(aux)); */
+                                        a->error = bam_aux2i(aux);
+                                }
+                                aux =  bam_aux_get(b,"MD");
+                                if(aux){
+                                        /* LOG_MSG("NM: %d", bam_aux2i(aux)); */
+                                        /* LOG_MSG("%s",bam_aux2Z(aux)); */
+                                        tld_append(a->md,bam_aux2Z(aux));
+                                }
                         }
-                        aux =  bam_aux_get(b,"MD");
-                        if(aux){
-                                /* LOG_MSG("NM: %d", bam_aux2i(aux)); */
-                                /* LOG_MSG("%s",bam_aux2Z(aux)); */
-                                tld_append(a->md,bam_aux2Z(aux));
 
+                        a->n_cigar = b->core.n_cigar;
+                        if(a->n_cigar > a->n_alloc_cigar){
+                                a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
+                                gfree(a->cigar);
+                                a->cigar = NULL;
+                                galloc(&a->cigar, a->n_alloc_cigar);
                         }
-                }
+                        uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
+                        for(int i = 0; i < a->n_cigar;i++){
+                                a->cigar[i] = tmp[i];
+                        }
 
-                a->n_cigar = b->core.n_cigar;
-                if(a->n_cigar > a->n_alloc_cigar){
-                        a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
-                        gfree(a->cigar);
-                        a->cigar = NULL;
-                        galloc(&a->cigar, a->n_alloc_cigar);
-                }
-                uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
-                for(int i = 0; i < a->n_cigar;i++){
-                        a->cigar[i] = tmp[i];
-                }
+                        a->reverse = bam_is_rev(b);
+                        if(s->len > sb->max_len){
+                                sb->max_len = s->len;
+                        }
 
-                a->reverse = bam_is_rev(b);
-                if(s->len > sb->max_len){
-                        sb->max_len = s->len;
-                }
-
-                sb->num_seq++;
-                if(sb->num_seq ==  sb->malloc_num){
-                        /* exit(0); */
-                        return OK;
+                        sb->num_seq++;
+                        if(sb->num_seq ==  sb->malloc_num){
+                                /* exit(0); */
+                                return OK;
+                        }
                 }
         /* } */
         }

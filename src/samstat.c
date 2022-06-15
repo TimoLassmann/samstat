@@ -1,6 +1,5 @@
 #include "tld.h"
 #include "sambamparse/sam_bam_parse.h"
-
 #include "htslib/sam.h"
 #include "htsinterface/htsglue.h"
 #include "param/param.h"
@@ -8,21 +7,18 @@
 #include "report/report.h"
 #include <stdint.h>
 
-
 int detect_file_type(char *filename, int* type);
 int process_sam_bam_file(struct samstat_param* p, int id);
 int process_fasta_fastq_file(struct samstat_param* p, int id);
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
-/* #define TEST_BAM "/Users/Timo/tmp/77.bam" */
-/* #define TEST_BAM "/home/timo/tmp/SYD-40350604.dedup.realigned.recalibrated_UPFB3.bam" */
-/* #define TEST_BAM "/home/timo/tmp/test.sam" */
+
 int main(int argc, char *argv[])
 {
         struct samstat_param* param = NULL;
         parse_param(argc, argv, &param);
 
-        fprintf(stdout,"Hello world\n");
-        fprintf(stdout,"HTS version:%d\n", HTS_VERSION);
+        /* fprintf(stdout,"Hello world\n"); */
+        /* fprintf(stdout,"HTS version:%d\n", HTS_VERSION); */
         int* g = NULL;
 
         galloc(&g,100);
@@ -174,7 +170,10 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 if(sb->num_seq == 0){
                         break;
                 }
-                get_metrics(sb,metrics);
+                for(int i = 0; i < sb->num_seq;i++){
+                        //parse_alignment(sb->sequences[i]);
+                }
+                RUN(get_metrics(sb,metrics));
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffier_print(sb);
                 /* break; */

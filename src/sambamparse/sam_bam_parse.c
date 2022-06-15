@@ -1,6 +1,7 @@
 
 #include "alloc/tld-alloc.h"
 #include "core/tld-core.h"
+#include "sam.h"
 #include "string/str.h"
 #include "tld.h"
 #include "../htsinterface/htsglue.h"
@@ -47,7 +48,6 @@ ERROR:
         return FAIL;
 }
 
-
 int parse_alignment(struct tl_seq *s)
 {
         struct aln_data* a = NULL;
@@ -60,7 +60,10 @@ int parse_alignment(struct tl_seq *s)
         int aln_len;
 
         a = s->data;
-
+        if(a->flag & BAM_FUNMAP){
+                a->aln_len = 0;
+                return OK;
+        }
         aln_len = 0;
 
         for(int i = 0;i < a->n_cigar;i++){
@@ -94,7 +97,6 @@ int parse_alignment(struct tl_seq *s)
 
         if(a->md == NULL){
                 a->aln_len = 0;
-
                 return OK;
         }
         /* LOG_MSG("%p %p  %d %d ", a->genome, a->read, a->aln_len, a->aln_len_alloc); */

@@ -71,8 +71,6 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         uint8_t * seq =    bam_get_seq(b);
                         uint8_t* qual_ptr = bam_get_qual(b);
 
-
-
                         s = sb->sequences[sb->num_seq];
                         a = (struct aln_data* )s->data;
 

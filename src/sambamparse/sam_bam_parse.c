@@ -6,6 +6,7 @@
 #include "tld.h"
 #include "../htsinterface/htsglue.h"
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 #define SAM_BAM_PARSE_IMPORT
@@ -95,10 +96,7 @@ int parse_alignment(struct tl_seq *s)
         aln_len++;
 
 
-        if(a->md == NULL){
-                a->aln_len = 0;
-                return OK;
-        }
+
         /* LOG_MSG("%p %p  %d %d ", a->genome, a->read, a->aln_len, a->aln_len_alloc); */
         if(a->aln_len >= a->aln_len_alloc){
                 a->aln_len_alloc = MACRO_MAX(a->aln_len_alloc + a->aln_len_alloc / 2, a->aln_len_alloc + a->aln_len - a->aln_len_alloc + 1);
@@ -168,9 +166,13 @@ int parse_alignment(struct tl_seq *s)
         }
         /* LOG_MSG("RP: %d", rp); */
         aln_len = rp;
-
-        int l = a->md->len;
-
+        /* fprintf(stdout,"%s - genome\n%s - read\n", genome , read); */
+        int l = 0;
+        if(a->md == NULL){
+                l = 0;
+        }else{
+                l = a->md->len;
+        }
         if(l){
                 int pos = 0;
                 int i = 0;
@@ -209,6 +211,17 @@ int parse_alignment(struct tl_seq *s)
                                 pos++;
                         }
                 }
+        }else{
+                for(int i = 0; i < a->aln_len;i++){
+                        if(read[i] == 255){
+                                genome[i] = 'N';
+                        }else{
+                                genome[i] = read[i];
+                        }
+                        /* fprintf(stdout,"%c",genome[i]); */
+                }
+                /* fprintf(stdout,"Filing done \n"); */
+
         }
         for(int i = 0; i < aln_len;i++){
                 if(genome[i] == 255){
@@ -218,6 +231,7 @@ int parse_alignment(struct tl_seq *s)
                         read[i] = '-';
                 }
         }
+        /* fprintf(stdout,"%s - genome\n%s - read\n", genome , read); */
         return OK;
 ERROR:
         /* gfree(genome); */

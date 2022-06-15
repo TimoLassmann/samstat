@@ -4,12 +4,14 @@
 #include "alloc/tld-alloc.h"
 #include "core/tld-core.h"
 #include "sam.h"
+#include "seq/tld-seq.h"
 #include "tld.h"
 
 #include "../sambamparse/sam_bam_parse.h"
 #include "../htsinterface/htsglue.h"
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define  METRICS_IMPORT
 #include "metrics.h"
@@ -36,7 +38,6 @@ static void free_error_comp(struct error_composition *e);
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
 
-static int reverse_complement(struct tl_seq *s);
 
 int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
 {
@@ -76,6 +77,14 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                                 if(m->min_len_R2 > (uint32_t)sb->sequences[i]->len){
                                         m->min_len_R2 = sb->sequences[i]->len;
                                 }
+                        }else{
+                                if(m->max_len_R1 < (uint32_t)sb->sequences[i]->len){
+                                        m->max_len_R1 = sb->sequences[i]->len;
+                                        len_change = 1;
+                                }
+                                if(m->min_len_R1 > (uint32_t)sb->sequences[i]->len){
+                                        m->min_len_R1 = sb->sequences[i]->len;
+                                }
                         }
                 }else{
                         if(m->max_len_R1 < (uint32_t)sb->sequences[i]->len){
@@ -87,6 +96,7 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                         }
                 }
         }
+        LOG_MSG("Max len: %d %d", m->max_len_R1, m->max_len_R2);
         /* Sequence composition */
         for(int i = 0; i < m->n_mapq_bins;i++){
                 if(!m->seq_comp_R1[i]){
@@ -117,6 +127,7 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
         for(int i = 0; i < sb->num_seq;i++){
                 collect_seq_comp(m, sb->sequences[i]);
                 collect_qual_comp(m, sb->sequences[i], sb->base_quality_offset);
+                collect_error_comp(m, sb->sequences[i]);
         }
 
 
@@ -140,9 +151,9 @@ int get_mapqual_bins(struct mapqual_bins **map)
         galloc(&m->description, m->n_bin, 256);
 
         for(int i = 0; i < m->len;i++){
-                if(i == 0){
-                        m->map[i] = MAPQUALBIN_UNMAP;
-                }else if(i < 10){
+                /* if(i == 0){ */
+                /*         m->map[i] = MAPQUALBIN_UNMAP; */
+                /* }else  */if(i < 10){
                         m->map[i] = MAPQUALBIN_lt10;
                 }else if(i < 30){
                         m->map[i] = MAPQUALBIN_lt30;
@@ -279,7 +290,7 @@ int collect_error_comp(struct metrics *m, struct tl_seq *s)
         struct aln_data* a = NULL;
         uint8_t* g = NULL;
         uint8_t* r = NULL;
-        uint8_t strand = 0;
+        int rp;
         int aln_len;
         int mapq_idx = 0;
         int read = 1;
@@ -296,31 +307,66 @@ int collect_error_comp(struct metrics *m, struct tl_seq *s)
         aln_len = a->aln_len;
         r = a->read;
         g = a->genome;
-        strand = a->reverse;
+        /* if(mapq_idx == 3){ */
+                /* fprintf(stdout,"%s\n%s\n%s\n",TLD_STR(s->name), r,g); */
+        /* } */
+        rp = 0;
+        for(int i = 0;i < aln_len;i++){
+                /* three possibilities */
 
-        for(int i = 0;i < s->len;i++){
-                /* switch ( s->seq[i]) { */
-                /* case 'A': */
-                /* case 'a': */
-                /*         c->data[0][i]++; */
-                /*         break; */
-                /* case 'C': */
-                /* case 'c': */
-                /*         c->data[1][i]++; */
+                if(r[i] == '-' && g[i] == '-'){
 
-                /*         break; */
-                /* case 'G': */
-                /* case 'g': */
-                /*         c->data[2][i]++; */
-                /*         break; */
-                /* case 'T': */
-                /* case 't': */
-                /*         c->data[3][i]++; */
-                /*         break; */
-                /* default: */
-                /*         c->data[4][i]++; */
-                /*         break; */
-                /* } */
+                }else if(r[i] != '-' && g[i] == '-'){
+                        if(i){
+                                if(g[i-1] != '-'){
+                                        c->ins[rp]++;
+                                        c->n_ins++;
+                                }
+                        }else{
+                                c->ins[rp]++;
+                                c->n_ins++;
+                        }
+                        rp++;
+                }else if(r[i] == '-' && g[i] != '-'){
+                        if(i){
+                                if(r[i-1] != '-'){
+                                        c->del[rp]++;
+                                        c->n_del++;
+                                }
+                        }else{
+                                c->del[rp]++;
+                                c->n_del++;
+                        }
+                }else if(r[i] != '-' && g[i] != '-'){
+                        if(r[i] != g[i]){
+                                switch ( r[i]) {
+                                case 'A':
+                                case 'a':
+                                        c->mis[0][rp]++;
+
+                                        break;
+                                case 'C':
+                                case 'c':
+                                        c->mis[1][rp]++;
+
+                                        break;
+                                case 'G':
+                                case 'g':
+                                        c->mis[2][rp]++;
+                                        break;
+                                case 'T':
+                                case 't':
+                                        c->mis[3][rp]++;
+                                        break;
+                                default:
+                                        c->mis[4][rp]++;
+                                        break;
+                                }
+                                c->n_mis++;
+                        }
+                        rp++;
+
+                }
         }
         /* c->n_counts++; */
         return OK;
@@ -337,8 +383,12 @@ int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int
                 a = s->data;
                 if(a->reverse){
                         /* LOG_MSG("Oh no I should reverse!"); */
-                        reverse_complement(s);
-                        a->reverse  = 0;
+                        rev_comp_tl_seq(s);
+                        if(a->aln_len){
+                                reverse_comp(a->genome, a->aln_len);
+                                reverse_comp(a->read, a->aln_len);
+                        }
+                        a->reverse = 0;
                 }
 
                 *idx = map->map[ a->map_q];
@@ -349,150 +399,11 @@ int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int
                 }
 
                 if(a->flag & BAM_FUNMAP){
-                        *idx = 0;
+                        *idx = MAPQUALBIN_UNMAP;
                 }
         }
         return OK;
 }
-
-int reverse(char *q, int len)
-{
-        char* revq = NULL;
-        int c = 0;
-        galloc(&revq, len);
-        for(int i = len -1; i >= 0;i--){
-                revq[c] = q[i];
-                c++;
-        }
-        for(int i = 0; i < len;i++){
-                q[i] = revq[i];
-        }
-
-        gfree(revq);
-
-        return OK;
-ERROR:
-        if(revq){
-                gfree(revq);
-        }
-        return FAIL;
-}
-
-int reverse_complement_seq(uint8_t *s, int len)
-{
-        uint8_t* r = NULL;
-        int c = 0;
-        galloc(&r, len);
-        for(int i = len -1; i >= 0;i--){
-                uint8_t l;
-                switch (s[i]) {
-                case 'A':
-                case 'a':
-                        l = 'T';
-                        break;
-                case 'C':
-                case 'c':
-                        l = 'G';
-                        break;
-                case 'G':
-                case 'g':
-                        l = 'C';
-                        break;
-                case 'T':
-                case 't':
-                        l = 'A';
-                        break;
-                case 'N':
-                case 'n':
-                        l = 'N';
-                        break;
-                case '-':
-                        l = '-';
-                        break;
-                default:
-                        l = 'N';
-                        break;
-                }
-                r[c] = l;
-                c++;
-        }
-        for(int i = 0; i < len;i++){
-                s[i] = r[i];
-        }
-        gfree(r);
-        return OK;
-ERROR:
-        if(r){
-                gfree(r);
-        }
-        return FAIL;
-}
-
-int reverse_complement(struct tl_seq *s)
-{
-        int c;
-        c = 0;
-        uint8_t* rev = NULL;
-        char* revq = NULL;
-
-
-        MMALLOC(rev, sizeof(uint8_t)* s->malloc_len);
-        MMALLOC(revq, sizeof(char)* s->malloc_len);
-        for(int i = s->len -1; i >= 0;i--){
-                uint8_t l;
-                switch ( s->seq[i]) {
-                case 'A':
-                case 'a':
-                        l = 'T';
-                        break;
-                case 'C':
-                case 'c':
-                        l = 'G';
-                        break;
-                case 'G':
-                case 'g':
-                        l = 'C';
-                        break;
-                case 'T':
-                case 't':
-                        l = 'A';
-                        break;
-                case 'N':
-                case 'n':
-                        l = 'N';
-                        break;
-                case '-':
-                        l = '-';
-                        break;
-                default:
-                        l = 'N';
-                        break;
-                }
-                rev[c] = l;
-                revq[c] = s->qual[i];
-                c++;
-        }
-        MFREE(s->seq);
-        MFREE(s->qual);
-
-
-        s->seq = rev;
-        s->qual = revq;
-
-        if(s->data){
-                struct aln_data* a = NULL;
-
-                uint8_t*g = NULL;
-                uint8_t*r = NULL;
-
-        }
-
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-
 
 int metrics_alloc(struct metrics **metrics)
 {
@@ -690,11 +601,17 @@ ERROR:
 
 int resize_error_comp(struct error_composition *e, int newL, int new_max_len)
 {
-        ASSERT(newL == e->L,"Alphabet changed???");
+        /* ASSERT(newL == e->L,"Alphabet changed???"); */
         ASSERT(new_max_len >= e->len,"New len is shorter??");
 
         uint32_t** new = NULL;
         uint32_t* tmp = NULL;
+
+        if(newL == TL_SEQ_BUFFER_DNA){
+                newL = 5;
+        }else{
+                newL = 21;
+        }
         galloc(&new, newL, new_max_len);
 
         for(int i = 0; i < newL ;i++){
@@ -795,6 +712,13 @@ int resize_seq_comp(struct seq_composition* s,int newL, int new_max_len)
 
         uint32_t** new = NULL;
 
+        if(newL == TL_SEQ_BUFFER_DNA){
+                newL = 5;
+        }else{
+                newL = 21;
+        }
+
+
         galloc(&new, newL, new_max_len);
 
         for(int i = 0; i < newL ;i++){
@@ -802,6 +726,7 @@ int resize_seq_comp(struct seq_composition* s,int newL, int new_max_len)
                         new[i][j] = 0;
                 }
         }
+        LOG_MSG("%d %d -> %d %d", s->L, s->len, newL, new_max_len);
         for(int i = 0;i < s->L;i++){
                 for(int j = 0; j < s->len;j++){
                         new[i][j] = s->data[i][j];

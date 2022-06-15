@@ -149,6 +149,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct alphabet* a = NULL;
 
         struct metrics* metrics = NULL;
+        /* p->buffer_size = 1000; */
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
@@ -171,7 +172,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         break;
                 }
                 for(int i = 0; i < sb->num_seq;i++){
-                        //parse_alignment(sb->sequences[i]);
+                        parse_alignment(sb->sequences[i]);
                 }
                 RUN(get_metrics(sb,metrics));
                 /* LOG_MSG("L: %d",sb->L); */
@@ -179,6 +180,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 /* break; */
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
+                /* exit(0); */
         }
         RUN(close_bam(f_handle));
 

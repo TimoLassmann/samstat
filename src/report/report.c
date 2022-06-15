@@ -15,6 +15,7 @@ static int report_footer(tld_strbuf *out_buffer);
 static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
 static int base_composition_section(tld_strbuf *o, struct metrics *m);
 static int base_quality_section(tld_strbuf *o, struct metrics *m);
+static int error_composition_section(tld_strbuf *o, struct metrics *m);
 
 int report_header(tld_strbuf *out_buffer)
 {
@@ -168,15 +169,22 @@ int base_quality_section(tld_strbuf *o, struct metrics *m)
                                         total += j * q->data[i][j];
                                         n+= q->data[i][j];
                                 }
-                                mean[i] = total / n;
-                                total = 0.0;
-                                n = 0.0;
-                                for(int j = 0; j < q->L;j++){
-                                        double s = mean[i] - (double) j ;
-                                        total += q->data[i][j] *  s * s;
-                                        n+= q->data[i][j];
+                                if(n == 0){
+                                        mean[i] = 0.0;
+                                        stderr[i] = 0.0;
+
+                                        /* LOG_MSG("should not happen : %f total: %f", n,total); */
+                                }else{
+                                        mean[i] = total / n;
+                                        total = 0.0;
+                                        n = 0.0;
+                                        for(int j = 0; j < q->L;j++){
+                                                double s = mean[i] - (double) j ;
+                                                total += q->data[i][j] *  s * s;
+                                                n+= q->data[i][j];
+                                        }
+                                        stderr[i] = sqrt(total / n) / sqrt(n);
                                 }
-                                stderr[i] = sqrt(total / n) / sqrt(n);
                         }
 
                         snprintf(buf, 256,"var qualtrace%d = {\n",mapq_idx);
@@ -358,6 +366,101 @@ ERROR:
         return FAIL;
 }
 
+int error_composition_section(tld_strbuf *o, struct metrics *m)
+{
+        struct error_composition* e = NULL;
+        char buf[256];
+        char nuc[5] = "ACGTN";
+
+        /* if(m->is_aligned == 0){ */
+
+        /* } */
+
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                e = m->error_comp_R1[mapq_idx];
+                LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins );
+                if(e->n_mis + e->n_del + e->n_ins  > 0){
+
+                        RUN(tld_append(o, "<h2>Error composition: "));
+                        snprintf(buf, 256,"%s",  m->mapq_map->description[mapq_idx] );
+                        RUN(tld_append(o, buf));
+
+                        /* if(seq_comp->n_counts == 1){ */
+                        /*         snprintf(buf, 256," (%d sequence)",  seq_comp->n_counts); */
+                        /* }else{ */
+                        /*         snprintf(buf, 256," (%d sequences)",  seq_comp->n_counts); */
+                        /* } */
+                        /* RUN(tld_append(o, buf)); */
+
+                        RUN(tld_append(o, "</h2>\n"));
+
+                        RUN(tld_append(o, "<div id=\""));
+                        snprintf(buf, 256,"errcomp%d", mapq_idx);
+                        RUN(tld_append(o, buf));
+                        RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+                        RUN(tld_append(o,"<script>\n"));
+
+                        for(int i = 0; i < e->L;i++){
+                                snprintf(buf, 256,"var errtrace%d_%d = {\n",mapq_idx,i );
+                                RUN(tld_append(o,buf));
+                                RUN(tld_append(o,"x: ["));
+                                snprintf(buf, 256,"%d",1);
+                                RUN(tld_append(o,buf));
+                                for(int j = 1 ; j <  e->len;j++){
+                                        snprintf(buf, 256,",%d",j+1);
+                                        RUN(tld_append(o,buf));
+                                }
+                                RUN(tld_append(o,"],\n"));
+                                RUN(tld_append(o,"y: ["));
+                                snprintf(buf, 256,"%d", e->mis[i][0]);
+                                RUN(tld_append(o,buf));
+                                for(int j = 1 ; j < e->len;j++){
+                                        snprintf(buf, 256,",%d", e->mis[i][j]);
+                                        RUN(tld_append(o,buf));
+                                }
+                                RUN(tld_append(o,"],\n"));
+                                /* LOG_MSG("L? %d", seq_comp->L); */
+                                if(e->L < 20){
+                                        snprintf(buf, 256,"name: '%c',\n", nuc[i]);
+                                        RUN(tld_append(o,buf));
+                                }
+                                RUN(tld_append(o,"type: 'bar'\n"));
+                                RUN(tld_append(o,"};\n"));
+                        }
+
+                        RUN(tld_append(o,"var "));
+                        snprintf(buf, 256,"err_comp_data%d", mapq_idx);
+                        RUN(tld_append(o,buf ));
+                        RUN(tld_append(o," = ["));
+                        /* RUN(tld_append(o,"var base_comp_data = [")); */
+                        snprintf(buf, 256,"errtrace%d_%d",mapq_idx,0);
+                        RUN(tld_append(o,buf ));
+                        for(int i = 1; i < e->L;i++){
+                                snprintf(buf, 256,",errtrace%d_%d",mapq_idx,i);
+                                RUN(tld_append(o,buf ));
+
+                        }
+                        RUN(tld_append(o,"];\n"));
+
+                        RUN(tld_append(o,"var err_comp_layout = {barmode: 'stack'};\n"));
+                        RUN(tld_append(o,"Plotly.newPlot('"));
+                        snprintf(buf, 256,"errcomp%d", mapq_idx);
+                        RUN(tld_append(o, buf));
+                        RUN(tld_append(o,"', "));
+
+                        snprintf(buf, 256,"err_comp_data%d", mapq_idx);
+                        RUN(tld_append(o,buf ));
+                        RUN(tld_append(o,", err_comp_layout);\n"));
+
+                        RUN(tld_append(o,"</script>\n"));
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+
 int create_report(struct metrics *m, struct samstat_param *p)
 {
         tld_strbuf* out = NULL;
@@ -374,7 +477,7 @@ int create_report(struct metrics *m, struct samstat_param *p)
         RUN(mapping_quality_overview_section(out,m));
         RUN(base_composition_section(out, m));
         RUN(base_quality_section(out,m));
-
+        RUN(error_composition_section(out, m));
         RUN(report_footer(out));
 
         /* if(p->outfile){ */

@@ -1,3 +1,4 @@
+
 add_executable(samstat
   samstat.c
   htsinterface/htsglue.c

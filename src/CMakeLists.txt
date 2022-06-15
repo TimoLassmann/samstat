@@ -1,8 +1,3 @@
-add_executable(helper
-  helper.c
-  )
-target_link_libraries(helper PRIVATE tld-dev)
-
 add_executable(samstat
   samstat.c
   htsinterface/htsglue.c

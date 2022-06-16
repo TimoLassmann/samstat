@@ -10,7 +10,8 @@
 #define REPORT_IMPORT
 #include "report.h"
 
-static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, uint32_t *x, uint32_t* y,  int len);
+/* static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, uint32_t *x, uint32_t* y,  int len); */
+static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len);
 
 static int report_header(tld_strbuf *out_buffer);
 static int report_footer(tld_strbuf *out_buffer);
@@ -277,7 +278,7 @@ ERROR:
 }
 
 /* helper function to write arrays */
-int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, uint32_t *x, uint32_t* y,  int len)
+int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len)
 {
         ASSERT(y != NULL, "no y");
         char buf[256];
@@ -317,6 +318,11 @@ int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type,
         }else{
                 RUN(tld_append(o,"type: 'scatter',\n"));
         }
+        if(!vis){
+                RUN(tld_append(o,"visible: false\n"));
+        }else{
+                RUN(tld_append(o,"visible: true\n"));
+        }
 
         RUN(tld_append(o,"};\n"));
         return OK;
@@ -334,28 +340,29 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
         /* if(m->is_aligned == 0){ */
 
         /* } */
+        RUN(tld_append(o, "<h2>Base composition: "));
+        /* snprintf(buf, 256,"%s",  m->mapq_map->description[mapq_idx] ); */
+        /* RUN(tld_append(o, buf)); */
+        /* if(seq_comp->n_counts == 1){ */
+        /*         snprintf(buf, 256," (%d sequence)",  seq_comp->n_counts); */
+        /* }else{ */
+        /*         snprintf(buf, 256," (%d sequences)",  seq_comp->n_counts); */
+        /* } */
+        /* RUN(tld_append(o, buf)); */
+
+        RUN(tld_append(o, "</h2>\n"));
+
+        RUN(tld_append(o, "<div id=\""));
+        snprintf(buf, 256,"basecomp");
+        RUN(tld_append(o, buf));
+        RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+        RUN(tld_append(o,"<script>\n"));
+        int vis =1;
 
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
                 seq_comp = m->seq_comp_R1[mapq_idx];
                 if(seq_comp->n_counts > 0){
-                        RUN(tld_append(o, "<h2>Base composition: "));
-                        snprintf(buf, 256,"%s",  m->mapq_map->description[mapq_idx] );
-                        RUN(tld_append(o, buf));
-                        if(seq_comp->n_counts == 1){
-                                snprintf(buf, 256," (%d sequence)",  seq_comp->n_counts);
-                        }else{
-                                snprintf(buf, 256," (%d sequences)",  seq_comp->n_counts);
-                        }
-                        RUN(tld_append(o, buf));
 
-                        RUN(tld_append(o, "</h2>\n"));
-
-                        RUN(tld_append(o, "<div id=\""));
-                        snprintf(buf, 256,"basecomp%d", mapq_idx);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
-                        RUN(tld_append(o,"<script>\n"));
-                
                         for(int i = 0; i < seq_comp->L;i++){
                                 snprintf(buf, 256,"trace%d_%d",mapq_idx,i );
                                 snprintf(name, 256,"%c",nuc[i]);
@@ -365,38 +372,78 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
                                             name,
                                             NULL,
                                             "bar",
+                                            vis,
                                             NULL,
                                             seq_comp->data[i],
-                                            seq_comp->len));
+                                            seq_comp->len
+                                            ));
                         }
-
-                        RUN(tld_append(o,"var "));
-                        snprintf(buf, 256,"base_comp_data%d", mapq_idx);
-                        RUN(tld_append(o,buf ));
-                        RUN(tld_append(o," = ["));
-                        /* RUN(tld_append(o,"var base_comp_data = [")); */
-                        snprintf(buf, 256,"trace%d_%d",mapq_idx,0);
-                        RUN(tld_append(o,buf ));
-                        for(int i = 1; i < seq_comp->L;i++){
-                                snprintf(buf, 256,",trace%d_%d",mapq_idx,i);
-                                RUN(tld_append(o,buf ));
-
-                        }
-                        RUN(tld_append(o,"];\n"));
-
-                        RUN(tld_append(o,"var base_comp_layout = {barmode: 'stack'};\n"));
-                        RUN(tld_append(o,"Plotly.newPlot('"));
-                        snprintf(buf, 256,"basecomp%d", mapq_idx);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o,"', "));
-
-                        snprintf(buf, 256,"base_comp_data%d", mapq_idx);
-                        RUN(tld_append(o,buf ));
-                        RUN(tld_append(o,", base_comp_layout);\n"));
-
-                        RUN(tld_append(o,"</script>\n"));
+                        vis = 0;
                 }
         }
+        RUN(tld_append(o,"var "));
+        snprintf(buf, 256,"base_comp_data");
+        RUN(tld_append(o,buf ));
+        RUN(tld_append(o," = ["));
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                seq_comp = m->seq_comp_R1[mapq_idx];
+                if(seq_comp->n_counts > 0){
+                        for(int i = 0; i < seq_comp->L;i++){
+                                snprintf(buf, 256,"trace%d_%d,",mapq_idx,i);
+                                RUN(tld_append(o,buf ));
+                        }
+                }
+
+        }
+        o->len--;
+        RUN(tld_append(o,"];\n"));
+        RUN(tld_append(o,"var base_comp_layout = {barmode: 'stack'};\n"));
+        RUN(tld_append(o,"Plotly.newPlot('"));
+        snprintf(buf, 256,"basecomp");
+        RUN(tld_append(o, buf));
+        RUN(tld_append(o,"', "));
+
+        snprintf(buf, 256,"base_comp_data,");
+        RUN(tld_append(o,buf ));
+        /* RUN(tld_append(o,"base_comp_layout,")); */
+
+        RUN(tld_append(o,"{barmode: 'stack',\n"));
+
+        RUN(tld_append(o,"updatemenus: [{\n"));
+        RUN(tld_append(o,"y: 1,\n"));
+        RUN(tld_append(o,"yanchor: 'top',\n"));
+        RUN(tld_append(o,"buttons: [\n"));
+        for(int vis = 0; vis < m->n_mapq_bins; vis++){
+                seq_comp = m->seq_comp_R1[vis];
+                if(seq_comp->n_counts > 0){
+                        RUN(tld_append(o,"{\n"));
+                        RUN(tld_append(o,"method: 'restyle',\n"));
+                        RUN(tld_append(o,"args: ['visible', [\n"));
+                        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                                seq_comp = m->seq_comp_R1[mapq_idx];
+                                if(seq_comp->n_counts > 0){
+                                        for(int i = 0; i < seq_comp->L;i++){
+                                                if(vis == mapq_idx){
+                                                        RUN(tld_append(o,"true,"));
+                                                }else{
+                                                        RUN(tld_append(o,"false,"));
+                                                }
+                                        }
+                                }
+
+                        }
+                        o->len--;
+                        RUN(tld_append(o,"]],\n"));
+                        snprintf(buf,256,"label: '%s'\n",m->mapq_map->description[vis]);
+                        RUN(tld_append(o,buf));
+                        RUN(tld_append(o,"},\n"));
+                }
+        }
+        o->len--;
+        RUN(tld_append(o,"]}]}\n"));
+
+        RUN(tld_append(o,");\n"));
+        RUN(tld_append(o,"</script>\n"));
         return OK;
 ERROR:
         return FAIL;
@@ -406,91 +453,124 @@ int error_composition_section(tld_strbuf *o, struct metrics *m)
 {
         struct error_composition* e = NULL;
         char buf[256];
+        char name[256];
         char nuc[5] = "ACGTN";
 
         /* if(m->is_aligned == 0){ */
 
         /* } */
+        RUN(tld_append(o, "<h2>Error composition: "));
+        /* snprintf(buf, 256,"%s",  m->mapq_map->description[mapq_idx] ); */
+        /* RUN(tld_append(o, buf)); */
 
+        /* if(seq_comp->n_counts == 1){ */
+        /*         snprintf(buf, 256," (%d sequence)",  seq_comp->n_counts); */
+        /* }else{ */
+        /*         snprintf(buf, 256," (%d sequences)",  seq_comp->n_counts); */
+        /* } */
+        /* RUN(tld_append(o, buf)); */
+
+        RUN(tld_append(o, "</h2>\n"));
+
+        RUN(tld_append(o, "<div id=\""));
+        snprintf(buf, 256,"errcomp");
+        RUN(tld_append(o, buf));
+        RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+        RUN(tld_append(o,"<script>\n"));
+        int vis = 1;
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
                 e = m->error_comp_R1[mapq_idx];
-                LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins );
+                /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
 
-                        RUN(tld_append(o, "<h2>Error composition: "));
-                        snprintf(buf, 256,"%s",  m->mapq_map->description[mapq_idx] );
-                        RUN(tld_append(o, buf));
-
-                        /* if(seq_comp->n_counts == 1){ */
-                        /*         snprintf(buf, 256," (%d sequence)",  seq_comp->n_counts); */
-                        /* }else{ */
-                        /*         snprintf(buf, 256," (%d sequences)",  seq_comp->n_counts); */
-                        /* } */
-                        /* RUN(tld_append(o, buf)); */
-
-                        RUN(tld_append(o, "</h2>\n"));
-
-                        RUN(tld_append(o, "<div id=\""));
-                        snprintf(buf, 256,"errcomp%d", mapq_idx);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
-                        RUN(tld_append(o,"<script>\n"));
 
                         for(int i = 0; i < e->L;i++){
-                                snprintf(buf, 256,"var errtrace%d_%d = {\n",mapq_idx,i );
-                                RUN(tld_append(o,buf));
-                                RUN(tld_append(o,"x: ["));
-                                snprintf(buf, 256,"%d",1);
-                                RUN(tld_append(o,buf));
-                                for(int j = 1 ; j <  e->len;j++){
-                                        snprintf(buf, 256,",%d",j+1);
-                                        RUN(tld_append(o,buf));
-                                }
-                                RUN(tld_append(o,"],\n"));
-                                RUN(tld_append(o,"y: ["));
-                                snprintf(buf, 256,"%d", e->mis[i][0]);
-                                RUN(tld_append(o,buf));
-                                for(int j = 1 ; j < e->len;j++){
-                                        snprintf(buf, 256,",%d", e->mis[i][j]);
-                                        RUN(tld_append(o,buf));
-                                }
-                                RUN(tld_append(o,"],\n"));
-                                /* LOG_MSG("L? %d", seq_comp->L); */
-                                if(e->L < 20){
-                                        snprintf(buf, 256,"name: '%c',\n", nuc[i]);
-                                        RUN(tld_append(o,buf));
-                                }
-                                RUN(tld_append(o,"type: 'bar'\n"));
-                                RUN(tld_append(o,"};\n"));
+                                snprintf(buf, 256,"errtrace%d_%d",mapq_idx,i );
+                                snprintf(name, 256,"%c",nuc[i]);
+                                RUN(add_count_data(
+                                            o,
+                                            buf,
+                                            name,
+                                            NULL,
+                                            "bar",
+                                            vis,
+                                            NULL,
+                                            e->mis[i],
+                                            e->len
+                                            ));
                         }
-
-                        RUN(tld_append(o,"var "));
-                        snprintf(buf, 256,"err_comp_data%d", mapq_idx);
-                        RUN(tld_append(o,buf ));
-                        RUN(tld_append(o," = ["));
-                        /* RUN(tld_append(o,"var base_comp_data = [")); */
-                        snprintf(buf, 256,"errtrace%d_%d",mapq_idx,0);
-                        RUN(tld_append(o,buf ));
-                        for(int i = 1; i < e->L;i++){
-                                snprintf(buf, 256,",errtrace%d_%d",mapq_idx,i);
-                                RUN(tld_append(o,buf ));
-
-                        }
-                        RUN(tld_append(o,"];\n"));
-
-                        RUN(tld_append(o,"var err_comp_layout = {barmode: 'stack'};\n"));
-                        RUN(tld_append(o,"Plotly.newPlot('"));
-                        snprintf(buf, 256,"errcomp%d", mapq_idx);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o,"', "));
-
-                        snprintf(buf, 256,"err_comp_data%d", mapq_idx);
-                        RUN(tld_append(o,buf ));
-                        RUN(tld_append(o,", err_comp_layout);\n"));
-
-                        RUN(tld_append(o,"</script>\n"));
+                        vis = 0;
                 }
         }
+        RUN(tld_append(o,"var "));
+        snprintf(buf, 256,"err_comp_data");
+        RUN(tld_append(o,buf ));
+        RUN(tld_append(o," = ["));
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                e = m->error_comp_R1[mapq_idx];
+                /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
+                if(e->n_mis + e->n_del + e->n_ins  > 0){
+
+
+                        for(int i = 0; i < e->L;i++){
+                                snprintf(buf, 256,"errtrace%d_%d,",mapq_idx,i );
+                                RUN(tld_append(o,buf ));
+                        }
+                }
+        }
+        o->len--;
+
+
+        RUN(tld_append(o,"];\n"));
+
+        RUN(tld_append(o,"Plotly.newPlot('"));
+        snprintf(buf, 256,"errcomp");
+        RUN(tld_append(o, buf));
+        RUN(tld_append(o,"', "));
+
+        snprintf(buf, 256,"err_comp_data,");
+        RUN(tld_append(o,buf ));
+        /* RUN(tld_append(o,"base_comp_layout,")); */
+
+        RUN(tld_append(o,"{barmode: 'stack',\n"));
+
+        RUN(tld_append(o,"updatemenus: [{\n"));
+        RUN(tld_append(o,"y: 1,\n"));
+        RUN(tld_append(o,"yanchor: 'top',\n"));
+        RUN(tld_append(o,"buttons: [\n"));
+        for(int vis = 0; vis < m->n_mapq_bins; vis++){
+                e = m->error_comp_R1[vis];
+                /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
+                if(e->n_mis + e->n_del + e->n_ins  > 0){
+                        RUN(tld_append(o,"{\n"));
+                        RUN(tld_append(o,"method: 'restyle',\n"));
+                        RUN(tld_append(o,"args: ['visible', [\n"));
+                        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                                e = m->error_comp_R1[mapq_idx];
+
+                                if(e->n_mis + e->n_del + e->n_ins  > 0){
+                                        for(int i = 0; i < e->L;i++){
+                                                if(vis == mapq_idx){
+                                                        RUN(tld_append(o,"true,"));
+                                                }else{
+                                                        RUN(tld_append(o,"false,"));
+                                                }
+                                        }
+                                }
+
+                        }
+                        o->len--;
+                        RUN(tld_append(o,"]],\n"));
+                        snprintf(buf,256,"label: '%s'\n",m->mapq_map->description[vis]);
+                        RUN(tld_append(o,buf));
+                        RUN(tld_append(o,"},\n"));
+                }
+        }
+        o->len--;
+        RUN(tld_append(o,"]}]}\n"));
+
+        RUN(tld_append(o,");\n"));
+        RUN(tld_append(o,"</script>\n"));
         return OK;
 ERROR:
         return FAIL;

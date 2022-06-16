@@ -246,8 +246,8 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 reset_tl_seq_buffer(sb);
         }
         /* RUN(debug_metrics_print(metrics)); */
-        metrics_free(metrics);
         create_report(metrics, p);
+        metrics_free(metrics);
         if(sb->data){
                 a = sb->data;
                 free_alphabet(a);

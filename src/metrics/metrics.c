@@ -376,7 +376,7 @@ ERROR:
 
 int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int *idx)
 {
-        *idx = 0;
+        *idx = MAPQUALBIN_UNMAP;
         *read = 1;
         if(s->data){
                 struct aln_data* a = NULL;

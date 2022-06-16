@@ -41,7 +41,6 @@ int main(int argc, char *argv[])
                 }else if(t == FILE_TYPE_SAMBAM){
                         process_sam_bam_file(param,i);
                 }
-
         }
 
         param_free(param);

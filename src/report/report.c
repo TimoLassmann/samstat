@@ -4,10 +4,13 @@
 #include "string/str.h"
 #include "tld.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #define REPORT_IMPORT
 #include "report.h"
+
+static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, uint32_t *x, uint32_t* y,  int len);
 
 static int report_header(tld_strbuf *out_buffer);
 static int report_footer(tld_strbuf *out_buffer);
@@ -273,10 +276,59 @@ ERROR:
         return FAIL;
 }
 
+/* helper function to write arrays */
+int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, uint32_t *x, uint32_t* y,  int len)
+{
+        ASSERT(y != NULL, "no y");
+        char buf[256];
+        snprintf(buf, 256,"var %s  = {\n",name);
+        RUN(tld_append(o,buf));
+        if(x == NULL){
+                RUN(tld_append(o,"x: ["));
+                snprintf(buf, 256,"%d",1);
+                RUN(tld_append(o,buf));
+                for(int i = 1 ; i < len;i++){
+                        snprintf(buf, 256,",%d",i+1);
+                        RUN(tld_append(o,buf));
+                }
+                RUN(tld_append(o,"],\n"));
+        }else{
+
+        }
+        RUN(tld_append(o,"y: ["));
+        snprintf(buf, 256,"%d", y[0]);
+        RUN(tld_append(o,buf));
+        for(int i = 1 ; i < len;i++){
+                snprintf(buf, 256,",%d",y[i]);
+                RUN(tld_append(o,buf));
+        }
+        RUN(tld_append(o,"],\n"));
+        if(label){
+                snprintf(buf, 256,"name: '%s',\n", label);
+                RUN(tld_append(o,buf));
+        }
+        if(color){
+                /* snprintf(buf, 256,"name: %s,\n", label); */
+                /* RUN(tld_append(o,buf)); */
+        }
+        if(type){
+                snprintf(buf, 256,"type: '%s',\n", type);
+                RUN(tld_append(o,buf));
+        }else{
+                RUN(tld_append(o,"type: 'scatter',\n"));
+        }
+
+        RUN(tld_append(o,"};\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int base_composition_section(tld_strbuf *o, struct metrics *m)
 {
         struct seq_composition* seq_comp = NULL;
         char buf[256];
+        char name[256];
         char nuc[5] = "ACGTN";
 
         /* if(m->is_aligned == 0){ */
@@ -286,11 +338,9 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
                 seq_comp = m->seq_comp_R1[mapq_idx];
                 if(seq_comp->n_counts > 0){
-
                         RUN(tld_append(o, "<h2>Base composition: "));
                         snprintf(buf, 256,"%s",  m->mapq_map->description[mapq_idx] );
                         RUN(tld_append(o, buf));
-
                         if(seq_comp->n_counts == 1){
                                 snprintf(buf, 256," (%d sequence)",  seq_comp->n_counts);
                         }else{
@@ -305,33 +355,19 @@ int base_composition_section(tld_strbuf *o, struct metrics *m)
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
                         RUN(tld_append(o,"<script>\n"));
-
+                
                         for(int i = 0; i < seq_comp->L;i++){
-                                snprintf(buf, 256,"var trace%d_%d = {\n",mapq_idx,i );
-                                RUN(tld_append(o,buf));
-                                RUN(tld_append(o,"x: ["));
-                                snprintf(buf, 256,"%d",1);
-                                RUN(tld_append(o,buf));
-                                for(int j = 1 ; j < seq_comp->len;j++){
-                                        snprintf(buf, 256,",%d",j+1);
-                                        RUN(tld_append(o,buf));
-                                }
-                                RUN(tld_append(o,"],\n"));
-                                RUN(tld_append(o,"y: ["));
-                                snprintf(buf, 256,"%d", seq_comp->data[i][0]);
-                                RUN(tld_append(o,buf));
-                                for(int j = 1 ; j < seq_comp->len;j++){
-                                        snprintf(buf, 256,",%d",seq_comp->data[i][j]);
-                                        RUN(tld_append(o,buf));
-                                }
-                                RUN(tld_append(o,"],\n"));
-                                /* LOG_MSG("L? %d", seq_comp->L); */
-                                if(seq_comp->L < 20){
-                                        snprintf(buf, 256,"name: '%c',\n", nuc[i]);
-                                        RUN(tld_append(o,buf));
-                                }
-                                RUN(tld_append(o,"type: 'bar'\n"));
-                                RUN(tld_append(o,"};\n"));
+                                snprintf(buf, 256,"trace%d_%d",mapq_idx,i );
+                                snprintf(name, 256,"%c",nuc[i]);
+                                RUN(add_count_data(
+                                            o,
+                                            buf,
+                                            name,
+                                            NULL,
+                                            "bar",
+                                            NULL,
+                                            seq_comp->data[i],
+                                            seq_comp->len));
                         }
 
                         RUN(tld_append(o,"var "));

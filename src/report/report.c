@@ -1178,11 +1178,11 @@ int report_footer(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<section id=\"blogroll\">\n"));
         RUN(tld_append(out_buffer, "<h3>Links</h3>\n"));
         RUN(tld_append(out_buffer, "<ul>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"http://samtools.sourceforge.net/\">samtools</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"http://msa.sbc.su.se/\">Kalign</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n"));
+        /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
+        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/samstat/\">samstat</a></li>\n"));
+        /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
+        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));
+        /* RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n")); */
 
 
         RUN(tld_append(out_buffer, "</ul>\n"));
@@ -1190,7 +1190,6 @@ int report_footer(tld_strbuf *out_buffer)
 
         RUN(tld_append(out_buffer, "</div>\n"));
         RUN(tld_append(out_buffer, "</footer>\n"));
-
 
         RUN(tld_append(out_buffer, "</body>\n"));
         RUN(tld_append(out_buffer, "</html>\n"));

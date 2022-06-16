@@ -162,9 +162,9 @@ int get_mapqual_bins(struct mapqual_bins **map)
                 }
         }
 
-        snprintf(m->description[MAPQUALBIN_gt30], 256, "MAPQ >= 30");
-        snprintf(m->description[MAPQUALBIN_lt30], 256, "MAPQ < 30");
-        snprintf(m->description[MAPQUALBIN_lt10], 256, "MAPQ < 10");
+        snprintf(m->description[MAPQUALBIN_gt30], 256, "MAPQ gt 30");
+        snprintf(m->description[MAPQUALBIN_lt30], 256, "MAPQ lt 30");
+        snprintf(m->description[MAPQUALBIN_lt10], 256, "MAPQ lt 10");
         snprintf(m->description[MAPQUALBIN_UNMAP], 256, "Unmapped");
 
 
@@ -266,7 +266,12 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
         }
 
         /* s->seq */
+        if(s->qual[0] == 255){
 
+                return OK;
+        }else{
+                LOG_MSG("Detected a non  missing qual %d", s->qual[0]);
+        }
 
         for(int i = 0;i < s->len;i++){
                 int q = (int)s->qual[i] - offset;

@@ -1,3 +1,4 @@
+#include "core/tld-core.h"
 #include "sam.h"
 #include "tld.h"
 #include <htslib/sam.h>
@@ -94,13 +95,18 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         }
                         s->seq[s->len ] = 0;
 
+                        /* LOG_MSG("%d", qual_ptr[0]); */
                         if(qual_ptr[0] == 0xFF){
+                                s->qual[0] = 0xFF;
+                                s->qual[s->len-1] = 0xFF; /* HACK! - this ensures that we have 255
+                                                             at the beginning whether or not the sequences
+                                                             are on the forward or reverse strand  */
                                 /* s->qual[0] = '*'; */
                                 /* s->qual[1] = 0; */
-                                for (int i = 0; i < s->len; ++i){
-                                        s->qual[i] = 'J';
-                                }
-                                s->qual[s->len] = 0 ;
+                                /* for (int i = 0; i < s->len; ++i){ */
+                                        /* s->qual[i] = 'J'; */
+                                /* } */
+                                /* s->qual[s->len] = 0 ; */
                         }else{
                                 for (int i = 0; i < s->len; ++i){
                                         s->qual[i] = qual_ptr[i] + 33;

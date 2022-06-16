@@ -185,7 +185,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
 
         /* RUN(debug_metrics_print(metrics)); */
-        create_report(metrics, p);
+        create_report(metrics, p,id);
         metrics_free(metrics);
         if(sb->data){
                 a = sb->data;
@@ -246,7 +246,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 reset_tl_seq_buffer(sb);
         }
         /* RUN(debug_metrics_print(metrics)); */
-        create_report(metrics, p);
+        create_report(metrics, p,id);
         metrics_free(metrics);
         if(sb->data){
                 a = sb->data;

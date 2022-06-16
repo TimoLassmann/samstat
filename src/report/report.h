@@ -11,8 +11,8 @@
 #define EXTERN extern
 #endif
 
-EXTERN int create_report(struct metrics*m, struct samstat_param* p);
 
+EXTERN int create_report(struct metrics *m, struct samstat_param *p, int id);
 
 
 #undef REPORT_IMPORT

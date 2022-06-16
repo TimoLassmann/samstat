@@ -1119,13 +1119,13 @@ int report_header(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "}\n"));
 
         RUN(tld_append(out_buffer, "footer ul {\n"));
-        RUN(tld_append(out_buffer, "margin: 0 0 0 40px;\n"));
+        RUN(tld_append(out_buffer, "    margin: 0 0 0 40px;\n"));
         RUN(tld_append(out_buffer, "	list-style: square;\n"));
-        RUN(tld_append(out_buffer, "color: #565656;\n"));
+        RUN(tld_append(out_buffer, "    color: #565656;\n"));
         RUN(tld_append(out_buffer, "}\n"));
 
         RUN(tld_append(out_buffer, "footer ul li a {\n"));
-        RUN(tld_append(out_buffer, "display: block;\n"));
+        RUN(tld_append(out_buffer, "    display: block;\n"));
         RUN(tld_append(out_buffer, "}\n"));
 
         /* RUN(tld_append(out_buffer, "canvas  {\n")); */
@@ -1138,13 +1138,13 @@ int report_header(tld_strbuf *out_buffer)
         /* RUN(tld_append(out_buffer, "}\n")); */
 
 
-        /* RUN(tld_append(out_buffer, "nav {\n")); */
-        /* //RUN(tld_append(out_buffer, "position: absolute;\n")); */
-        /* RUN(tld_append(out_buffer, "left: 0;\n")); */
-        /* RUN(tld_append(out_buffer, "width: 100%%;\n")); */
-        /* RUN(tld_append(out_buffer, "background: #75787B;\n")); */
-        /* RUN(tld_append(out_buffer, "color: #FFF;\n")); */
-        /* RUN(tld_append(out_buffer, "}\n")); */
+        RUN(tld_append(out_buffer, "nav {\n"));
+        //RUN(tld_append(out_buffer, "position: absolute;\n"));
+        RUN(tld_append(out_buffer, "left: 0;\n"));
+        RUN(tld_append(out_buffer, "width: 100%%;\n"));
+        RUN(tld_append(out_buffer, "background: #75787B;\n"));
+        RUN(tld_append(out_buffer, "color: #FFF;\n"));
+        RUN(tld_append(out_buffer, "}\n"));
 
 
 
@@ -1179,6 +1179,7 @@ int report_footer(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<h3>Links</h3>\n"));
         RUN(tld_append(out_buffer, "<ul>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
+        RUN(tld_append(out_buffer, "<li><a href=\"https://samtools.github.io/hts-specs/\">SAM/BAM specifications</a></li>\n"));
         RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/samstat/\">samstat</a></li>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
         RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));

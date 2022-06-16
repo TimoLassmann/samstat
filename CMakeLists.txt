@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.2)
 
 project(samstat LANGUAGES C VERSION "2.0")
 
+message(STATUS "${CMAKE_PROJECT_NAME} Name ")
+message(STATUS "${CMAKE_PROJECT_VERSION} Version ")
+
 
 
 set (CMAKE_C_STANDARD 11)
@@ -30,9 +33,6 @@ if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")    
 endif()
 
-message(STATUS "${CMAKE_PROJECT_NAME} NAME ")
-
-message(STATUS "${CMAKE_PROJECT_VERSION} vERSINO ")
 
 if(NOT PACKAGE_NAME)
 set(PACKAGE_NAME ${CMAKE_PROJECT_NAME})

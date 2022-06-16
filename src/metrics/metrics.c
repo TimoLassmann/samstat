@@ -96,7 +96,7 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                         }
                 }
         }
-        LOG_MSG("Max len: %d %d", m->max_len_R1, m->max_len_R2);
+        /* LOG_MSG("Max len: %d %d", m->max_len_R1, m->max_len_R2); */
         /* Sequence composition */
         for(int i = 0; i < m->n_mapq_bins;i++){
                 if(!m->seq_comp_R1[i]){
@@ -104,7 +104,7 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                         RUN(alloc_qual_comp(&m->qual_comp_R1[i], m->max_len_R1));
                         RUN(alloc_error_comp(&m->error_comp_R1[i], sb->L,m->max_len_R1));
                 }else if(len_change == 1){   /* need to resize as a longer sequence was found  */
-                        LOG_MSG("Changing length: %d L %d ", m->max_len_R1, sb->L);
+                        /* LOG_MSG("Changing length: %d L %d ", m->max_len_R1, sb->L); */
                         RUN(resize_seq_comp(m->seq_comp_R1[i], sb->L, m->max_len_R1));
                         RUN(resize_qual_comp(m->qual_comp_R1[i], m->max_len_R1));
                         RUN(resize_error_comp(m->error_comp_R1[i], sb->L, m->max_len_R1));
@@ -269,9 +269,9 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
         if(s->qual[0] == 255){
 
                 return OK;
-        }else{
-                LOG_MSG("Detected a non  missing qual %d", s->qual[0]);
-        }
+        }/* else{ */
+        /*         LOG_MSG("Detected a non  missing qual %d", s->qual[0]); */
+        /* } */
 
         for(int i = 0;i < s->len;i++){
                 int q = (int)s->qual[i] - offset;
@@ -731,7 +731,7 @@ int resize_seq_comp(struct seq_composition* s,int newL, int new_max_len)
                         new[i][j] = 0;
                 }
         }
-        LOG_MSG("%d %d -> %d %d", s->L, s->len, newL, new_max_len);
+        /* LOG_MSG("%d %d -> %d %d", s->L, s->len, newL, new_max_len); */
         for(int i = 0;i < s->L;i++){
                 for(int j = 0; j < s->len;j++){
                         new[i][j] = s->data[i][j];

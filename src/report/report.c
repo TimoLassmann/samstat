@@ -21,10 +21,11 @@ static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
 static int base_composition_section(tld_strbuf *o, struct metrics *m, int read);
 /* static int base_quality_section(tld_strbuf *o, struct metrics *m); */
 static int base_quality_section(tld_strbuf *o, struct metrics *m, int read);
-static int error_composition_section(tld_strbuf *o, struct metrics *m);
-static int mismatch_composition_section(tld_strbuf *o, struct metrics *m);
-static int ins_composition_section(tld_strbuf *o, struct metrics *m);
-static int del_composition_section(tld_strbuf *o, struct metrics *m);
+
+static int error_composition_section(tld_strbuf *o, struct metrics *m, int read);
+static int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read);
+static int ins_composition_section(tld_strbuf *o, struct metrics *m, int read);
+static int del_composition_section(tld_strbuf *o, struct metrics *m, int read);
 
 static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len);
 static int report_header(tld_strbuf *out_buffer);
@@ -60,7 +61,12 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
         }else{
                 RUN(base_quality_section(out,m,0));
         }
-        RUN(error_composition_section(out, m));
+        if(m->is_paired){
+                RUN(error_composition_section(out, m,1));
+                RUN(error_composition_section(out, m,2));
+        }else{
+                RUN(error_composition_section(out, m,0));
+        }
         RUN(report_footer(out));
 
         /* if(p->outfile){ */
@@ -142,7 +148,7 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
 
         /* TABLE  */
 
-        RUN(tld_append(o, "<div id=\"MappingStatsTable\" style=\"width:100%;max-width:700px;height:260px;\"></div>\n"));
+        RUN(tld_append(o, "<div id=\"MappingStatsTable\" style=\"width:100%;max-width:700px;height:240px;\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
         RUN(tld_append(o, "var mappingtableval = [\n"));
         RUN(tld_append(o, "["));
@@ -178,7 +184,7 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o, "var mappingtable_data = [{\n"));
         RUN(tld_append(o, "type: 'table',\n"));
         RUN(tld_append(o, "header: {\n"));
-        RUN(tld_append(o, "values: [[\"<b>Mapping Quality Bin</b>\"], [\"<b>Number of sequences</b>\"], [\"<b>Percentage</b>\"]],\n"));
+        RUN(tld_append(o, "values: [[\"<b>Mapping Quality Bin</b>\"], [\"<b>Number of Sequences</b>\"], [\"<b>Percentage</b>\"]],\n"));
         RUN(tld_append(o,"align: \"center\",\n"));
         RUN(tld_append(o,"line: {width: 1, color: 'black'},\n"));
         RUN(tld_append(o,"fill: {color: \"grey\"},\n"));
@@ -216,9 +222,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
         char target[16];
         double* mean = NULL;
         double* stderr = NULL;
-
-
-
 
         if(!m->is_paired){
                 /* snprintf(target, 16,"qualcomp"); */
@@ -437,16 +440,16 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
         /* } */
         if(!m->is_paired){
                 snprintf(target, 16,"basecomp");
-                RUN(tld_append(o, "<h2>Base composition:</h2>"));
+                RUN(tld_append(o, "<h2>Base composition</h2>"));
 
         }else{
                 if(read == 1){
                         snprintf(target, 16,"basecompR1");
-                        RUN(tld_append(o, "<h2>Base composition R1:</h2>"));
+                        RUN(tld_append(o, "<h2>Base composition R1</h2>"));
 
                 }else if(read == 2){
                         snprintf(target, 16,"basecompR2");
-                        RUN(tld_append(o, "<h2>Base composition R2:</h2>"));
+                        RUN(tld_append(o, "<h2>Base composition R2</h2>"));
                 }else{
                         ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
                 }
@@ -538,8 +541,13 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o,"},\n"));
 
         RUN(tld_append(o,"updatemenus: [{\n"));
-        RUN(tld_append(o,"y: 1,\n"));
+        RUN(tld_append(o,"x: 0.5,\n"));
+        RUN(tld_append(o,"xanchor: 'center',\n"));
+
+        RUN(tld_append(o,"y: 1.09,\n"));
         RUN(tld_append(o,"yanchor: 'top',\n"));
+        /* RUN(tld_append(o,"y: 1,\n")); */
+        /* RUN(tld_append(o,"yanchor: 'top',\n")); */
         RUN(tld_append(o,"buttons: [\n"));
         for(int vis = 0; vis < m->n_mapq_bins; vis++){
                 seq_comp = m->seq_comp_R1[vis];
@@ -577,46 +585,85 @@ ERROR:
         return FAIL;
 }
 
-int error_composition_section(tld_strbuf *o, struct metrics *m)
+int error_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         if(m->is_aligned){
-                RUN(tld_append(o, "<h2>Error composition: </h2>"));
-                RUN(mismatch_composition_section(o,m));
-                RUN(ins_composition_section(o,m));
-                RUN(del_composition_section(o,m));
+
+                if(!m->is_paired){
+                        RUN(tld_append(o, "<h2>Error composition</h2>"));
+
+                }else{
+                        if(read == 1){
+                          RUN(tld_append(o, "<h2>Error composition R1</h2>"));
+                        }else if(read == 2){
+                                RUN(tld_append(o, "<h2>Error composition R2</h2>"));
+                        }else{
+                                ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                        }
+                }
+
+                        /* RUN(tld_append(o, "<h2>Error composition: </h2>")); */
+                RUN(mismatch_composition_section(o,m,read));
+                RUN(ins_composition_section(o,m,read));
+                RUN(del_composition_section(o,m,read));
         }
         return OK;
 ERROR:
         return FAIL;
 }
 
-int mismatch_composition_section(tld_strbuf *o, struct metrics *m)
+int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct error_composition* e = NULL;
         char buf[256];
         char name[256];
+        char target[16];
         char nuc[5] = "ACGTN";
 
+        if(!m->is_paired){
+                snprintf(target, 16,"miserrcomp");
+        }else{
+                if(read == 1){
+                        snprintf(target, 16,"miserrcompR1");
+                }else if(read == 2){
+                        snprintf(target, 16,"miserrcompR2");
+                }else{
+                        ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                }
+        }
+
         RUN(tld_append(o, "<div id=\""));
-        snprintf(buf, 256,"miserrcomp");
-        RUN(tld_append(o, buf));
+        /* snprintf(buf, 256,"miserrcomp"); */
+        RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
         int vis = 1;
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                e = m->error_comp_R1[mapq_idx];
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        e = m->error_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        e = m->error_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
-                        double  total = (double) e->n_mis ;//+ e->n_del + e->n_ins;
+
+                        /* double  total = (double) e->n_mis ;//+ e->n_del + e->n_ins; */
+                        /* double  total = (double) m->seq_comp_R1[mapq_idx]->n_counts; */
                         /* uint32_t sanity = 0; */
-                        for(int i = 0; i < e->L;i++){
-                                for(int j = 0; j < e->len;j++){
-
-                                        e->mis[i][j] = round( (double) e->mis[i][j] * 1000000.0 / total);
+                        /* for(int i = 0; i < e->L;i++){ */
+                        /*         for(int j = 0; j < e->len;j++){ */
+                                        /* e->mis[i][j] = round( (double) e->mis[i][j] * 1000000.0 / total); */
                                         /* sanity+= e->mis[i][j]; */
-
-                                }
-                        }
+                        /*         } */
+                        /* } */
                         /* LOG_MSG("Sanity: %d total %d", sanity, total); */
                         for(int i = 0; i < e->L;i++){
                                 snprintf(buf, 256,"errtrace%d_%d",mapq_idx,i );
@@ -641,7 +688,19 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o,buf ));
         RUN(tld_append(o," = ["));
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                e = m->error_comp_R1[mapq_idx];
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        e = m->error_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        e = m->error_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
 
@@ -658,8 +717,8 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o,"];\n"));
 
         RUN(tld_append(o,"Plotly.newPlot('"));
-        snprintf(buf, 256,"miserrcomp");
-        RUN(tld_append(o, buf));
+        /* snprintf(buf, 256,"miserrcomp"); */
+        RUN(tld_append(o, target));
         RUN(tld_append(o,"', "));
 
         snprintf(buf, 256,"err_comp_data,");
@@ -673,12 +732,15 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o,"title: 'Length'\n"));
         RUN(tld_append(o,"},\n"));
         RUN(tld_append(o,"yaxis: {\n"));
-        RUN(tld_append(o,"title: 'Errors per million'\n"));
+        RUN(tld_append(o,"title: 'Counts'\n"));
         RUN(tld_append(o,"},\n"));
 
 
         RUN(tld_append(o,"updatemenus: [{\n"));
-        RUN(tld_append(o,"y: 1,\n"));
+        RUN(tld_append(o,"x: 0.5,\n"));
+        RUN(tld_append(o,"xanchor: 'center',\n"));
+
+        RUN(tld_append(o,"y: 1.09,\n"));
         RUN(tld_append(o,"yanchor: 'top',\n"));
         RUN(tld_append(o,"buttons: [\n"));
         for(int vis = 0; vis < m->n_mapq_bins; vis++){
@@ -690,7 +752,6 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m)
                         RUN(tld_append(o,"args: ['visible', [\n"));
                         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
                                 e = m->error_comp_R1[mapq_idx];
-
                                 if(e->n_mis + e->n_del + e->n_ins  > 0){
                                         for(int i = 0; i < e->L;i++){
                                                 if(vis == mapq_idx){
@@ -700,7 +761,6 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m)
                                                 }
                                         }
                                 }
-
                         }
                         o->len--;
                         RUN(tld_append(o,"]],\n"));
@@ -719,20 +779,45 @@ ERROR:
         return FAIL;
 }
 
-int ins_composition_section(tld_strbuf *o, struct metrics *m)
+int ins_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct error_composition* e = NULL;
         char buf[256];
         char name[256];
+        char target[16];
+
+        if(!m->is_paired){
+                snprintf(target, 16,"inserrcomp");
+        }else{
+                if(read == 1){
+                        snprintf(target, 16,"inserrcompR1");
+                }else if(read == 2){
+                        snprintf(target, 16,"inserrcompR2");
+                }else{
+                        ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                }
+        }
 
         RUN(tld_append(o, "<div id=\""));
-        snprintf(buf, 256,"inserrcomp");
-        RUN(tld_append(o, buf));
+        /* snprintf(buf, 256,"inserrcomp"); */
+        RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
 
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                e = m->error_comp_R1[mapq_idx];
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        e = m->error_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        e = m->error_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
                         snprintf(buf, 256,"inserrtrace%d",mapq_idx);
@@ -755,7 +840,19 @@ int ins_composition_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o,buf ));
         RUN(tld_append(o," = ["));
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                e = m->error_comp_R1[mapq_idx];
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        e = m->error_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        e = m->error_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
                         snprintf(buf, 256,"inserrtrace%d,",mapq_idx);
@@ -765,8 +862,8 @@ int ins_composition_section(tld_strbuf *o, struct metrics *m)
         o->len--;
         RUN(tld_append(o,"];\n"));
         RUN(tld_append(o,"Plotly.newPlot('"));
-        snprintf(buf, 256,"inserrcomp");
-        RUN(tld_append(o, buf));
+        /* snprintf(buf, 256,"inserrcomp"); */
+        RUN(tld_append(o, target));
         RUN(tld_append(o,"', "));
 
         snprintf(buf, 256,"inserr_comp_data,");
@@ -789,20 +886,45 @@ ERROR:
         return FAIL;
 }
 
-int del_composition_section(tld_strbuf *o, struct metrics *m)
+int del_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct error_composition* e = NULL;
         char buf[256];
         char name[256];
+                char target[16];
+
+        if(!m->is_paired){
+                snprintf(target, 16,"delerrcomp");
+        }else{
+                if(read == 1){
+                        snprintf(target, 16,"delerrcompR1");
+                }else if(read == 2){
+                        snprintf(target, 16,"delerrcompR2");
+                }else{
+                        ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                }
+        }
 
         RUN(tld_append(o, "<div id=\""));
-        snprintf(buf, 256,"delerrcomp");
-        RUN(tld_append(o, buf));
+        /* snprintf(buf, 256,"delerrcomp"); */
+        RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
 
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                e = m->error_comp_R1[mapq_idx];
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        e = m->error_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        e = m->error_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
                         snprintf(buf, 256,"delerrtrace%d",mapq_idx);
@@ -825,7 +947,19 @@ int del_composition_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o,buf ));
         RUN(tld_append(o," = ["));
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                e = m->error_comp_R1[mapq_idx];
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        e = m->error_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        e = m->error_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                                /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis + e->n_del + e->n_ins  > 0){
                         snprintf(buf, 256,"delerrtrace%d,",mapq_idx);
@@ -835,8 +969,8 @@ int del_composition_section(tld_strbuf *o, struct metrics *m)
         o->len--;
         RUN(tld_append(o,"];\n"));
         RUN(tld_append(o,"Plotly.newPlot('"));
-        snprintf(buf, 256,"delerrcomp");
-        RUN(tld_append(o, buf));
+        /* snprintf(buf, 256,"delerrcomp"); */
+        RUN(tld_append(o, target));
         RUN(tld_append(o,"', "));
 
         snprintf(buf, 256,"delerr_comp_data,");
@@ -858,9 +992,6 @@ int del_composition_section(tld_strbuf *o, struct metrics *m)
 ERROR:
         return FAIL;
 }
-
-
-
 
 
 int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len)

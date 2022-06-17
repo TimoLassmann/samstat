@@ -1,5 +1,7 @@
 #include <getopt.h>
+#include <unistd.h>
 
+#include "core/tld-core.h"
 #include "tld.h"
 #define PARAM_IMPORT
 #include "param.h"
@@ -66,8 +68,13 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 exit(EXIT_SUCCESS);
         }
 
-
-
+        if( (argc- optind) <= 0){
+                usage();
+                param_free(p);
+                /* free_param(param); */
+                exit(EXIT_SUCCESS);
+        }
+        LOG_MSG("%d %d", argc, optind);
 
 
         MMALLOC(p->infile,sizeof(char*)* (argc-optind));

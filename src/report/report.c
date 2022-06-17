@@ -222,28 +222,29 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
         char target[16];
         double* mean = NULL;
         double* stderr = NULL;
-
-        if(!m->is_paired){
-                /* snprintf(target, 16,"qualcomp"); */
-                /* RUN(tld_append(o, "<h2>Base quality distribution</h2>\n")); */
-                q = m->qual_comp_R1[0];
-        }else{
-                if(read == 1){
-                        /* snprintf(target, 16,"qualcompR1"); */
-                        /* RUN(tld_append(o, "<h2>Base quality distribution R1</h2>\n")); */
-                        q = m->qual_comp_R1[0];
-                }else if(read == 2){
-                        /* snprintf(target, 16,"qualcompR2"); */
-                        /* RUN(tld_append(o, "<h2>Base quality distribution R2</h2>\n")); */
-                        q = m->qual_comp_R2[0];
+        uint32_t t = 0;
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                if(!m->is_paired){
+                        /* snprintf(target, 16,"qualcomp"); */
+                        /* RUN(tld_append(o, "<h2>Base quality distribution</h2>\n")); */
+                        q = m->qual_comp_R1[mapq_idx];
                 }else{
-                        ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                        if(read == 1){
+                                /* snprintf(target, 16,"qualcompR1"); */
+                                /* RUN(tld_append(o, "<h2>Base quality distribution R1</h2>\n")); */
+                                q = m->qual_comp_R1[mapq_idx];
+                        }else if(read == 2){
+                                /* snprintf(target, 16,"qualcompR2"); */
+                                /* RUN(tld_append(o, "<h2>Base quality distribution R2</h2>\n")); */
+                                q = m->qual_comp_R2[mapq_idx];
+                        }else{
+                                ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                        }
                 }
+                t += q->n_counts;
         }
-        if(q->n_counts == 0){
+        if(t == 0){
                 return OK;
-        }else{
-                LOG_MSG("%d counts: ",q->n_counts);
         }
         if(!m->is_paired){
                 snprintf(target, 16,"qualcomp");
@@ -265,7 +266,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
         /* kind of important */
         galloc(&mean, q->len);
         galloc(&stderr, q->len);
-
 
         RUN(tld_append(o, "<div id=\""));
         RUN(tld_append(o, target));
@@ -306,7 +306,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                                 if(n == 0){
                                         mean[i] = 0.0;
                                         stderr[i] = 0.0;
-
                                         /* LOG_MSG("should not happen : %f total: %f", n,total); */
                                 }else{
                                         mean[i] = total / n;

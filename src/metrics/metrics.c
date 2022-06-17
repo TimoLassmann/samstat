@@ -267,7 +267,8 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
 
         /* s->seq */
         if(s->qual[0] == 255){
-
+                /* LOG_MSG("Counting : %d", c->n_counts); */
+                /* LOG_MSG("Bad qual"); */
                 return OK;
         }/* else{ */
         /*         LOG_MSG("Detected a non  missing qual %d", s->qual[0]); */
@@ -278,9 +279,11 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
                 if(q > 41){
                         q = 41;
                 }
+                /* LOG_MSG("%d ",q); */
                 c->data[i][q]++;
         }
         c->n_counts++;
+
         return OK;
 ERROR:
         return FAIL;

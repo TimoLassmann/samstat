@@ -61,7 +61,14 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 endif()
 #add_subdirectory(src/tld/tests)
 
-  
+install(TARGETS samstat RUNTIME DESTINATION bin)
+
+include(InstallRequiredSystemLibraries)
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING")
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_SOURCE_GENERATOR "TGZ;ZIP")
+include(CPack)  
 # Package Generator  #######################################################
 # set(CPACK_PACKAGE_VENDOR "Vendor name")
 # set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Some summary")

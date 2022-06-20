@@ -137,7 +137,7 @@ int parse_alignment(struct tl_seq *s)
                         for(int j = 0; j < Oplen;j++){
                                 /* tld_append_char(a->read,s->seq[sp]); */
                                 /* a->read  */
-                                read[rp] = s->seq[sp];
+                                read[rp] = s->seq->str[sp];
                                 sp++;
                                 rp++;
                         }
@@ -146,7 +146,7 @@ int parse_alignment(struct tl_seq *s)
                 case 'I':
                         for(int j = 0; j < Oplen;j++){
                                 /* tld_append_char(a->read,s->seq[sp]); */
-                                read[rp] = s->seq[sp];
+                                read[rp] = s->seq->str[sp];
                                 /* tld_append_char(a->genome,'-'); */
                                 genome[rp] =255;
                                 sp++;
@@ -177,7 +177,7 @@ int parse_alignment(struct tl_seq *s)
                 int pos = 0;
                 int i = 0;
                 char tmp_num[8];
-                char* md = a->md->str;
+                char* md = TLD_STR(a->md); //->str;
                 while(i < l){
                         if(isdigit((int)md[i])){
                                 int j = 0;

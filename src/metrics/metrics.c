@@ -221,7 +221,8 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
         }
 
         for(int i = 0;i < s->len;i++){
-                switch ( s->seq[i]) {
+                char let = s->seq->str[i];
+                switch (let) {
                 case 'A':
                 case 'a':
                         c->data[0][i]++;
@@ -266,7 +267,7 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
         }
 
         /* s->seq */
-        if(s->qual[0] == 255){
+        if(s->qual->str[0] == 0xFF){
                 /* LOG_MSG("Counting : %d", c->n_counts); */
                 /* LOG_MSG("Bad qual"); */
                 return OK;
@@ -275,7 +276,7 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
         /* } */
 
         for(int i = 0;i < s->len;i++){
-                int q = (int)s->qual[i] - offset;
+                int q = (int)s->qual->str[i] - offset;
                 if(q > 41){
                         q = 41;
                 }

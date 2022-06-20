@@ -1,7 +1,9 @@
 #include "core/tld-core.h"
 #include "sam.h"
+#include "string/str.h"
 #include "tld.h"
 #include <htslib/sam.h>
+#include <string.h>
 
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
@@ -86,19 +88,26 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         s->len = b->core.l_qseq;
 
                         /* read in the sequence... */
-                        while(s->len+1 >= s->malloc_len){
-                                resize_tl_seq(s);
-                        }
+                        /* while(s->len+1 >= s->malloc_len){ */
+                        /*         resize_tl_seq(s); */
+                        /* } */
 
                         for (int i = 0; i < s->len; ++i){
-                                s->seq[i] = "=ACMGRSVTWYHKDBN"[bam_seqi(seq, i)];
+                                tld_append_char(s->seq, seq_nt16_str[bam_seqi(seq, i)]);
                         }
-                        s->seq[s->len ] = 0;
+                        /* s->seq[s->len ] = 0; */
 
                         /* LOG_MSG("%d", qual_ptr[0]); */
                         if(qual_ptr[0] == 0xFF){
-                                s->qual[0] = 0xFF;
-                                s->qual[s->len-1] = 0xFF; /* HACK! - this ensures that we have 255
+                                char* fill = NULL;
+
+                                galloc(&fill, s->len);
+                                memset(fill, 0xFF, s->len);
+                                tld_append(s->qual, fill);
+                                gfree(fill);
+
+                                /* s->qual[0] = 0xFF; */
+                                /* s->qual[s->len-1] = 0xFF;  HACK! - this ensures that we have 255
                                                              at the beginning whether or not the sequences
                                                              are on the forward or reverse strand  */
                                 /* s->qual[0] = '*'; */
@@ -109,10 +118,11 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                                 /* s->qual[s->len] = 0 ; */
                         }else{
                                 for (int i = 0; i < s->len; ++i){
-                                        s->qual[i] = qual_ptr[i] + 33;
+                                        tld_append_char(s->qual, qual_ptr[i] + 33);
+                                        /* s->qual[i] = qual_ptr[i] + 33; */
                                         /* sb_ptr->base_qual[i] = qual_ptr[i] + 33; */
                                 }
-                                s->qual[s->len] = 0 ;
+                                /* s->qual[s->len] = 0 ; */
                         }
                         /* extra stuff  */
                         if(! (BAM_FUNMAP & b->core.flag)){

@@ -358,25 +358,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
 
                         RUN(tld_append(o,"type: 'scatter'\n"));
                         RUN(tld_append(o,"}\n"));
-                        /* RUN(tld_append(o,"];\n")); */
-
-
-                        /* RUN(tld_append(o,"y: [")); */
-                        /* for(int i = 0 ; i < q->len;i++){ */
-                        /*         double mean; */
-                        /*         for(int j = 0; j < q->L;j++){ */
-                        /*                 snprintf(buf, 256,"%d,",q->data[j][i]); */
-                        /*                 RUN(tld_append(o,buf)); */
-                        /*         } */
-                        /* } */
-                        /* o->len--; */
-                        /* RUN(tld_append(o,"],\n")); */
-                        /* RUN(tld_append(o,"x: Basex,\n")); */
-                        /* snprintf(buf, 256,"name: '%s',\n", m->mapq_map->description[mapq_idx]); */
-                        /* RUN(tld_append(o,buf)); */
-                        /* RUN(tld_append(o,"type: 'box'\n")); */
-
-                        /* RUN(tld_append(o,"};\n")); */
                 }
         }
 
@@ -391,7 +372,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         q = m->qual_comp_R2[mapq_idx];
                         break;
                 }
-
                 /* q = m->qual_comp_R1[mapq_idx]; */
                 if(q->n_counts > 0){
                         snprintf(buf, 256,"qualtrace%d,",mapq_idx);

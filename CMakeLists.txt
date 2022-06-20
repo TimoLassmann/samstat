@@ -6,7 +6,6 @@ message(STATUS "${CMAKE_PROJECT_NAME} Name ")
 message(STATUS "${CMAKE_PROJECT_VERSION} Version ")
 
 
-
 set (CMAKE_C_STANDARD 11)
 
 add_compile_options("$<$<CONFIG:RELEASE>:-W;-Wall;-pedantic>")

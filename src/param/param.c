@@ -74,7 +74,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 /* free_param(param); */
                 exit(EXIT_SUCCESS);
         }
-        LOG_MSG("%d %d", argc, optind);
+        /* LOG_MSG("%d %d", argc, optind); */
 
 
         MMALLOC(p->infile,sizeof(char*)* (argc-optind));

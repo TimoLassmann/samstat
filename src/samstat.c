@@ -110,6 +110,7 @@ int detect_file_type(char *filename, int* type)
                 tld_str fasta_suffix = tld_char_to_str(".fasta");
                 tld_str fasta_suffix_short = tld_char_to_str(".fa");
                 tld_str fastq_suffix = tld_char_to_str(".fastq");
+                tld_str fastq_suffix_2 = tld_char_to_str(".fq");
                 tld_str fasta_suffix_gz = tld_char_to_str(".fasta.gz");
                 tld_str fastq_suffix_gz = tld_char_to_str(".fastq.gz");
 
@@ -122,6 +123,8 @@ int detect_file_type(char *filename, int* type)
                 }else if(tld_suffix_match(f, fasta_suffix_short)){
                         *type = FILE_TYPE_FASTAQ;
                 }else if(tld_suffix_match(f, fastq_suffix)){
+                        *type = FILE_TYPE_FASTAQ;
+                }else if(tld_suffix_match(f, fastq_suffix_2)){
                         *type = FILE_TYPE_FASTAQ;
                 }else if(tld_suffix_match(f, fasta_suffix_gz)){
                         *type = FILE_TYPE_FASTAQ;

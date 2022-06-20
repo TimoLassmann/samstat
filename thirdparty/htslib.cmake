@@ -9,7 +9,7 @@ ExternalProject_Add(htslib
         URL https://github.com/samtools/htslib/releases/download/1.15.1/htslib-1.15.1.tar.bz2
         PREFIX ${htslib_PREFIX}
         UPDATE_COMMAND ""
-        CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_BINARY_DIR}/htslib
+        CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_BINARY_DIR}/htslib --disable-bz2 --disable-lzma --disable-libcurl --disable-s3 
         BUILD_COMMAND make CFLAGS=${CMAKE_C_FLAGS}
         INSTALL_COMMAND "")
 ExternalProject_Get_Property(htslib SOURCE_DIR)

@@ -112,7 +112,7 @@ int param_init(struct samstat_param **param)
         struct samstat_param* p = NULL;
 
         MMALLOC(p, sizeof(struct samstat_param));
-        p->buffer_size = 10000;
+        p->buffer_size = 100000;
         p->quiet = 0;
         p->n_infile = 0;
         p->infile = NULL;

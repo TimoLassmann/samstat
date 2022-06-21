@@ -38,12 +38,11 @@ static void free_error_comp(struct error_composition *e);
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
 
-
 int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
 {
         /*  */
         /* Sanity checks  */
-
+        LOG_MSG("LEN: %d", sb->max_len);
         int len_change = 0;
         for(int i = 0; i < sb->num_seq;i++){
 

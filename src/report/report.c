@@ -185,20 +185,20 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o, "type: 'table',\n"));
         RUN(tld_append(o, "header: {\n"));
         RUN(tld_append(o, "values: [[\"<b>Mapping Quality Bin</b>\"], [\"<b>Number of Sequences</b>\"], [\"<b>Percentage</b>\"]],\n"));
-        RUN(tld_append(o,"align: \"center\",\n"));
-        RUN(tld_append(o,"line: {width: 1, color: 'black'},\n"));
-        RUN(tld_append(o,"fill: {color: \"grey\"},\n"));
-        RUN(tld_append(o,"font: {size: 14, color: \"white\"}\n"));
-        RUN(tld_append(o,"},\n"));
+        RUN(tld_append(o, "align: \"center\",\n"));
+        RUN(tld_append(o, "line: {width: 1, color: 'black'},\n"));
+        RUN(tld_append(o, "fill: {color: \"grey\"},\n"));
+        RUN(tld_append(o, "font: {size: 14, color: \"white\"}\n"));
+        RUN(tld_append(o, "},\n"));
         RUN(tld_append(o, "cells: {\n"));
-        RUN(tld_append(o,"height: 40,\n"));
-        RUN(tld_append(o,"values: mappingtableval,\n"));
-        RUN(tld_append(o,"format : [\"\",\",\",\".1%\"],\n"));
-        RUN(tld_append(o,"align: [\"center\",\"right\"],\n"));
-        RUN(tld_append(o,"line: {color: \"black\", width: 1},\n"));
-        RUN(tld_append(o,"font: {size: 14, color: [\"black\"]}\n"));
-        RUN(tld_append(o,"}\n"));
-        RUN(tld_append(o,"}]\n"));
+        RUN(tld_append(o, "height: 40,\n"));
+        RUN(tld_append(o, "values: mappingtableval,\n"));
+        RUN(tld_append(o, "format : [\"\",\",\",\".1%\"],\n"));
+        RUN(tld_append(o, "align: [\"center\",\"right\"],\n"));
+        RUN(tld_append(o, "line: {color: \"black\", width: 1},\n"));
+        RUN(tld_append(o, "font: {size: 14, color: [\"black\"]}\n"));
+        RUN(tld_append(o, "}\n"));
+        RUN(tld_append(o, "}]\n"));
 
         RUN(tld_append(o, "var mapping_table_layout = {\n"));
         RUN(tld_append(o, "margin: {\"t\": 0, \"b\": 0, \"l\": 0, \"r\": 0},\n"));
@@ -206,9 +206,9 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o, "}\n"));
 
 
-        RUN(tld_append(o,"Plotly.newPlot('MappingStatsTable', mappingtable_data,mapping_table_layout);\n"));
+        RUN(tld_append(o, "Plotly.newPlot('MappingStatsTable', mappingtable_data,mapping_table_layout);\n"));
 
-        RUN(tld_append(o,"</script>\n"));
+        RUN(tld_append(o, "</script>\n"));
 
         return OK;
 ERROR:

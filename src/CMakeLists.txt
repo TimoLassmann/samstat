@@ -1,4 +1,6 @@
 
+add_subdirectory(pst)
+
 add_executable(samstat
   samstat.c
   htsinterface/htsglue.c
@@ -26,4 +28,4 @@ endif()
 
 
 #target_link_libraries(samstat PRIVATE hts)
-target_link_libraries(samstat PRIVATE tld-dev)
+target_link_libraries(samstat PRIVATE tld-dev module_pst)

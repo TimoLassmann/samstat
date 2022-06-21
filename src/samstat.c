@@ -1,3 +1,5 @@
+
+#include "core/tld-core.h"
 #include "tld.h"
 #include "sambamparse/sam_bam_parse.h"
 #include "htslib/sam.h"
@@ -5,6 +7,7 @@
 #include "param/param.h"
 #include "metrics/metrics.h"
 #include "report/report.h"
+#include "pst.h"
 #include <stdint.h>
 
 int detect_file_type(char *filename, int* type);
@@ -158,7 +161,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
-        RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA));
+        RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
+
         sb->data = a;
 
 
@@ -174,6 +178,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 if(sb->num_seq == 0){
                         break;
                 }
+
                 for(int i = 0; i < sb->num_seq;i++){
                         parse_alignment(sb->sequences[i]);
                 }
@@ -181,6 +186,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffier_print(sb);
                 /* break; */
+                LOG_MSG("Processed %d sequences", sb->num_seq);
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
                 /* exit(0); */
@@ -222,14 +228,14 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
 
                 RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
 
-                LOG_MSG("%d", sb->base_quality_offset);
-                detect_format(sb);
+                /* LOG_MSG("%d", sb->base_quality_offset); */
+                /* detect_format(sb); */
                 if(!sb->data){
                         LOG_MSG("Setting alphabet");
                         if(sb->L == TL_SEQ_BUFFER_DNA){
-                                RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_DNA));
+                                RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA ));
                         }else if(sb->L == TL_SEQ_BUFFER_PROTEIN){
-                                RUN(create_alphabet(&a, NULL,TLALPHABET_DEFAULT_PROTEIN));
+                                RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGIOUS_PROTEIN));
                         }else{
                                 ERROR_MSG("Bio polymer size %d not recognized", sb->L);
                         }
@@ -238,10 +244,16 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 LOG_MSG("%d", sb->base_quality_offset);
                 //total_r+= sb->num_seq;
                 LOG_MSG("Finished reading chunk: found %d ",sb->num_seq);
+
+
                 if(sb->num_seq == 0){
                         break;
                 }
                 RUN(get_metrics(sb,metrics));
+                struct pst_model* m;
+                LOG_MSG("starting pst");
+                pst_model_create(&m, sb);
+
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffer_print(sb);
                 /* for(int i = 0; i < sb->num_seq;i++){ */

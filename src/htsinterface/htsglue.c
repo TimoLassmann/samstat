@@ -11,7 +11,6 @@
 static void free_aln_data_struct(struct aln_data *a);
 static int alloc_aln_data(struct aln_data **aln_d);
 
-
 int add_aln_data(struct tl_seq_buffer *sb)
 {
         ASSERT(sb != NULL,"No sb");
@@ -162,7 +161,6 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                                 return OK;
                         }
                 }
-        /* } */
         }
         return OK;
 ERROR:

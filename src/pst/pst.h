@@ -10,7 +10,7 @@
 #define EXTERN extern
 #endif
 
-#define MAX_PST_MODEL_DEPTH 30
+#define MAX_PST_MODEL_DEPTH 12
 
 struct pst;
 /* #include "pst_structs.h" */
@@ -23,9 +23,13 @@ struct pst_model{
         struct pst* pst;        /* The actual pst model  */
         double min_error;
         double gamma;
+        uint32_t n_seq;
 };
 
-int pst_model_create(struct pst_model** model, struct tl_seq_buffer* sb);
+
+int pst_model_alloc(struct pst_model **model);
+int pst_model_add_seq(struct pst_model *m, struct tl_seq_buffer *sb);
+int pst_model_create(struct pst_model *m);
 
 #undef PST_IMPORT
 #undef EXTERN

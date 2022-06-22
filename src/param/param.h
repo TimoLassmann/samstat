@@ -19,6 +19,8 @@ struct samstat_param {
         int buffer_size;
         int n_infile;
         int quiet;
+        uint32_t report_max_len;
+        uint8_t pst;
 };
 
 EXTERN int parse_param(int argc, char *argv[], struct samstat_param **param);

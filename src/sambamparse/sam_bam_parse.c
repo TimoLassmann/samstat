@@ -1,8 +1,6 @@
 
-#include "alloc/tld-alloc.h"
 #include "core/tld-core.h"
 #include "sam.h"
-#include "string/str.h"
 #include "tld.h"
 #include "../htsinterface/htsglue.h"
 #include <ctype.h>
@@ -95,9 +93,6 @@ int parse_alignment(struct tl_seq *s)
         a->aln_len = aln_len;
         aln_len++;
 
-
-
-        /* LOG_MSG("%p %p  %d %d ", a->genome, a->read, a->aln_len, a->aln_len_alloc); */
         if(a->aln_len >= a->aln_len_alloc){
                 a->aln_len_alloc = MACRO_MAX(a->aln_len_alloc + a->aln_len_alloc / 2, a->aln_len_alloc + a->aln_len - a->aln_len_alloc + 1);
                 gfree(a->read);
@@ -135,28 +130,24 @@ int parse_alignment(struct tl_seq *s)
                 case '=':
                 case 'X':
                         for(int j = 0; j < Oplen;j++){
-                                /* tld_append_char(a->read,s->seq[sp]); */
-                                /* a->read  */
                                 read[rp] = s->seq->str[sp];
+                                genome[rp] = read[rp];
                                 sp++;
                                 rp++;
                         }
-                        /* tld_append_char(genome, s->seq[sp]); */
                         break;
                 case 'I':
                         for(int j = 0; j < Oplen;j++){
-                                /* tld_append_char(a->read,s->seq[sp]); */
                                 read[rp] = s->seq->str[sp];
-                                /* tld_append_char(a->genome,'-'); */
-                                genome[rp] =255;
+                                genome[rp] = 255;
                                 sp++;
                                 rp++;
                         }
                         break;
                 case 'D':
                         for(int j = 0; j < Oplen;j++){
-                                /* tld_append_char(a->read,'-'); */
                                 read[rp] = 255;
+                                genome[rp] = 'N';
                                 rp++;
                         }
                         break;
@@ -211,18 +202,17 @@ int parse_alignment(struct tl_seq *s)
                                 pos++;
                         }
                 }
-        }else{
-                for(int i = 0; i < a->aln_len;i++){
-                        if(read[i] == 255){
-                                genome[i] = 'N';
-                        }else{
-                                genome[i] = read[i];
-                        }
-                        /* fprintf(stdout,"%c",genome[i]); */
-                }
-                /* fprintf(stdout,"Filing done \n"); */
-
-        }
+        }/* else{ */
+        /*         for(int i = 0; i < a->aln_len;i++){ */
+        /*                 if(read[i] == 255){ */
+        /*                         genome[i] = 'N'; */
+        /*                 }else{ */
+        /*                         genome[i] = read[i]; */
+        /*                 } */
+        /*                 /\* fprintf(stdout,"%c",genome[i]); *\/ */
+        /*         } */
+        /*         fprintf(stdout,"Filing done \n"); */
+        /* } */
         for(int i = 0; i < aln_len;i++){
                 if(genome[i] == 255){
                         genome[i] = '-';
@@ -234,8 +224,6 @@ int parse_alignment(struct tl_seq *s)
         /* fprintf(stdout,"%s - genome\n%s - read\n", genome , read); */
         return OK;
 ERROR:
-        /* gfree(genome); */
-        /* gfree(read); */
         return FAIL;
 }
 

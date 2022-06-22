@@ -1,6 +1,4 @@
-#include "core/tld-core.h"
-#include "seq/tld-seq.h"
-#include "string/str.h"
+
 #include "tld.h"
 
 #include "lhash.h"
@@ -11,11 +9,14 @@
 #include "pst.h"
 
 
+
 static int reset_hash(struct pst_model*m);
 static int add_to_hash(struct pst_model*m, uint8_t*p, uint32_t l,double w);
 static int delete_from_hash(struct pst_model*m, uint8_t*p, uint32_t l, double w);
 
 static int run_build_pst( struct pst_model* model);
+static void print_pst(struct pst* pst,struct pst_node* n);
+
 static struct pst_node* build_pst(struct pst_model* m,struct pst_node* n);
 static struct pst_node* make_flat_pst(struct pst* pst, int maxlen,struct fpst*f,int curf,struct pst_node* n);
 
@@ -23,41 +24,170 @@ static int alloc_pst_model(struct pst_model** model, int L,double min_error, dou
 static int reset_pst_model(struct pst_model* m);
 static void free_pst_model(struct pst_model* m);
 
-int pst_model_create(struct pst_model **model, struct tl_seq_buffer *sb)
+int pst_model_alloc(struct pst_model **model)
 {
         struct pst_model* m = NULL;
         /* struct alphabet* a = NULL; */
-        LOG_MSG("L: %d", sb->L);
+        /* LOG_MSG("L: %d", sb->L); */
 
-
-
-        RUN(alloc_pst_model(&m, sb->L, -1.0, -1.0));
-
-        for(int i = 0; i < 10;i++){
-                for(int j = 0; j < TLD_STRLEN(sb->sequences[i]->seq); j++){
-                        fprintf(stdout,"%c",sb->sequences[i]->seq->str[j]);
-                }
-                fprintf(stdout,"\n");
-                convert_to_internal(sb->data, sb->sequences[i]->seq->str, sb->sequences[i]->seq->len);
-                for(int j = 0; j < TLD_STRLEN(sb->sequences[i]->seq); j++){
-                        fprintf(stdout,"%d",sb->sequences[i]->seq->str[j]);
-                }
-                fprintf(stdout,"\n");
-        }
-
-        exit(0);
-
-
-        /* RUN(add_to_hash(m, p, l,1)); */
-
-        m->pst->num_nodes = 0;
-        RUN(run_build_pst(m));
-
+        /* L is always 4  */
+        RUN(alloc_pst_model(&m, 4, -1.0 , -1.0));
         *model = m;
+        return OK;
+ERROR:
+        free_pst_model(m);
+        return FAIL;
+}
+
+
+int pst_model_add_seq(struct pst_model *m, struct tl_seq_buffer *sb)
+{
+        for(int i = 0; i < sb->num_seq;i++){
+                /* LOG_MSG("Adding %d",i); */
+                /* for(int j = 0; j < TLD_STRLEN(sb->sequences[i]->seq); j++){ */
+                /*         fprintf(stdout,"%c",sb->sequences[i]->seq->str[j]); */
+                /* } */
+                /* fprintf(stdout,"\n"); */
+                convert_to_internal(sb->data, sb->sequences[i]->seq->str, sb->sequences[i]->seq->len);
+
+                RUN(add_to_hash(m,  sb->sequences[i]->seq->str,  sb->sequences[i]->seq->len, 0.0));
+                /* for(int j = 0; j < TLD_STRLEN(sb->sequences[i]->seq); j++){ */
+                /*         fprintf(stdout,"%d",sb->sequences[i]->seq->str[j]); */
+                /* } */
+                /* fprintf(stdout,"\n"); */
+        }
+        m->n_seq += sb->num_seq;
         return OK;
 ERROR:
         return FAIL;
 }
+
+int pst_model_create(struct pst_model *m)
+{
+
+        m->pst->num_nodes = 0;
+        RUN(run_build_pst(m));
+        LOG_MSG("Built model");
+        print_pst(m->pst, m->pst->root);
+        exit(0);
+        /* *model = m; */
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int run_build_pst( struct pst_model* model)
+{
+        struct pst* p = NULL;
+        struct pst_node* helper = NULL;
+        double sum;
+        int i;
+
+        int x;
+        uint8_t* suf = NULL;
+        uint32_t suf_len;
+        uint32_t counts;
+        double v;
+
+        galloc(&suf, 1);
+
+        p = model->pst;
+
+
+
+        helper = p->root;
+        /* LOG_MSG("Start search"); */
+
+        /* RUN(search_hash(model->h, NULL, 0, &counts,&v)); */
+
+        sum = 0.0;
+        for(i = 0;i < p->L;i++){
+                suf[0] = i;
+                suf_len = 1;
+                RUN(search_hash(model->h, suf, suf_len, &counts,&v));
+                /* LOG_MSG("%d %d",i, p->L); */
+                helper->probability[i] = (double) counts;
+                if(counts){
+                        helper->value[i] = v;
+                }else{
+                        helper->value[i] = 0; /* I have no idea whether this is a winning or losing move */
+                }
+
+                sum += counts;
+        }
+        for(i = 0;i < p->L;i++){
+                helper->probability[i] /= sum;
+                /* pseudocounts */
+                helper->probability[i] = (1.0 - p->gamma_min) * helper->probability[i] + (p->gamma_min * p->background[i]);
+                x = p->fpst_root->l;
+                p->fpst_root->prob[x][i] = helper->probability[i];
+                p->fpst_root->value[x][i] = helper->value[i];
+                /* LOG_MSG("%d v:%f p:%f", i, helper->value[i], helper->probability[i]); */
+                p->fpst_root->links[x][i] = 0;
+        }
+        /* exit(0); */
+
+        helper = build_pst(model, helper);
+        p->fpst_root->l = 0;
+        helper = make_flat_pst(p, model->depth, p->fpst_root, 0, helper);
+        p->fpst_root->l++;
+
+        /* print_pst(p, helper); */
+
+        /* exit(0); */
+        /* free_pst_node(helper,p->L); */
+        /* helper = NULL; */
+
+        /* RUN(prob2scaledprob_fpst(p->fpst_root,p->background,p->L)); */
+        /* exit(0); */
+        /* *pst = p; */
+        model->pst->root = helper;
+        gfree(suf);
+        return OK;
+ERROR:
+        gfree(suf);
+        return FAIL;
+}
+
+void print_pst(struct pst* pst,struct pst_node* n)
+{
+        int i;
+        int c = 0;
+
+        for(i = 0;i < pst->L;i++){
+                if(n->next[i]){
+                        c++;
+                }
+        }
+        if(!c){
+                if(n->label_len > 5){
+                        fprintf(stdout,"L\t");
+                        for(i = 0;i < pst->L;i++){
+                                fprintf(stdout,"%f ",n->probability[i]);
+                        }
+                        fprintf(stdout,"\t");
+                        for(i = 0; i < n->label_len;i++){
+                                fprintf(stdout,"%d ",n->label[i]);
+                        }
+                        fprintf(stdout,"\n");
+                }
+
+        }else{
+                /* fprintf(stdout,"I\t"); */
+        }
+
+
+
+        for(i = 0;i < pst->L;i++){
+                if(n->next[i]){
+                        //if(n->next[i]->in_T){
+                        /* fprintf(stderr,"Going:%d\n",i); */
+                        print_pst(pst,n->next[i]);
+                        //}
+                }
+        }
+}
+
 
 int reset_hash(struct pst_model*m)
 {
@@ -137,77 +267,6 @@ ERROR:
 }
 
 
-int run_build_pst( struct pst_model* model)
-{
-        struct pst* p = NULL;
-        struct pst_node* helper = NULL;
-        double sum;
-        int i;
-
-        int x;
-        uint8_t* suf = NULL;
-        uint32_t suf_len;
-        uint32_t counts;
-        double v;
-
-        galloc(&suf, 1);
-
-        p = model->pst;
-
-
-
-        helper = p->root;
-
-        RUN(search_hash(model->h, NULL, 0, &counts,&v));
-
-        sum = 0.0;
-        for(i = 0;i < p->L;i++){
-                suf[0] = i;
-                suf_len = 1;
-                RUN(search_hash(model->h, suf, suf_len, &counts,&v));
-                /* LOG_MSG("%d %d",i, p->L); */
-                helper->probability[i] = (double) counts;
-                if(counts){
-                        helper->value[i] = v;
-                }else{
-                        helper->value[i] = 0; /* I have no idea whether this is a winning or losing move */
-                }
-
-                sum += counts;
-        }
-        for(i = 0;i < p->L;i++){
-                helper->probability[i] /= sum;
-                /* pseudocounts */
-                helper->probability[i] = (1.0 - p->gamma_min) * helper->probability[i] + (p->gamma_min * p->background[i]);
-                x = p->fpst_root->l;
-                p->fpst_root->prob[x][i] = helper->probability[i];
-                p->fpst_root->value[x][i] = helper->value[i];
-                /* LOG_MSG("%d v:%f p:%f", i, helper->value[i], helper->probability[i]); */
-                p->fpst_root->links[x][i] = 0;
-        }
-        /* exit(0); */
-
-        helper = build_pst(model, helper);
-        p->fpst_root->l = 0;
-        helper = make_flat_pst(p, model->depth, p->fpst_root, 0, helper);
-        p->fpst_root->l++;
-
-        /* print_pst(p, helper); */
-
-        /* exit(0); */
-        /* free_pst_node(helper,p->L); */
-        /* helper = NULL; */
-
-        /* RUN(prob2scaledprob_fpst(p->fpst_root,p->background,p->L)); */
-        /* exit(0); */
-        /* *pst = p; */
-        model->pst->root = helper;
-        gfree(suf);
-        return OK;
-ERROR:
-        gfree(suf);
-        return FAIL;
-}
 
 struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
 {
@@ -375,7 +434,7 @@ int alloc_pst_model(struct pst_model** model, int L,double min_error, double gam
         m->gamma = 0.1;
         m->min_error = -1.0;    /* this will be set in init pst - now nice! */
         m->gamma = -1.0;
-
+        m->n_seq = 0;
         RUN(init_pst(&m->pst, min_error, gamma, m->depth, L));
 
 

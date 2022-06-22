@@ -18,6 +18,7 @@ struct lhash_item{
         uint32_t len;
 };
 
+/* static inline uint32_t get_bitshift_hashkey(const struct lhash_item *a); */
 static inline uint32_t get_murmur(const struct lhash_item* a);
 static inline int lhash_items_eq (const struct lhash_item* a,const struct lhash_item* b);
 
@@ -73,7 +74,7 @@ int insert_lhash(void *hash,uint8_t* p, uint32_t len,double w )
 
         int ret;
 
-
+        
         RUN(create_lhash_item(&item, p, len,w));
 
         /* uint32_t i; */
@@ -219,10 +220,12 @@ int create_lhash_item(struct lhash_item** item, uint8_t* p, uint32_t len, double
         uint32_t i;
         MMALLOC(a, sizeof(struct lhash_item));
         a->fragment = NULL;
-        MMALLOC(a->fragment, sizeof(uint8_t) * len);
+        /* LOG_MSG("%d len",len); */
+        MMALLOC(a->fragment, sizeof(uint32_t) * len);
 
         a->len = len;
         for(i = 0; i < len;i++){
+                /* LOG_MSG("%d %d", i , p[i]); */
                 a->fragment[i] = p[i];
         }
         a->counts = 1;
@@ -245,6 +248,16 @@ void free_lhash_item(struct lhash_item* a)
         }
 }
 
+/* static inline uint32_t get_bitshift_hashkey(const struct lhash_item *a) */
+/* { */
+/*         /\* uint32_t key = 0; *\/ */
+/*         /\* uint8_t* x = a->fragment; *\/ */
+/*         /\* uint32_t len = a->len; *\/ */
+/*         /\* for(int i = 0; i < len;i++){ *\/ */
+/*         /\*         key = (key << 2) & x[i]; *\/ */
+/*         /\* } *\/ */
+/*         /\* return key; *\/ */
+/* } */
 
 static inline uint32_t get_murmur(const struct lhash_item* a)
 {

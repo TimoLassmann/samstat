@@ -1,5 +1,6 @@
 
 #include "core/tld-core.h"
+#include "seq/tld-seq.h"
 #include "tld.h"
 #include "sambamparse/sam_bam_parse.h"
 #include "htslib/sam.h"
@@ -10,7 +11,7 @@
 #include "pst.h"
 #include <stdint.h>
 
-int detect_file_type(char *filename, int* type);
+/* int detect_file_type(char *filename, int* type); */
 int process_sam_bam_file(struct samstat_param* p, int id);
 int process_fasta_fastq_file(struct samstat_param* p, int id);
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
@@ -30,11 +31,6 @@ int main(int argc, char *argv[])
                 g[i] = i;
         }
         gfree(g);
-        for(int i = 0 ; i < param->n_infile;i++){
-                int t = -1;
-                RUN(detect_file_type(param->infile[i], &t));
-                param->file_type[i] = t;
-        }
 
         for(int i = 0 ; i < param->n_infile;i++){
                 int t = -1;
@@ -105,48 +101,6 @@ ERROR:
         return EXIT_FAILURE;
 }
 
-int detect_file_type(char *filename, int* type)
-{
-        if(tld_file_exists(filename)== OK){
-                tld_str f = tld_char_to_str(filename);
-                tld_str sam_suffix = tld_char_to_str(".sam");
-                tld_str bam_suffix = tld_char_to_str(".bam");
-                tld_str fasta_suffix = tld_char_to_str(".fasta");
-                tld_str fasta_suffix_short = tld_char_to_str(".fa");
-                tld_str fastq_suffix = tld_char_to_str(".fastq");
-                tld_str fastq_suffix_2 = tld_char_to_str(".fq");
-                tld_str fasta_suffix_gz = tld_char_to_str(".fasta.gz");
-                tld_str fastq_suffix_gz = tld_char_to_str(".fastq.gz");
-
-                if(tld_suffix_match(f, sam_suffix)){
-                        *type = FILE_TYPE_SAMBAM;
-                }else if(tld_suffix_match(f, bam_suffix)){
-                        *type = FILE_TYPE_SAMBAM;
-                }else if(tld_suffix_match(f, fasta_suffix)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_short)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix_2)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_gz)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix_gz)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else{
-                        *type = FILE_TYPE_UNKNOWN;
-                }
-
-        }else{
-                *type = FILE_TYPE_UNKNOWN;
-                ERROR_MSG("File %s not found!!!!", filename);
-        }
-
-        return OK;
-ERROR:
-        return FAIL;
-}
 
 int process_sam_bam_file(struct samstat_param* p, int id)
 {
@@ -166,7 +120,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         sb->data = a;
 
 
-        RUN(metrics_alloc(&metrics));
+        RUN(metrics_alloc(&metrics, p->report_max_len));
         metrics->is_aligned = 1;
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
@@ -186,7 +140,10 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffier_print(sb);
                 /* break; */
+                /* struct pst_model* m = NULL; */
+                /* pst_model_create(&m, sb); */
                 LOG_MSG("Processed %d sequences", sb->num_seq);
+                /* exit(0); */
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
                 /* exit(0); */
@@ -213,7 +170,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-
+        struct pst_model* m = NULL;
         struct metrics* metrics = NULL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
@@ -221,8 +178,12 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
 
-        RUN(metrics_alloc(&metrics));
+        RUN(metrics_alloc(&metrics, p->report_max_len));
         metrics->is_aligned = 0;
+
+        if(p->pst){
+                pst_model_alloc(&m);
+        }
 
         while(1){
 
@@ -241,7 +202,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         }
                         sb->data = a;
                 }
-                LOG_MSG("%d", sb->base_quality_offset);
+                LOG_MSG("%d BQ offset ", sb->base_quality_offset);
                 //total_r+= sb->num_seq;
                 LOG_MSG("Finished reading chunk: found %d ",sb->num_seq);
 
@@ -250,9 +211,12 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         break;
                 }
                 RUN(get_metrics(sb,metrics));
-                struct pst_model* m;
-                LOG_MSG("starting pst");
-                pst_model_create(&m, sb);
+
+                /* LOG_MSG("starting pst"); */
+                if(p->pst && m->n_seq < 1000000){
+                        pst_model_add_seq(m, sb);
+                }
+                /* pst_model_create(&m, sb); */
 
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffer_print(sb);
@@ -261,6 +225,10 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 /* } */
                 reset_tl_seq_buffer(sb);
         }
+        if(p->pst){
+                pst_model_create(m);
+        }
+
         /* RUN(debug_metrics_print(metrics)); */
         create_report(metrics, p,id);
         metrics_free(metrics);

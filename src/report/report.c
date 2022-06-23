@@ -23,6 +23,7 @@ static int print_title(tld_strbuf *o,struct samstat_param *p,int id);
 static int file_stat_section(tld_strbuf *o, char* filename);
 
 static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
+static int length_histogram_section(tld_strbuf *o, struct metrics *m, int read);
 static int base_composition_section(tld_strbuf *o, struct metrics *m, int read);
 /* static int base_quality_section(tld_strbuf *o, struct metrics *m); */
 static int base_quality_section(tld_strbuf *o, struct metrics *m, int read);
@@ -58,6 +59,15 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
         RUN(file_stat_section(out, p->infile[id]));
         LOG_MSG("Mapping overview");
         RUN(mapping_quality_overview_section(out,m));
+
+        LOG_MSG("Length distribution");
+        if(m->n_paired){
+                RUN(length_histogram_section(out, m,1));
+                RUN(length_histogram_section(out, m,2));
+        }else{
+                RUN(length_histogram_section(out, m,0));
+        }
+
         LOG_MSG("Base composition");
         if(m->n_paired){
                 RUN(base_composition_section(out, m,1));
@@ -124,7 +134,7 @@ int file_stat_section(tld_strbuf *o, char* filename)
         if ( local_ret == 0 ){
 
                 localtime_r(&buf.st_mtime, &newtime);
-                tld_append(o, "<p>Size:");
+                tld_append(o, "<p>Size: ");
                 snprintf(buffer, 256,"%lld", buf.st_size);
                 tld_append(o, buffer);
                 tld_append(o, "bytes, created ");
@@ -146,6 +156,170 @@ ERROR:
         return FAIL;
 }
 
+int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
+{
+        struct len_composition* l = NULL;
+        char buf[256];
+        char name[256];
+        char target[16];
+
+        int go = 0;
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                switch (read) {
+                case 0:
+                case 1:
+                        l = m->len_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        l = m->len_comp_R2[mapq_idx];
+                        break;
+                }
+                if(l->n_counts  > 0){
+                        go++;
+                }
+        }
+        if(!go){
+                return OK;
+        }
+
+        if(!m->n_paired){
+                snprintf(target, 16,"lencomp");
+                RUN(tld_append(o, "<h2>Length distribution</h2>\n"));
+        }else{
+                if(read == 1){
+                        snprintf(target, 16,"lencompR1");
+                        RUN(tld_append(o, "<h2>Length distribution R1</h2>\n"));
+                }else if(read == 2){
+                        snprintf(target, 16,"lencompR2");
+                        RUN(tld_append(o, "<h2>Length distribution R2</h2>\n"));
+                }else{
+                        ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
+                }
+        }
+
+        RUN(tld_append(o, "<div id=\""));
+        /* snprintf(buf, 256,"inserrcomp"); */
+        RUN(tld_append(o, target));
+        RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+        RUN(tld_append(o,"<script>\n"));
+
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        l = m->len_comp_R1[mapq_idx];
+                        /* r_len = m->max_len_R1; */
+                        break;
+                case 2:
+                        l = m->len_comp_R2[mapq_idx];
+                        /* r_len = m->max_len_R2; */
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
+                if(l->n_counts > 0){
+                        int start = 0;
+                        int end = l->len-1;
+                        uint32_t *x = NULL;
+
+                        galloc(&x, l->len);
+                        for(int i = 0; i < l->len;i++){
+                                x[i] = i;
+                        }
+                        while(l->data[start] == 0){
+                                start++;
+                        }
+                        while(l->data[end] == 0){
+                                end--;
+                        }
+                        end++;
+                        end = end - start;
+
+
+                        snprintf(buf, 256,"lentrace%d",mapq_idx);
+                        snprintf(name, 256,"%s", m->mapq_map->description[mapq_idx]);
+                        RUN(add_count_data(
+                                    o,
+                                    buf,
+                                    name,
+                                    NULL,
+                                    "lines",
+                                    1,
+                                    x+start,
+                                    l->data+start,
+                                    end
+                                    ));
+                        gfree(x);
+                }
+        }
+        RUN(tld_append(o,"var "));
+        snprintf(buf, 256,"len_comp_data");
+        RUN(tld_append(o,buf ));
+        RUN(tld_append(o," = ["));
+        for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                switch (read) {
+                case 0:
+                case 1:
+                        /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                        l = m->len_comp_R1[mapq_idx];
+                        break;
+                case 2:
+                        l = m->len_comp_R2[mapq_idx];
+                        /* seq_comp = m->seq_comp_R2[mapq_idx]; */
+                        break;
+                }
+
+                /* e = m->error_comp_R1[mapq_idx]; */
+                /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
+                if(l->n_counts > 0){
+                        snprintf(buf, 256,"lentrace%d,",mapq_idx);
+                        RUN(tld_append(o,buf ));
+                }
+        }
+        o->len--;
+        RUN(tld_append(o,"];\n"));
+        RUN(tld_append(o,"Plotly.newPlot('"));
+        /* snprintf(buf, 256,"inserrcomp"); */
+        RUN(tld_append(o, target));
+        RUN(tld_append(o,"', "));
+
+        snprintf(buf, 256,"len_comp_data,");
+        RUN(tld_append(o,buf ));
+        /* RUN(tld_append(o,"base_comp_layout,")); */
+
+        RUN(tld_append(o,"{barmode: 'group',\n"));
+        RUN(tld_append(o,"title: 'Length distribution',\n"));
+
+        RUN(tld_append(o,"xaxis: {\n"));
+        RUN(tld_append(o,"title: 'Length'\n"));
+        RUN(tld_append(o,"},\n"));
+        RUN(tld_append(o,"yaxis: {\n"));
+        RUN(tld_append(o,"title: 'Counts'\n"));
+        RUN(tld_append(o,"}}\n"));
+        RUN(tld_append(o,");\n"));
+        RUN(tld_append(o,"</script>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+/* Length histogram */
+/* var y = []; */
+/* for (var i = 0; i < 500; i ++) { */
+/* 	y[i] = Math.random(); */
+/* } */
+
+/* var data = [ */
+/*   { */
+/*     y: y, */
+/*     type: 'histogram', */
+/* 	marker: { */
+/*     color: 'pink', */
+/* 	}, */
+/*   } */
+/* ]; */
+/* Plotly.newPlot('myDiv', data); */
 
 
 int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
@@ -385,7 +559,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         /* calc mean */
                         for(int i = 0 ; i < r_len;i++){
                                 double total = 0.0;
-
                                 double n = 0.0;
                                 for(int j = 0; j < q->L;j++){
                                         total += j * q->data[i][j];

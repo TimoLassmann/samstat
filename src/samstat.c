@@ -107,7 +107,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-
+        struct pst_model* m = NULL;
         struct metrics* metrics = NULL;
         /* p->buffer_size = 1000; */
 
@@ -118,6 +118,10 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
 
         sb->data = a;
+
+        if(p->pst){
+                pst_model_alloc(&m);
+        }
 
 
         RUN(metrics_alloc(&metrics, p->report_max_len));
@@ -135,8 +139,14 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
                 for(int i = 0; i < sb->num_seq;i++){
                         parse_alignment(sb->sequences[i]);
+                        fix_orientation(sb->sequences[i]);
                 }
                 RUN(get_metrics(sb,metrics));
+
+                if(p->pst && m->n_seq < 1000000){
+                        pst_model_add_seq(m, sb);
+                }
+
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffier_print(sb);
                 /* break; */
@@ -150,6 +160,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         }
         RUN(close_bam(f_handle));
 
+        if(p->pst){
+                pst_model_create(m);
+        }
 
         /* RUN(debug_metrics_print(metrics)); */
         create_report(metrics, p,id);

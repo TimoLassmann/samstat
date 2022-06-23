@@ -1,5 +1,6 @@
 #include "core/tld-core.h"
 #include "tld.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #define  LHASH_IMPORT
@@ -8,53 +9,47 @@
 
 #include "khash.h"
 
-
+#include "mur.h"
 #include "murmur3.h"
 
 struct lhash_item{
-        uint32_t* fragment;
+        uint8_t* fragment;
         uint32_t counts;
-        double wins;
         uint32_t len;
 };
 
 /* static inline uint32_t get_bitshift_hashkey(const struct lhash_item *a); */
+static inline uint32_t get_mur(const struct lhash_item *a);
 static inline uint32_t get_murmur(const struct lhash_item* a);
 static inline int lhash_items_eq (const struct lhash_item* a,const struct lhash_item* b);
 
+static int create_lhash_item(struct lhash_item** item, uint8_t* p, uint32_t len);
 
-static int create_lhash_item(struct lhash_item** item, uint8_t* p, uint32_t len, double w);
 static void free_lhash_item(struct lhash_item* a);
 
 
 typedef struct lhash_item* tl_item_t;
 #define KHASH_MAP_INIT_LHASH(name)                             \
-        KHASH_INIT(name, tl_item_t, char, 0,  get_murmur, lhash_items_eq)
+        KHASH_INIT(name, tl_item_t, char, 0,  get_mur, lhash_items_eq)
 
 KHASH_MAP_INIT_LHASH(phash)
 
-int search_hash(void *hash, uint8_t* p, uint32_t len, uint32_t* counts, double*v)
+int search_hash(void *hash, uint8_t* p, uint32_t len, uint32_t* counts)
 {
         khash_t(phash) *h = (khash_t(phash)*) hash;
         struct lhash_item* item = NULL;
         khint_t k;
 
-        double value;
-        double c;
+
         /* int ret; */
 
         *counts = 0;
-        RUN(create_lhash_item(&item, p, len,0));
+        RUN(create_lhash_item(&item, p, len));
 
 
         k = kh_get(phash, h, item);
         if( k != kh_end(h)){
                 *counts = kh_key(h,k)->counts;
-                value = (kh_key(h,k)->wins);
-                c = (double) *counts;
-                /* *v = ((value  )  - (c - value  )) / (c); */
-                *v = value / c;
-                /* LOG_MSG("Value: %f %f %f", *v, value ,c); */
         }
 
 
@@ -65,7 +60,7 @@ ERROR:
         return FAIL;
 }
 
-int insert_lhash(void *hash,uint8_t* p, uint32_t len,double w )
+int insert_lhash(void *hash,uint8_t* p, uint32_t len )
 {
         khash_t(phash) *h = (khash_t(phash)*) hash;
         struct lhash_item* item = NULL;
@@ -75,7 +70,7 @@ int insert_lhash(void *hash,uint8_t* p, uint32_t len,double w )
         int ret;
 
         
-        RUN(create_lhash_item(&item, p, len,w));
+        RUN(create_lhash_item(&item, p, len));
 
         /* uint32_t i; */
         /* fprintf(stdout,"INSERTING : "); */
@@ -86,11 +81,13 @@ int insert_lhash(void *hash,uint8_t* p, uint32_t len,double w )
 
 
         k = kh_put(phash, h, item, &ret);
+
         if(ret){
                 kh_key(h, k) = item;
         }else{
+                /* LOG_MSG("exists."); */
                 kh_key(h, k)->counts++;
-                kh_key(h, k)->wins += item->wins;
+                /* kh_key(h, k)->wins += item->wins; */
 
                 free_lhash_item(item);
         }
@@ -104,7 +101,7 @@ ERROR:
         return FAIL;
 }
 
-int delete_lhash(void* hash,uint8_t* p, uint32_t len, double w)
+int delete_lhash(void* hash,uint8_t* p, uint32_t len)
 {
         khash_t(phash) *h = (khash_t(phash)*) hash;
         struct lhash_item* item = NULL;
@@ -112,7 +109,7 @@ int delete_lhash(void* hash,uint8_t* p, uint32_t len, double w)
         khiter_t k;
         int ret;
 
-        RUN(create_lhash_item(&item, p, len,w));
+        RUN(create_lhash_item(&item, p, len));
 
         /* uint32_t i; */
         /* fprintf(stdout,"DELETING : "); */
@@ -124,7 +121,7 @@ int delete_lhash(void* hash,uint8_t* p, uint32_t len, double w)
         k = kh_put(phash, h, item, &ret);
         if(!ret){
                 kh_key(h, k)->counts--;
-                kh_key(h, k)->wins -= item->wins;
+                /* kh_key(h, k)->wins -= item->wins; */
 
                 if(kh_key(h, k)->counts == 0){
                         free_lhash_item(kh_key(h, k));
@@ -171,7 +168,7 @@ void print_lhash(void* hash)
                         /* kh_val(h,k).counts */
                         /* fprintf(stdout, "%d %d\n",k,kh_value(h, k)); */
                         /* hi = kh_value(h, k); */
-                        fprintf(stdout, "%d counts: %d val: %f : ",k,item->counts,item->wins);
+                        fprintf(stdout, "%d counts: %d val:  : ",k,item->counts);
                         for(j = 0; j < item->len;j++){
                                 fprintf(stdout,"%d ", item->fragment[j]);
                         }
@@ -214,14 +211,14 @@ void free_lhash(void* hash)
         }
 }
 
-int create_lhash_item(struct lhash_item** item, uint8_t* p, uint32_t len, double w)
+int create_lhash_item(struct lhash_item** item, uint8_t* p, uint32_t len)
 {
         struct lhash_item* a = NULL;
         uint32_t i;
         MMALLOC(a, sizeof(struct lhash_item));
         a->fragment = NULL;
         /* LOG_MSG("%d len",len); */
-        MMALLOC(a->fragment, sizeof(uint32_t) * len);
+        MMALLOC(a->fragment, sizeof(uint8_t) * len);
 
         a->len = len;
         for(i = 0; i < len;i++){
@@ -229,7 +226,6 @@ int create_lhash_item(struct lhash_item** item, uint8_t* p, uint32_t len, double
                 a->fragment[i] = p[i];
         }
         a->counts = 1;
-        a->wins = w;
         *item = a;
         return OK;
 ERROR:
@@ -248,20 +244,10 @@ void free_lhash_item(struct lhash_item* a)
         }
 }
 
-/* static inline uint32_t get_bitshift_hashkey(const struct lhash_item *a) */
-/* { */
-/*         /\* uint32_t key = 0; *\/ */
-/*         /\* uint8_t* x = a->fragment; *\/ */
-/*         /\* uint32_t len = a->len; *\/ */
-/*         /\* for(int i = 0; i < len;i++){ *\/ */
-/*         /\*         key = (key << 2) & x[i]; *\/ */
-/*         /\* } *\/ */
-/*         /\* return key; *\/ */
-/* } */
 
 static inline uint32_t get_murmur(const struct lhash_item* a)
 {
-        uint32_t* x = a->fragment;
+        uint8_t* x = a->fragment;
         uint32_t len = a->len;
         uint32_t key;
         len = len << 2;
@@ -269,19 +255,35 @@ static inline uint32_t get_murmur(const struct lhash_item* a)
 
         MurmurHash3_x86_32((void*)x, len, 42, &key);
         return key;
-
 }
+
+
+static inline uint32_t get_mur(const struct lhash_item *a)
+{
+        uint8_t* x;
+        size_t len;
+        len = (size_t) a->len;
+        x = a->fragment;
+        return murmur3_32(x,len,0);
+}
+
 static inline int lhash_items_eq (const struct lhash_item* a,const struct lhash_item* b)
 {
 
         if (a->len == b->len){
-                int32_t len = a->len;
-                len = len << 2;
-                return memcmp (a->fragment,b->fragment, len) == 0;
+                for(uint32_t i = 0; i < a->len;i++){
+                        if(a->fragment[i] != b->fragment[i]){
+                                return 1;
+                        }
+                }
+                /* int32_t len = a->len; */
+                /* len = len << 2; */
+                /* return memcmp (a->fragment,b->fragment, len) == 0; */
         }
 
         return 0;
 }
+
 
 #ifdef LHASH_TEST
 

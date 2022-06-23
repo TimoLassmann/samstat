@@ -11,10 +11,10 @@
 
 EXTERN int init_lhash(void ** hash);
 
-EXTERN int search_hash(void *hash,uint8_t* p, uint32_t len, uint32_t* counts, double*v);
-EXTERN int insert_lhash(void *hash,uint8_t* p, uint32_t len,double w );
+EXTERN int search_hash(void *hash,uint8_t* p, uint32_t len, uint32_t* counts);
+EXTERN int insert_lhash(void *hash,uint8_t* p, uint32_t len);
 
-EXTERN int delete_lhash(void* hash,uint8_t* p, uint32_t len,double w);
+EXTERN int delete_lhash(void* hash,uint8_t* p, uint32_t len);
 
 EXTERN int reset_lhash(void* hash);
 EXTERN void free_lhash(void* hash);

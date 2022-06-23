@@ -4,6 +4,7 @@
 #include "tld.h"
 #include "../htsinterface/htsglue.h"
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -77,6 +78,12 @@ int parse_alignment(struct tl_seq *s)
                         /* We'll ignore hard clipping as we have nothing to work on */
                         break;
                 case 'S':
+                        if(i == 0){
+                                a->n_clip5 = bam_cigar_oplen(a->cigar[i]);
+                        }
+                        if(i == a->n_cigar - 1){
+                                a->n_clip3 = bam_cigar_oplen(a->cigar[i]);
+                        }
                         break;
                 case 'M':
                 case '=':
@@ -213,6 +220,7 @@ int parse_alignment(struct tl_seq *s)
         /*         } */
         /*         fprintf(stdout,"Filing done \n"); */
         /* } */
+
         for(int i = 0; i < aln_len;i++){
                 if(genome[i] == 255){
                         genome[i] = '-';
@@ -221,9 +229,29 @@ int parse_alignment(struct tl_seq *s)
                         read[i] = '-';
                 }
         }
-        /* fprintf(stdout,"%s - genome\n%s - read\n", genome , read); */
+        /* fprintf(stdout,"%s - genome len: %d\n%s - read\n", genome ,aln_len, read); */
         return OK;
 ERROR:
         return FAIL;
 }
 
+int fix_orientation(struct tl_seq *s)
+{
+        struct aln_data* a = NULL;
+
+        a = s->data;
+        if(a->reverse){
+                /* LOG_MSG("Oh no I should reverse!"); */
+                rev_comp_tl_seq(s);
+                if(a->aln_len){
+                        reverse_comp(a->genome, a->aln_len);
+                        reverse_comp(a->read, a->aln_len);
+                }
+                a->reverse = 0;
+                uint32_t tmp;
+                tmp = a->n_clip5;
+                a->n_clip5 = a->n_clip3;
+                a->n_clip3 = tmp;
+        }
+        return OK;
+}

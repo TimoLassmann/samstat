@@ -1,21 +1,23 @@
 
+#include "core/tld-core.h"
 #include "tld.h"
 
 #include "lhash.h"
 #include "pst_alloc.h"
 
 #include "pst_structs.h"
+#include <stdint.h>
 #define PST_IMPORT
 #include "pst.h"
 
-
+uint32_t get_exact_key(uint8_t *p, int l);
 
 static int reset_hash(struct pst_model*m);
-static int add_to_hash(struct pst_model*m, uint8_t*p, uint32_t l,double w);
-static int delete_from_hash(struct pst_model*m, uint8_t*p, uint32_t l, double w);
+static int add_to_hash(struct pst_model*m, uint8_t*p, uint32_t l);
+static int delete_from_hash(struct pst_model*m, uint8_t*p, uint32_t l);
 
 static int run_build_pst( struct pst_model* model);
-static void print_pst(struct pst* pst,struct pst_node* n);
+static void print_pst(struct pst_model* m,struct pst_node* n);
 
 static struct pst_node* build_pst(struct pst_model* m,struct pst_node* n);
 static struct pst_node* make_flat_pst(struct pst* pst, int maxlen,struct fpst*f,int curf,struct pst_node* n);
@@ -31,7 +33,7 @@ int pst_model_alloc(struct pst_model **model)
         /* LOG_MSG("L: %d", sb->L); */
 
         /* L is always 4  */
-        RUN(alloc_pst_model(&m, 4, -1.0 , -1.0));
+        RUN(alloc_pst_model(&m, 4, 0.001 , -1.0));
         *model = m;
         return OK;
 ERROR:
@@ -50,7 +52,7 @@ int pst_model_add_seq(struct pst_model *m, struct tl_seq_buffer *sb)
                 /* fprintf(stdout,"\n"); */
                 convert_to_internal(sb->data, sb->sequences[i]->seq->str, sb->sequences[i]->seq->len);
 
-                RUN(add_to_hash(m,  sb->sequences[i]->seq->str,  sb->sequences[i]->seq->len, 0.0));
+                RUN(add_to_hash(m,  sb->sequences[i]->seq->str,  sb->sequences[i]->seq->len));
                 /* for(int j = 0; j < TLD_STRLEN(sb->sequences[i]->seq); j++){ */
                 /*         fprintf(stdout,"%d",sb->sequences[i]->seq->str[j]); */
                 /* } */
@@ -68,8 +70,10 @@ int pst_model_create(struct pst_model *m)
         m->pst->num_nodes = 0;
         RUN(run_build_pst(m));
         LOG_MSG("Built model");
-        print_pst(m->pst, m->pst->root);
-        exit(0);
+        print_pst(m, m->pst->root);
+
+        free_pst_model(m);
+        /* exit(0); */
         /* *model = m; */
         return OK;
 ERROR:
@@ -80,6 +84,7 @@ int run_build_pst( struct pst_model* model)
 {
         struct pst* p = NULL;
         struct pst_node* helper = NULL;
+        uint32_t* cntarr = model->counts;
         double sum;
         int i;
 
@@ -87,7 +92,7 @@ int run_build_pst( struct pst_model* model)
         uint8_t* suf = NULL;
         uint32_t suf_len;
         uint32_t counts;
-        double v;
+        uint32_t key = 0;
 
         galloc(&suf, 1);
 
@@ -104,15 +109,12 @@ int run_build_pst( struct pst_model* model)
         for(i = 0;i < p->L;i++){
                 suf[0] = i;
                 suf_len = 1;
-                RUN(search_hash(model->h, suf, suf_len, &counts,&v));
-                /* LOG_MSG("%d %d",i, p->L); */
-                helper->probability[i] = (double) counts;
-                if(counts){
-                        helper->value[i] = v;
-                }else{
-                        helper->value[i] = 0; /* I have no idea whether this is a winning or losing move */
-                }
 
+                key = get_exact_key(suf, suf_len);
+                /* RUN(search_hash(model->h, suf, suf_len, &counts)); */
+                /* LOG_MSG("%d %d",i, p->L); */
+                counts = cntarr[key];
+                helper->probability[i] = (double) counts;
                 sum += counts;
         }
         for(i = 0;i < p->L;i++){
@@ -149,25 +151,28 @@ ERROR:
         return FAIL;
 }
 
-void print_pst(struct pst* pst,struct pst_node* n)
+void print_pst(struct pst_model* m,struct pst_node* n)
 {
         int i;
         int c = 0;
 
-        for(i = 0;i < pst->L;i++){
+        for(i = 0;i < m->pst->L;i++){
                 if(n->next[i]){
                         c++;
                 }
         }
         if(!c){
-                if(n->label_len > 5){
+                if(n->label_len > 7){
                         fprintf(stdout,"L\t");
-                        for(i = 0;i < pst->L;i++){
+                        for(i = 0;i < m->pst->L;i++){
                                 fprintf(stdout,"%f ",n->probability[i]);
                         }
                         fprintf(stdout,"\t");
+                        uint32_t key = get_exact_key(n->label, n->label_len);
+                        uint32_t counts = m->counts[key];
+                        fprintf(stdout,"%6d\t", counts);
                         for(i = 0; i < n->label_len;i++){
-                                fprintf(stdout,"%d ",n->label[i]);
+                                fprintf(stdout,"%c","ACGT"[n->label[i]]);
                         }
                         fprintf(stdout,"\n");
                 }
@@ -178,11 +183,11 @@ void print_pst(struct pst* pst,struct pst_node* n)
 
 
 
-        for(i = 0;i < pst->L;i++){
+        for(i = 0;i < m->pst->L;i++){
                 if(n->next[i]){
                         //if(n->next[i]->in_T){
                         /* fprintf(stderr,"Going:%d\n",i); */
-                        print_pst(pst,n->next[i]);
+                        print_pst(m,n->next[i]);
                         //}
                 }
         }
@@ -202,7 +207,7 @@ ERROR:
         return FAIL;
 }
 
-int add_to_hash(struct pst_model*m, uint8_t*p, uint32_t l,double w)
+int add_to_hash(struct pst_model*m, uint8_t*p, uint32_t l)
 {
         uint32_t i;
         uint32_t j;
@@ -227,7 +232,13 @@ int add_to_hash(struct pst_model*m, uint8_t*p, uint32_t l,double w)
                         if(i +j > l){
                                 break;
                         }
-                        RUN(insert_lhash(m->h, p+i, j,w));
+                        uint32_t key = get_exact_key(p+i, j);
+
+                        /* for(uint32_t c = i; c < j;c++){ */
+                        /*         key = key << 2 | p[c]; */
+                        /* } */
+                        m->counts[key]++;
+                        /* RUN(insert_lhash(m->h, p+i, j)); */
                 }
         }
         return OK;
@@ -235,8 +246,18 @@ ERROR:
         return FAIL;
 }
 
+uint32_t get_exact_key(uint8_t *p, int l)
+{
+        uint32_t key = 0;
+        for(int i = 0; i < l;i++){
+                key = (key << 2) | p[i];
+        }
+        return key;
+}
 
-int delete_from_hash(struct pst_model*m, uint8_t*p, uint32_t l, double w)
+/* RUN(insert_lhash(m->h, p+i, j)); */
+
+int delete_from_hash(struct pst_model*m, uint8_t*p, uint32_t l)
 {
         uint32_t i;
         uint32_t j;
@@ -257,7 +278,7 @@ int delete_from_hash(struct pst_model*m, uint8_t*p, uint32_t l, double w)
                         if(i +j > l){
                                 break;
                         }
-                        RUN(delete_lhash(m->h, p+i ,j,w));
+                        RUN(delete_lhash(m->h, p+i ,j));
                 }
         }
 
@@ -271,11 +292,11 @@ ERROR:
 struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
 {
         struct pst* pst = NULL;
-
+        uint32_t* cntarr = m->counts;
         uint8_t* suf = NULL;
         uint32_t suf_len;
         uint32_t counts;
-
+        uint32_t key;
 
         int i;
         int j;
@@ -284,7 +305,7 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
         int len = n->label_len;
         double sum = 0.0;
         double* tmp_counts_s = NULL;
-        double* tmp_value_s = NULL;
+        /* double* tmp_value_s = NULL; */
         double P_ask;
         double P_as;
         double Err;
@@ -296,7 +317,7 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
 
         galloc(&suf, m->depth);
         galloc(&tmp_counts_s, m->L);
-        galloc(&tmp_value_s, m->L);
+        /* galloc(&tmp_value_s, m->L); */
 
         maxlen = m->depth;
         if(len + 1 < maxlen ){
@@ -321,7 +342,9 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
                         }
                         suf_len = len+1;
 
-                        RUN(search_hash(m->h, suf, suf_len, &counts,&v));
+                        key = get_exact_key(suf, suf_len);
+                        counts = cntarr[key];
+                        /* RUN(search_hash(m->h, suf, suf_len, &counts)); */
                         if(counts){
                                 P_as = (double) (counts) / (m->counts_l[suf_len]);
                                 /* P_as = (float) (c+1) / (float)(h->counts_l[len+1] + pst->L); */
@@ -333,12 +356,14 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
                                         suf[len+1] = j;
                                         suf_len = len+2;
                                         /* now the ask code is complete - I can start looking up their counts to get to P(ask) and P(as) */
-                                        RUN(search_hash(m->h, suf, suf_len, &counts,&v));
+                                        /* RUN(search_hash(m->h, suf, suf_len, &counts)); */
+                                        key = get_exact_key(suf, suf_len);
+                                        counts = cntarr[key];
                                         tmp_counts_s[j] = (double) counts;
-                                        if(!counts){
-                                                v = 0.0;
-                                        }
-                                        tmp_value_s[j] = v;
+                                        /* if(!counts){ */
+                                        /*         v = 0.0; */
+                                        /* } */
+                                        /* tmp_value_s[j] = v; */
                                         sum+= tmp_counts_s[j];
                                         P_ask = (double) (counts) / (m->counts_l[suf_len]);
                                         if(P_ask != 0.0){
@@ -367,7 +392,7 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
                                         }
                                         for(j = 0; j < pst->L;j++){
                                                 n->next[i]->probability[j] = tmp_counts_s[j];
-                                                n->next[i]->value[j] = tmp_value_s[j];
+                                                /* n->next[i]->value[j] = tmp_value_s[j]; */
                                         }
                                         pst->num_nodes++;
                                         n->next[i] = build_pst(m, n->next[i]);
@@ -376,7 +401,7 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
                 }
         }
         gfree(tmp_counts_s);
-        gfree(tmp_value_s);
+        /* gfree(tmp_value_s); */
         gfree(suf);
         return n;
 ERROR:
@@ -435,6 +460,13 @@ int alloc_pst_model(struct pst_model** model, int L,double min_error, double gam
         m->min_error = -1.0;    /* this will be set in init pst - now nice! */
         m->gamma = -1.0;
         m->n_seq = 0;
+        m->counts = NULL;
+        uint32_t c_all = 1 << (MAX_PST_MODEL_DEPTH << 1);
+        galloc(&m->counts, c_all);
+        /* LOG_MSG("allocating %d ints: %d ",1 << (MAX_PST_MODEL_DEPTH << 1)); */
+        for(uint32_t i = 0; i < c_all;i++){
+                m->counts[i] = 0;
+        }
         RUN(init_pst(&m->pst, min_error, gamma, m->depth, L));
 
 
@@ -455,6 +487,9 @@ ERROR:
 void free_pst_model(struct pst_model* m)
 {
         if(m){
+                if(m->counts){
+                        gfree(m->counts);
+                }
                 if(m->h){
                         free_lhash(m->h);
                 }

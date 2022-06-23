@@ -46,15 +46,25 @@ struct qual_composition {
         uint32_t n_counts;
 };
 
+struct len_composition {
+        uint32_t* data;
+        int len;
+        int L;
+        uint32_t n_counts;
+};
+
+
 struct metrics {
         struct seq_composition** seq_comp_R1;
         struct qual_composition** qual_comp_R1;
         struct error_composition** error_comp_R1;
+        struct len_composition** len_comp_R1;
 
 
         struct seq_composition** seq_comp_R2;
         struct qual_composition** qual_comp_R2;
         struct error_composition** error_comp_R2;
+        struct len_composition** len_comp_R2;
 
         struct mapqual_bins* mapq_map;
         uint32_t min_len_R1;

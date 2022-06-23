@@ -17,6 +17,7 @@ struct aln_data {
         uint32_t* cigar;
         uint8_t* genome;
         uint8_t* read;
+        /* uint8_t* clip; */
         uint16_t flag;
         int num_hits;
         int map_q;
@@ -25,7 +26,8 @@ struct aln_data {
         int n_alloc_cigar;
         int aln_len;
         int aln_len_alloc;
-        /* uint64_t start; */
+        uint32_t n_clip5;
+        uint32_t n_clip3;
         /* uint64_t stop; */
         uint8_t reverse;
 };

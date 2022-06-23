@@ -17,6 +17,7 @@ EXTERN int parse_alignment(struct tl_seq* s);
 
 EXTERN int get_readable_cigar(struct aln_data *a, char **cigar);
 
+EXTERN int fix_orientation(struct tl_seq *s);
 
 #undef SAM_BAM_PARSE_IMPORT
 #undef EXTERN

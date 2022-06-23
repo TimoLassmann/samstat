@@ -28,7 +28,7 @@ int main(void)
                         program[j] = tl_random_int(rng, 4);
                 }
 
-                insert_lhash(h, program, len,1);
+                insert_lhash(h, program, len);
         }
 
         for (i = 0; i < 10; ++i) {
@@ -39,7 +39,7 @@ int main(void)
                 for(j = 0; j < len;j++){
                         program[j] = tl_random_int(rng, 4);
                 }
-                delete_lhash(h, program, len,1);
+                delete_lhash(h, program, len);
         }
 
         print_lhash(h);

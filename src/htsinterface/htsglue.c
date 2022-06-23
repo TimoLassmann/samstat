@@ -34,8 +34,11 @@ int clear_aln_data(struct tl_seq_buffer *sb)
         for(int i = 0; i < sb->malloc_num;i++){
                 if(sb->sequences[i]->data){
                         struct aln_data* a = NULL;
+
                         a = sb->sequences[i]->data;
                         a->md->len = 0;
+                        a->n_clip5 = 0;
+                        a->n_clip3 = 0;
                 }
         }
         return OK;
@@ -216,6 +219,7 @@ int alloc_aln_data(struct aln_data **aln_d)
         a->cigar = NULL;
         a->genome = NULL;
         a->read = NULL;
+        /* a->clip = NULL; */
         a->aln_len_alloc = 256;
         a->aln_len = 0;
         a->map_q = 0;
@@ -223,10 +227,13 @@ int alloc_aln_data(struct aln_data **aln_d)
         a->n_cigar = 0;
         a->n_alloc_cigar = 16;
         a->reverse = 0;
+        a->n_clip5 = 0;
+        a->n_clip3 = 0;
         RUN(tld_strbuf_alloc(&a->md, 16));
         galloc(&a->read, a->aln_len_alloc);
         galloc(&a->genome, a->aln_len_alloc);
         galloc(&a->cigar, a->n_alloc_cigar);
+        /* galloc(&a->clip, a->aln_len_alloc); */
         *aln_d = a;
         return OK;
 ERROR:
@@ -252,6 +259,9 @@ void free_aln_data_struct(struct aln_data *a)
                 if(a->cigar){
                         gfree(a->cigar);
                 }
+                /* if(a->clip){ */
+                /*         gfree(a->clip); */
+                /* } */
                 MFREE(a);
         }
 }

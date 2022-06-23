@@ -1,6 +1,7 @@
 
 add_library(module_lhash STATIC
   lhash.c
+  mur.c
   # lhash_io.c
   murmur3.c
   )

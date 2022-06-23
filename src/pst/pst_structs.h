@@ -5,7 +5,7 @@ struct pst_node{
         struct pst_node** next;
         double* probability;
         double* value;
-        uint32_t* label;
+        uint8_t* label;
         int label_len;
 };
 

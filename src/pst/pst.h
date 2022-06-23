@@ -10,12 +10,13 @@
 #define EXTERN extern
 #endif
 
-#define MAX_PST_MODEL_DEPTH 12
+#define MAX_PST_MODEL_DEPTH 14
 
 struct pst;
 /* #include "pst_structs.h" */
 struct pst_model{
         void* h;                /* count hash  */
+        uint32_t* counts;
         double* counts_l;       /* how many kmers present */
         int L;                  /* Alphabet size  */
         uint32_t depth;              /* depth of model - how many previous states are examined

@@ -34,6 +34,7 @@ static int ins_composition_section(tld_strbuf *o, struct metrics *m, int read);
 static int del_composition_section(tld_strbuf *o, struct metrics *m, int read);
 
 static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len);
+static int add_real_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, double *x, double* y,  int len);
 static int report_header(tld_strbuf *out_buffer);
 static int report_footer(tld_strbuf *out_buffer);
 
@@ -220,38 +221,63 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
 
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(l->n_counts > 0){
-                        int start = 0;
-                        int end = l->len-1;
-                        uint32_t *x = NULL;
 
-                        galloc(&x, l->len);
+                        /* uint32_t *x = NULL; */
+                        double** density = NULL;
+                        double* x = NULL;
+                        double* y = NULL;
+                        double* dat = NULL;
+
+                        galloc(&x,MACRO_MAX(10,l->len));
+                        galloc(&y,MACRO_MAX(10,l->len));
+                        /* galloc(&dat, l->len); */
+
+                        /* galloc(&x, l->len); */
+                        int c = 0;
                         for(int i = 0; i < l->len;i++){
-                                x[i] = i;
+                                if(l->data[i]){
+                                x[c] = (double) i;
+                                y[c] = (double) l->data[i];
+                                c++;
+                                }
+                                /* dat[i] = (double) l->data[i]; */
                         }
-                        while(l->data[start] == 0){
-                                start++;
-                        }
-                        while(l->data[end] == 0){
-                                end--;
-                        }
-                        end++;
-                        end = end - start;
 
+                        LOG_MSG("data points found: %d", c);
+                        /* while(l->data[start] == 0){ */
+                        /*         start++; */
+                        /* } */
+                        /* while(l->data[end] == 0){ */
+                        /*         end--; */
+                        /* } */
+                        /* end++; */
+                        /* end = end - start; */
+
+
+                        tld_kde_pdf(x,y, c, 10,  &density);
+
+                        for(int i = 0; i < 10;i++){
+                                x[i] = density[i][0];
+                                y[i] = density[i][1];
+                        }
 
                         snprintf(buf, 256,"lentrace%d",mapq_idx);
                         snprintf(name, 256,"%s", m->mapq_map->description[mapq_idx]);
-                        RUN(add_count_data(
+                        RUN(add_real_data(
                                     o,
                                     buf,
                                     name,
                                     NULL,
                                     "lines",
                                     1,
-                                    x+start,
-                                    l->data+start,
-                                    end
+                                    x,
+                                    y,
+                                    10
                                     ));
                         gfree(x);
+                        gfree(y);
+                        gfree(density);
+
                 }
         }
         RUN(tld_append(o,"var "));
@@ -296,7 +322,7 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o,"title: 'Length'\n"));
         RUN(tld_append(o,"},\n"));
         RUN(tld_append(o,"yaxis: {\n"));
-        RUN(tld_append(o,"title: 'Counts'\n"));
+        RUN(tld_append(o,"title: 'Density'\n"));
         RUN(tld_append(o,"}}\n"));
         RUN(tld_append(o,");\n"));
         RUN(tld_append(o,"</script>\n"));
@@ -1369,6 +1395,65 @@ int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type,
         RUN(tld_append(o,buf));
         for(int i = 1 ; i < len;i++){
                 snprintf(buf, 256,",%d",y[i]);
+                RUN(tld_append(o,buf));
+        }
+        RUN(tld_append(o,"],\n"));
+        if(label){
+                snprintf(buf, 256,"name: '%s',\n", label);
+                RUN(tld_append(o,buf));
+        }
+        if(color){
+                /* snprintf(buf, 256,"name: %s,\n", label); */
+                /* RUN(tld_append(o,buf)); */
+        }
+        if(type){
+                snprintf(buf, 256,"type: '%s',\n", type);
+                RUN(tld_append(o,buf));
+        }else{
+                RUN(tld_append(o,"type: 'scatter',\n"));
+        }
+        if(!vis){
+                RUN(tld_append(o,"visible: false\n"));
+        }else{
+                RUN(tld_append(o,"visible: true\n"));
+        }
+
+        RUN(tld_append(o,"};\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int add_real_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, double *x, double* y,  int len)
+{
+        ASSERT(y != NULL, "no y");
+        char buf[256];
+        snprintf(buf, 256,"var %s  = {\n",name);
+        RUN(tld_append(o,buf));
+        if(x == NULL){
+                RUN(tld_append(o,"x: ["));
+                snprintf(buf, 256,"%d",1);
+                RUN(tld_append(o,buf));
+                for(int i = 1 ; i < len;i++){
+                        snprintf(buf, 256,",%d",i+1);
+                        RUN(tld_append(o,buf));
+                }
+                RUN(tld_append(o,"],\n"));
+        }else{
+                RUN(tld_append(o,"x: ["));
+
+                for(int i = 0 ; i < len;i++){
+                        snprintf(buf, 256,"%f,",x[i]);
+                        RUN(tld_append(o,buf));
+                }
+                o->len--;
+                RUN(tld_append(o,"],\n"));
+        }
+        RUN(tld_append(o,"y: ["));
+        snprintf(buf, 256,"%f", y[0]);
+        RUN(tld_append(o,buf));
+        for(int i = 1 ; i < len;i++){
+                snprintf(buf, 256,",%f",y[i]);
                 RUN(tld_append(o,buf));
         }
         RUN(tld_append(o,"],\n"));

@@ -9,11 +9,12 @@
 #include "metrics/metrics.h"
 #include "report/report.h"
 #include "pst.h"
-#include <stdint.h>
+#include<stdint.h>
 
-/* int detect_file_type(char *filename, int* type); */
-int process_sam_bam_file(struct samstat_param* p, int id);
-int process_fasta_fastq_file(struct samstat_param* p, int id);
+    /* int detect_file_type(char *filename, int* type); */
+int process_sam_bam_file(struct samstat_param *p, int id);
+int process_fasta_fastq_file(struct samstat_param *p, int id);
+
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 
 int main(int argc, char *argv[])
@@ -107,7 +108,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-        struct pst_model* m = NULL;
+        /* struct pst_model* m = NULL; */
         struct metrics* metrics = NULL;
         /* p->buffer_size = 1000; */
 
@@ -119,9 +120,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         sb->data = a;
 
-        if(p->pst){
-                pst_model_alloc(&m);
-        }
+        /* if(p->pst){ */
+        /*         pst_model_alloc(&m); */
+        /* } */
 
 
         RUN(metrics_alloc(&metrics, p->report_max_len));
@@ -143,9 +144,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 }
                 RUN(get_metrics(sb,metrics));
 
-                if(p->pst && m->n_seq < 1000000){
-                        pst_model_add_seq(m, sb);
-                }
+                /* if(p->pst && m->n_seq < 1000000){ */
+                /*         pst_model_add_seq(m, sb); */
+                /* } */
 
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffier_print(sb);
@@ -160,9 +161,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         }
         RUN(close_bam(f_handle));
 
-        if(p->pst){
-                pst_model_create(m);
-        }
+        /* if(p->pst){ */
+        /*         pst_model_create(m); */
+        /* } */
 
         /* RUN(debug_metrics_print(metrics)); */
         create_report(metrics, p,id);
@@ -183,7 +184,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-        struct pst_model* m = NULL;
+        /* struct pst_model* m = NULL; */
         struct metrics* metrics = NULL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
@@ -194,9 +195,9 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         RUN(metrics_alloc(&metrics, p->report_max_len));
         metrics->is_aligned = 0;
 
-        if(p->pst){
-                pst_model_alloc(&m);
-        }
+        /* if(p->pst){ */
+        /*         pst_model_alloc(&m); */
+        /* } */
 
         while(1){
 
@@ -226,9 +227,9 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 RUN(get_metrics(sb,metrics));
 
                 /* LOG_MSG("starting pst"); */
-                if(p->pst && m->n_seq < 1000000){
-                        pst_model_add_seq(m, sb);
-                }
+                /* if(p->pst && m->n_seq < 1000000){ */
+                /*         pst_model_add_seq(m, sb); */
+                /* } */
                 /* pst_model_create(&m, sb); */
 
                 /* LOG_MSG("L: %d",sb->L); */
@@ -238,9 +239,9 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 /* } */
                 reset_tl_seq_buffer(sb);
         }
-        if(p->pst){
-                pst_model_create(m);
-        }
+        /* if(p->pst){ */
+        /*         pst_model_create(m); */
+        /* } */
 
         /* RUN(debug_metrics_print(metrics)); */
         create_report(metrics, p,id);

@@ -701,7 +701,7 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
-        int vis =1;
+        int vis = 1;
         int r_len = 0;
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
                 switch (read) {
@@ -717,7 +717,7 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 }
 
                 if(seq_comp->n_counts > 0){
-
+                        LOG_MSG("READ:%d mapq: %s %d", read, m->mapq_map->description[mapq_idx], seq_comp->n_counts);
                         for(int i = 0; i < seq_comp->L;i++){
                                 snprintf(buf, 256,"trace%d_%d",mapq_idx,i );
                                 snprintf(name, 256,"%c",nuc[i]);
@@ -796,13 +796,40 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
         /* RUN(tld_append(o,"yanchor: 'top',\n")); */
         RUN(tld_append(o,"buttons: [\n"));
         for(int vis = 0; vis < m->n_mapq_bins; vis++){
-                seq_comp = m->seq_comp_R1[vis];
+                
+                /* seq_comp = m->seq_comp_R1[vis]; */
+                switch (read) {
+                case 0:
+                case 1:
+                        seq_comp = m->seq_comp_R1[vis];
+                        r_len = m->max_len_R1;
+                        break;
+                case 2:
+                        seq_comp = m->seq_comp_R2[vis];
+                        r_len = m->max_len_R2;
+                        break;
+                }
+
+
+
                 if(seq_comp->n_counts > 0){
                         RUN(tld_append(o,"{\n"));
                         RUN(tld_append(o,"method: 'restyle',\n"));
                         RUN(tld_append(o,"args: ['visible', [\n"));
                         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
-                                seq_comp = m->seq_comp_R1[mapq_idx];
+                                /* seq_comp = m->seq_comp_R1[mapq_idx]; */
+                                switch (read) {
+                                case 0:
+                                case 1:
+                                        seq_comp = m->seq_comp_R1[mapq_idx];
+                                        r_len = m->max_len_R1;
+                                        break;
+                                case 2:
+                                        seq_comp = m->seq_comp_R2[mapq_idx];
+                                        r_len = m->max_len_R2;
+                                        break;
+                                }
+
                                 if(seq_comp->n_counts > 0){
                                         for(int i = 0; i < seq_comp->L;i++){
                                                 if(vis == mapq_idx){
@@ -967,20 +994,15 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 case 1:
                         /* seq_comp = m->seq_comp_R1[mapq_idx]; */
                         e = m->error_comp_R1[mapq_idx];
-
                         break;
                 case 2:
                         e = m->error_comp_R2[mapq_idx];
                         /* seq_comp = m->seq_comp_R2[mapq_idx]; */
-
                         break;
                 }
-
                 /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(e->n_mis > 0){
-
-
                         for(int i = 0; i < e->L;i++){
                                 snprintf(buf, 256,"errtrace%d_%d,",mapq_idx,i );
                                 RUN(tld_append(o,buf ));
@@ -988,7 +1010,6 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 }
         }
         o->len--;
-
 
         RUN(tld_append(o,"];\n"));
 
@@ -1250,7 +1271,7 @@ int del_composition_section(tld_strbuf *o, struct metrics *m, int read)
 
                 /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
-                if(e->n_mis + e->n_del + e->n_ins  > 0){
+                if(e->n_del > 0){
                         snprintf(buf, 256,"delerrtrace%d",mapq_idx);
                         snprintf(name, 256,"%s", m->mapq_map->description[mapq_idx]);
                         RUN(add_count_data(
@@ -1285,7 +1306,7 @@ int del_composition_section(tld_strbuf *o, struct metrics *m, int read)
 
                                 /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
-                if(e->n_mis + e->n_del + e->n_ins  > 0){
+                if(e->n_del > 0){
                         snprintf(buf, 256,"delerrtrace%d,",mapq_idx);
                         RUN(tld_append(o,buf ));
                 }

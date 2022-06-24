@@ -41,9 +41,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 switch(c) {
                 case 0:
                         break;
-                case 'p':
-                        p->pst = 1;
-                        break;
+                /* case 'p': */
+                /*         p->pst = 1; */
+                /*         break; */
                 case 'h':
                         help = 1;
                         break;
@@ -244,7 +244,7 @@ int param_init(struct samstat_param **param)
         p->infile = NULL;
         p->outfile = NULL;
         p->file_type = NULL;
-        p->pst = 0;
+        /* p->pst = 0; */
         p->report_max_len = 500;
         *param = p;
         return OK;

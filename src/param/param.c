@@ -1,7 +1,6 @@
 #include <getopt.h>
 #include <unistd.h>
 
-#include "core/tld-core.h"
 #include "tld.h"
 #define PARAM_IMPORT
 #include "param.h"

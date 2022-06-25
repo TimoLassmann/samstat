@@ -1,6 +1,5 @@
-#include "core/tld-core.h"
+
 #include "sam.h"
-#include "string/str.h"
 #include "tld.h"
 #include <htslib/sam.h>
 #include <string.h>

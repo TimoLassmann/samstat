@@ -23,7 +23,7 @@ static int print_title(tld_strbuf *o,struct samstat_param *p,int id);
 static int file_stat_section(tld_strbuf *o, char* filename);
 
 static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
-static int length_histogram_section(tld_strbuf *o, struct metrics *m, int read);
+static int length_distribution_section(tld_strbuf *o, struct metrics *m, int read);
 static int base_composition_section(tld_strbuf *o, struct metrics *m, int read);
 /* static int base_quality_section(tld_strbuf *o, struct metrics *m); */
 static int base_quality_section(tld_strbuf *o, struct metrics *m, int read);
@@ -63,10 +63,10 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
 
         LOG_MSG("Length distribution");
         if(m->n_paired){
-                RUN(length_histogram_section(out, m,1));
-                RUN(length_histogram_section(out, m,2));
+                RUN(length_distribution_section(out, m,1));
+                RUN(length_distribution_section(out, m,2));
         }else{
-                RUN(length_histogram_section(out, m,0));
+                RUN(length_distribution_section(out, m,0));
         }
 
         LOG_MSG("Base composition");
@@ -157,7 +157,7 @@ ERROR:
         return FAIL;
 }
 
-int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
+int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct len_composition* l = NULL;
         char buf[256];
@@ -219,6 +219,7 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
                         break;
                 }
 
+                /* LOG_MSG("Length min %d max %d",) */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(l->n_counts > 0){
 
@@ -226,7 +227,6 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
                         double** density = NULL;
                         double* x = NULL;
                         double* y = NULL;
-                        double* dat = NULL;
 
                         galloc(&x,MACRO_MAX(10,l->len));
                         galloc(&y,MACRO_MAX(10,l->len));
@@ -236,9 +236,10 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
                         int c = 0;
                         for(int i = 0; i < l->len;i++){
                                 if(l->data[i]){
-                                x[c] = (double) i;
-                                y[c] = (double) l->data[i];
-                                c++;
+                                        LOG_MSG("Adding %d",i);
+                                        x[c] = (double) i;
+                                        y[c] = (double) l->data[i];
+                                        c++;
                                 }
                                 /* dat[i] = (double) l->data[i]; */
                         }
@@ -254,9 +255,9 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
                         /* end = end - start; */
 
 
-                        tld_kde_pdf(x,y, c, 10,  &density);
+                        tld_kde_pdf(x,y, c, c,  &density);
 
-                        for(int i = 0; i < 10;i++){
+                        for(int i = 0; i < c;i++){
                                 x[i] = density[i][0];
                                 y[i] = density[i][1];
                         }
@@ -272,7 +273,7 @@ int length_histogram_section(tld_strbuf *o, struct metrics *m, int read)
                                     1,
                                     x,
                                     y,
-                                    10
+                                    c
                                     ));
                         gfree(x);
                         gfree(y);

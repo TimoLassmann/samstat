@@ -28,4 +28,4 @@ endif()
 
 
 #target_link_libraries(samstat PRIVATE hts)
-target_link_libraries(samstat PRIVATE tld-dev module_pst)
+target_link_libraries(samstat PRIVATE tld-dev)

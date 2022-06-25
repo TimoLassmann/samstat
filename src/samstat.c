@@ -1,6 +1,3 @@
-
-#include "core/tld-core.h"
-#include "seq/tld-seq.h"
 #include "tld.h"
 #include "sambamparse/sam_bam_parse.h"
 #include "htslib/sam.h"
@@ -8,8 +5,8 @@
 #include "param/param.h"
 #include "metrics/metrics.h"
 #include "report/report.h"
-#include "pst.h"
-#include<stdint.h>
+/* #include "pst.h" */
+#include <stdint.h>
 
     /* int detect_file_type(char *filename, int* type); */
 int process_sam_bam_file(struct samstat_param *p, int id);

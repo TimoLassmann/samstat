@@ -354,7 +354,7 @@ struct pst_node* build_pst(struct pst_model* m,struct pst_node* n)
                                 for(j = 0; j < pst->L;j++){
                                         /* ask_code = ask_code << 5ULL | (uint64_t)j; */
                                         suf[len+1] = j;
-                                        suf_len = len+2;
+                                        suf_len = len + 2;
                                         /* now the ask code is complete - I can start looking up their counts to get to P(ask) and P(as) */
                                         /* RUN(search_hash(m->h, suf, suf_len, &counts)); */
                                         key = get_exact_key(suf, suf_len);

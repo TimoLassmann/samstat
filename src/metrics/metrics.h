@@ -48,9 +48,11 @@ struct qual_composition {
 
 struct len_composition {
         uint32_t* data;
+        uint32_t* mapped_data;
         int len;
         int L;
         uint32_t n_counts;
+        uint32_t n_counts_mapped;
 };
 
 

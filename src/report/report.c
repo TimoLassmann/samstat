@@ -236,7 +236,7 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                         int c = 0;
                         for(int i = 0; i < l->len;i++){
                                 if(l->data[i]){
-                                        LOG_MSG("Adding %d",i);
+                                        /* LOG_MSG("Adding %d",i); */
                                         x[c] = (double) i;
                                         y[c] = (double) l->data[i];
                                         c++;
@@ -244,26 +244,63 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                                 /* dat[i] = (double) l->data[i]; */
                         }
 
-                        LOG_MSG("data points found: %d", c);
-                        /* while(l->data[start] == 0){ */
-                        /*         start++; */
-                        /* } */
-                        /* while(l->data[end] == 0){ */
-                        /*         end--; */
-                        /* } */
-                        /* end++; */
-                        /* end = end - start; */
-
-
-                        tld_kde_pdf(x,y, c, c,  &density);
+                        tld_kde_count_pdf(x,y,c,  &density);
 
                         for(int i = 0; i < c;i++){
                                 x[i] = density[i][0];
                                 y[i] = density[i][1];
                         }
 
-                        snprintf(buf, 256,"lentrace%d",mapq_idx);
+                        snprintf(buf, 256,"lentrace%d_read%d",mapq_idx,read);
                         snprintf(name, 256,"%s", m->mapq_map->description[mapq_idx]);
+                        RUN(add_real_data(
+                                    o,
+                                    buf,
+                                    name,
+                                    NULL,
+                                    "lines",
+                                    1,
+                                    x,
+                                    y,
+                                    c
+                                    ));
+                        gfree(x);
+                        gfree(y);
+                        gfree(density);
+
+                }
+                if(l->n_counts_mapped > 0){
+
+                        /* uint32_t *x = NULL; */
+                        double** density = NULL;
+                        double* x = NULL;
+                        double* y = NULL;
+
+                        galloc(&x,MACRO_MAX(10,l->len));
+                        galloc(&y,MACRO_MAX(10,l->len));
+                        /* galloc(&dat, l->len); */
+
+                        /* galloc(&x, l->len); */
+                        int c = 0;
+                        for(int i = 0; i < l->len;i++){
+                                if(l->data[i]){
+                                        /* LOG_MSG("Adding %d",i); */
+                                        x[c] = (double) i;
+                                        y[c] = (double) l->mapped_data[i];
+                                        c++;
+                                }
+                                /* dat[i] = (double) l->data[i]; */
+                        }
+
+                        tld_kde_count_pdf(x,y,c,  &density);
+
+                        for(int i = 0; i < c;i++){
+                                x[i] = density[i][0];
+                                y[i] = density[i][1];
+                        }
+
+                        snprintf(buf, 256,"lentrace_mapped%d_read%d",mapq_idx,read);
+                        snprintf(name, 256,"%s mapped", m->mapq_map->description[mapq_idx]);
                         RUN(add_real_data(
                                     o,
                                     buf,
@@ -301,9 +338,14 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                 /* e = m->error_comp_R1[mapq_idx]; */
                 /* LOG_MSG("%s %d",m->mapq_map->description[mapq_idx],e->n_mis + e->n_del + e->n_ins ); */
                 if(l->n_counts > 0){
-                        snprintf(buf, 256,"lentrace%d,",mapq_idx);
+                        snprintf(buf, 256,"lentrace%d_read%d,",mapq_idx,read);
                         RUN(tld_append(o,buf ));
                 }
+                if(l->n_counts_mapped > 0){
+                        snprintf(buf, 256,"lentrace_mapped%d_read%d,",mapq_idx,read );
+                        RUN(tld_append(o,buf ));
+                }
+
         }
         o->len--;
         RUN(tld_append(o,"];\n"));

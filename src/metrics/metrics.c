@@ -436,7 +436,12 @@ int collect_len_comp(struct metrics *m, struct tl_seq *s)
                 c = m->len_comp_R2[mapq_idx];
         }
 
-        c->data[s->len - shorten]++;
+        if(shorten){
+                c->mapped_data[s->len - shorten]++;
+                c->n_counts_mapped++;
+        }
+        /* c->data[s->len - shorten]++; */
+        c->data[s->len]++;
         c->n_counts++;
         return OK;
 ERROR:
@@ -854,7 +859,7 @@ int alloc_len_comp(struct len_composition** len_comp,int cur_max_len)
         MMALLOC(s, sizeof(struct len_composition));
         int alloc_len = 128;
         s->data = NULL;
-
+        s->mapped_data = NULL;
         while(cur_max_len >= alloc_len){
                 alloc_len = alloc_len + alloc_len / 2;
         }
@@ -863,9 +868,12 @@ int alloc_len_comp(struct len_composition** len_comp,int cur_max_len)
 
 
         galloc(&s->data, s->len);
+        galloc(&s->mapped_data,s->len);
         for(int i = 0; i <  s->len;i++){
                 s->data[i] = 0;
+                s->mapped_data[i] = 0;
         }
+        s->n_counts_mapped = 0;
         s->n_counts = 0;
         *len_comp = s;
 
@@ -897,7 +905,23 @@ int resize_len_comp(struct len_composition* s,int new_max_len)
                 }
 
                 gfree(s->data);
+
                 s->data = new;
+                new = NULL;
+                galloc(&new, alloc_len);
+
+                /* for(int i = 0; i < newL ;i++){ */
+                for(int i = 0; i < alloc_len;i++){
+                        new[i] = 0;
+                }
+                for(int i = 0; i < s->len;i++){
+                        new[i] = s->mapped_data[i];
+                }
+
+                gfree(s->mapped_data);
+
+                s->mapped_data = new;
+
                 s->len = alloc_len;
         }
         return OK;
@@ -910,6 +934,9 @@ void free_len_comp(struct len_composition *s)
         if(s){
                 if(s->data){
                         gfree(s->data);
+                }
+                if(s->mapped_data){
+                        gfree(s->mapped_data);
                 }
                 MFREE(s);
         }

@@ -37,12 +37,11 @@ static int report_footer(tld_strbuf *out_buffer);
 
 
 
-
 int create_report(struct metrics *m, struct samstat_param *p, int id)
 {
         tld_strbuf* out = NULL;
         FILE* f_ptr = NULL;
-
+        char buffer[1024];
         RUN(tld_strbuf_alloc(&out, 1024));
 
         RUN(report_header(out));
@@ -85,8 +84,8 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
         RUN(report_footer(out));
 
         /* if(p->outfile){ */
-
-        f_ptr = fopen("test.html", "w");
+        snprintf(buffer,1024,"%s.samstat.html", p->infile[id]);
+        f_ptr = fopen(buffer, "w");
         fprintf(f_ptr,"%s", TLD_STR(out));
         fclose(f_ptr);
         /* } */

@@ -1,5 +1,5 @@
 
-add_subdirectory(pst)
+# add_subdirectory(pst)
 
 add_executable(samstat
   samstat.c

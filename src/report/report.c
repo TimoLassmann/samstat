@@ -1,15 +1,12 @@
 #include "alloc/tld-alloc.h"
 #include "core/tld-core.h"
-#include "misc/misc.h"
-#include "seq/tld-seq.h"
-#include "stats/basic.h"
-#include "string/str.h"
 #include "tld.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "../config.h"
 
 #define REPORT_IMPORT
 #include "report.h"
@@ -21,7 +18,7 @@
 static int print_title(tld_strbuf *o,struct samstat_param *p,int id);
 
 static int file_stat_section(tld_strbuf *o, char* filename);
-
+static int version_stat_section(tld_strbuf *o);
 static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
 static int length_distribution_section(tld_strbuf *o, struct metrics *m, int read);
 static int base_composition_section(tld_strbuf *o, struct metrics *m, int read);
@@ -46,22 +43,17 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
         tld_strbuf* out = NULL;
         FILE* f_ptr = NULL;
 
-        if(p){
-                LOG_MSG("All good");
-        }
-
         RUN(tld_strbuf_alloc(&out, 1024));
 
         RUN(report_header(out));
 
-
-
         RUN(print_title(out, p,id));
         RUN(file_stat_section(out, p->infile[id]));
-        LOG_MSG("Mapping overview");
+        RUN(version_stat_section(out));
+        /* LOG_MSG("Mapping overview"); */
         RUN(mapping_quality_overview_section(out,m));
 
-        LOG_MSG("Length distribution");
+        /* LOG_MSG("Length distribution"); */
         if(m->n_paired){
                 RUN(length_distribution_section(out, m,1));
                 RUN(length_distribution_section(out, m,2));
@@ -69,21 +61,21 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
                 RUN(length_distribution_section(out, m,0));
         }
 
-        LOG_MSG("Base composition");
+        /* LOG_MSG("Base composition"); */
         if(m->n_paired){
                 RUN(base_composition_section(out, m,1));
                 RUN(base_composition_section(out, m,2));
         }else{
                 RUN(base_composition_section(out, m,0));
         }
-        LOG_MSG("Base quality");
+        /* LOG_MSG("Base quality"); */
         if(m->n_paired){
                 RUN(base_quality_section(out,m,1));
                 RUN(base_quality_section(out,m,2));
         }else{
                 RUN(base_quality_section(out,m,0));
         }
-        LOG_MSG("Error composition");
+        /* LOG_MSG("Error composition"); */
         if(m->n_paired){
                 RUN(error_composition_section(out, m,1));
                 RUN(error_composition_section(out, m,2));
@@ -122,6 +114,17 @@ ERROR:
         return FAIL;
 }
 
+int version_stat_section(tld_strbuf *o)
+{
+        char buffer[256];
+        RUN(tld_append(o,"<p>(report produced by: "));
+        snprintf(buffer, 256,"%s version %s",PACKAGE_NAME,PACKAGE_VERSION);
+        RUN(tld_append(o,buffer));
+        RUN(tld_append(o,")</p>"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
 int file_stat_section(tld_strbuf *o, char* filename)
 {
@@ -135,7 +138,7 @@ int file_stat_section(tld_strbuf *o, char* filename)
         if ( local_ret == 0 ){
 
                 localtime_r(&buf.st_mtime, &newtime);
-                tld_append(o, "<p>Size: ");
+                tld_append(o, "<p>File size: ");
                 snprintf(buffer, 256,"%lld", buf.st_size);
                 tld_append(o, buffer);
                 tld_append(o, "bytes, created ");
@@ -202,7 +205,15 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
         /* snprintf(buf, 256,"inserrcomp"); */
         RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+
+        if(m->is_aligned){
+                RUN(tld_append(o,"<p>Density plot of read lengths split by mapping quality. If aligned reads are soft clipped, additional length distribution of the aligned reads are shown (indicated by the 'mapped' keyword). </p>"));
+        }else{
+                RUN(tld_append(o,"<p>Density plot of read lengths. </p>"));
+        }
         RUN(tld_append(o,"<script>\n"));
+
+
 
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
                 switch (read) {
@@ -244,7 +255,15 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                                 /* dat[i] = (double) l->data[i]; */
                         }
 
-                        tld_kde_count_pdf(x,y,c,  &density);
+                        if(c == 0){
+                                ERROR_MSG("Not a single sequence found in length distribution");
+                        }else if(c == 1){
+                                galloc(&density, 1,2);
+                                density[0][0] = x[0];
+                                density[0][1] = 1.0;
+                        }else {
+                                tld_kde_count_pdf(x,y,c,  &density);
+                        }
 
                         for(int i = 0; i < c;i++){
                                 x[i] = density[i][0];
@@ -283,8 +302,8 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                         /* galloc(&x, l->len); */
                         int c = 0;
                         for(int i = 0; i < l->len;i++){
-                                if(l->data[i]){
-                                        /* LOG_MSG("Adding %d",i); */
+                                if(l->mapped_data[i]){
+                                        /* LOG_MSG("Adding %d mapped",i); */
                                         x[c] = (double) i;
                                         y[c] = (double) l->mapped_data[i];
                                         c++;
@@ -292,7 +311,15 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                                 /* dat[i] = (double) l->data[i]; */
                         }
 
-                        tld_kde_count_pdf(x,y,c,  &density);
+                        if(c == 0){
+                                ERROR_MSG("Not a single sequence found in length distribution");
+                        }else if(c == 1){
+                                galloc(&density, 1,2);
+                                density[0][0] = x[0];
+                                density[0][1] = 1.0;
+                        }else {
+                                tld_kde_count_pdf(x,y,c,  &density);
+                        }
 
                         for(int i = 0; i < c;i++){
                                 x[i] = density[i][0];
@@ -401,8 +428,7 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         /* TABLE  */
         RUN(tld_append(o, "<h2>Mapping statistics</h2>\n"));
 
-
-
+        if(m->n_paired){
                 RUN(tld_append(o, "<p>"));
                 snprintf(buf, 256,"%d", m->n_R1_reads+m->n_R2_reads);
                 RUN(tld_append(o, buf));
@@ -424,9 +450,9 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
                         RUN(tld_append(o, "(Stats below are based on all reads)<br>"));
                 }
                 RUN(tld_append(o, "</p>"));
+        }
 
-
-        LOG_MSG("%d %d -> %d  (paired: %d proper: %d )", m->n_R1_reads,m->n_R2_reads, m->n_R1_reads+m->n_R2_reads,m->n_paired, m->n_proper_paired);
+        /* LOG_MSG("%d %d -> %d  (paired: %d proper: %d )", m->n_R1_reads,m->n_R2_reads, m->n_R1_reads+m->n_R2_reads,m->n_paired, m->n_proper_paired); */
 
 
         RUN(tld_append(o, "<div id=\"MappingStatsTable\" style=\"width:100%;max-width:900px;height:240px;\"></div>\n"));
@@ -601,6 +627,12 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o, "<div id=\""));
         RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+        if(m->is_aligned){
+                RUN(tld_append(o,"<p>Base quality distribution split up by mapping quality.</p>"));
+        }else{
+                RUN(tld_append(o,"<p>Base quality distribution.</p>"));
+        }
+
 
         RUN(tld_append(o, "<script>\n"));
         RUN(tld_append(o, "var basex = [\n"));
@@ -769,6 +801,11 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
         /* snprintf(buf, 256,"basecomp"); */
         RUN(tld_append(o, target));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+
+
+        RUN(tld_append(o,"<p>Base composition. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
+
+
         RUN(tld_append(o,"<script>\n"));
         int vis = 1;
         int r_len = 0;
@@ -786,7 +823,7 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 }
 
                 if(seq_comp->n_counts > 0){
-                        LOG_MSG("READ:%d mapq: %s %d", read, m->mapq_map->description[mapq_idx], seq_comp->n_counts);
+                        /* LOG_MSG("READ:%d mapq: %s %d", read, m->mapq_map->description[mapq_idx], seq_comp->n_counts); */
                         for(int i = 0; i < seq_comp->L;i++){
                                 snprintf(buf, 256,"trace%d_%d",mapq_idx,i );
                                 snprintf(name, 256,"%c",nuc[i]);
@@ -949,6 +986,8 @@ int error_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 RUN(mismatch_composition_section(o,m,read));
                 RUN(ins_composition_section(o,m,read));
                 RUN(del_composition_section(o,m,read));
+
+                RUN(tld_append(o,"<p>Distibution of mismatches, insertions and deletions along the read length. Note: if no 'MD' tag is present in the SAM/BAM file no mismatch profile is displayed.</p>"));
         }
         return OK;
 ERROR:
@@ -1493,12 +1532,13 @@ int add_real_data(tld_strbuf *o,char *name, char* label,char* color,char* type, 
                 RUN(tld_append(o,"],\n"));
         }
         RUN(tld_append(o,"y: ["));
-        snprintf(buf, 256,"%f", y[0]);
-        RUN(tld_append(o,buf));
-        for(int i = 1 ; i < len;i++){
-                snprintf(buf, 256,",%f",y[i]);
+        /* snprintf(buf, 256,"%f", y[0]); */
+        /* RUN(tld_append(o,buf)); */
+        for(int i = 0 ; i < len;i++){
+                snprintf(buf, 256,"%f,",y[i]);
                 RUN(tld_append(o,buf));
         }
+        o->len--;
         RUN(tld_append(o,"],\n"));
         if(label){
                 snprintf(buf, 256,"name: '%s',\n", label);
@@ -1650,7 +1690,7 @@ int report_footer(tld_strbuf *out_buffer)
 
         RUN(tld_append(out_buffer, "<h3>Contact</h3>\n"));
 
-        RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann (timolassmann at gmail dot com).</p>\n"));
+        RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann.</p>\n"));
         RUN(tld_append(out_buffer, "<h3>Please cite:</h3>\n"));
 
         RUN(tld_append(out_buffer, "<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n"));
@@ -1660,7 +1700,7 @@ int report_footer(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<ul>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
         RUN(tld_append(out_buffer, "<li><a href=\"https://samtools.github.io/hts-specs/\">SAM/BAM specifications</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/samstat/\">samstat</a></li>\n"));
+        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/SAMStat/\">samstat</a></li>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
         RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n")); */

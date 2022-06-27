@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.2)
 
-project(samstat LANGUAGES C VERSION "2.0")
+project(SAMStat LANGUAGES C VERSION "2.0")
 
-message(STATUS "${CMAKE_PROJECT_NAME} Name ")
-message(STATUS "${CMAKE_PROJECT_VERSION} Version ")
+# message(STATUS "${CMAKE_PROJECT_NAME} Name ")
+# message(STATUS "${CMAKE_PROJECT_VERSION} Version ")
 
 
 set (CMAKE_C_STANDARD 11)

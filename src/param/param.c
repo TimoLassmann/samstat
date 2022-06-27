@@ -21,7 +21,6 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
 
         param_init(&p);
 
-
         while (1){
                 static struct option long_options[] ={
                         {"len",required_argument,0,'l'},
@@ -69,7 +68,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         }
 
         if(version){
-                //fprintf(stdout,"%s %s\n",PACKAGE_NAME,PACKAGE_VERSION);
+                fprintf(stdout,"%s %s\n",PACKAGE_NAME,PACKAGE_VERSION);
                 param_free(p);
                 exit(EXIT_SUCCESS);
         }

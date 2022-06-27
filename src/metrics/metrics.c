@@ -48,9 +48,8 @@ static void free_mapqual_bins(struct mapqual_bins *m);
 int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
 {
         int len_change = 0;
-        int read = 0;
+
         for(int i = 0; i < sb->num_seq;i++){
-                read = 0;
                 if(sb->sequences[i]->data){
                         struct aln_data* a = NULL;
                         a = sb->sequences[i]->data;
@@ -80,7 +79,6 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                                         m->min_len_R2 = sb->sequences[i]->len;
                                 }
                         }else{
-                                /* LOG_MSG("Huh?"); */
                                 m->n_R1_reads++;
                                 if(m->max_len_R1 < (uint32_t)sb->sequences[i]->len){
                                         m->max_len_R1 = sb->sequences[i]->len;
@@ -112,11 +110,10 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                 } else if(len_change == 1){
                         RUN(resize_len_comp(m->len_comp_R1[i], m->max_len_R1));
                 }
-                                /*         /\* LOG_MSG("Changing length: %d L %d ", m->max_len_R1, sb->L); *\/ */
-                                /*         RUN(resize_seq_comp(m->seq_comp_R1[i], sb->L, m->max_len_R1)); */
-                                /*         RUN(resize_qual_comp(m->qual_comp_R1[i], m->max_len_R1)); */
-                                /*         RUN(resize_error_comp(m->error_comp_R1[i], sb->L, m->max_len_R1)); */
-
+                /*         /\* LOG_MSG("Changing length: %d L %d ", m->max_len_R1, sb->L); *\/ */
+                /*         RUN(resize_seq_comp(m->seq_comp_R1[i], sb->L, m->max_len_R1)); */
+                /*         RUN(resize_qual_comp(m->qual_comp_R1[i], m->max_len_R1)); */
+                /*         RUN(resize_error_comp(m->error_comp_R1[i], sb->L, m->max_len_R1)); */
         }
         if(m->n_paired){
                 for(int i = 0; i < m->n_mapq_bins;i++){
@@ -437,9 +434,12 @@ int collect_len_comp(struct metrics *m, struct tl_seq *s)
         }
 
         if(shorten){
+                /* LOG_MSG("%d %d %d",read, mapq_idx, s->len - shorten); */
                 c->mapped_data[s->len - shorten]++;
                 c->n_counts_mapped++;
+
         }
+
         /* c->data[s->len - shorten]++; */
         c->data[s->len]++;
         c->n_counts++;

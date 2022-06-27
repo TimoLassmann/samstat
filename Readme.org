@@ -17,6 +17,22 @@ single html page:
 
 * How to install
 
+*SAMstat* depends on the hdf5 library. To install on linux:
+
+Ubuntu/Debian:
+
+#+begin_src bash :eval never
+sudo apt-get install -y libhdf5-dev
+#+end_src
+
+On a mac via [[https://brew.sh][brew]]:
+
+#+begin_src bash :eval never
+brew install hdf5
+#+end_src
+
+To build *SAMstat*: 
+
 #+begin_src bash :eval never 
 git clone https://github.com/TimoLassmann/samstat.git
 cd samstat
@@ -33,10 +49,9 @@ make install
 samstat <file.sam>  <file.bam>  <file.fa>  <file.fq> .... 
 #+end_src
 
-For each input file SAMStat will create a single html page named after the input file name plus a dot html suffix.
+For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix.
 
 * Please cite:
 
-Lassmann et al. (2010) "SAMStat: monitoring biases in next generation sequencing data." Bioinformatics doi:10.1093/bioinformatics/btq614 [PMID: 21088025] 
-[doi:10.1093/bioinformatics/btq614](http://dx.doi.org/10.1093%2Fbioinformatics%2Fbtq614)
+Lassmann et al. (2010) "SAMStat: monitoring biases in next generation sequencing data." Bioinformatics doi:10.1093/bioinformatics/btq614 [PMID: 21088025]
 

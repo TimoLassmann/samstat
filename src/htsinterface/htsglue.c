@@ -1,4 +1,3 @@
-
 #include "sam.h"
 #include "tld.h"
 #include <htslib/sam.h>

@@ -1,12 +1,5 @@
-
-
-#include "H5public.h"
-#include "alloc/tld-alloc.h"
-#include "core/tld-core.h"
-#include "sam.h"
-#include "seq/tld-seq.h"
 #include "tld.h"
-
+#include "sam.h"
 #include "../sambamparse/sam_bam_parse.h"
 #include "../htsinterface/htsglue.h"
 #include <limits.h>

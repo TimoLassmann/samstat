@@ -1,5 +1,3 @@
-#include "alloc/tld-alloc.h"
-#include "core/tld-core.h"
 #include "tld.h"
 #include <math.h>
 #include <stdint.h>

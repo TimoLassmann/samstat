@@ -210,6 +210,29 @@ ERROR:
         return FAIL;
 }
 
+/* int print_kalign_header(void) */
+/* { */
+/*         fprintf(stdout,"\n"); */
+/*         fprintf(stdout,"SAMStat (%s)\n", PACKAGE_VERSION); */
+/*         fprintf(stdout,"\n"); */
+/*         fprintf(stdout,"Copyright (C) 2022 Timo Lassmann\n"); */
+/*         fprintf(stdout,"\n"); */
+/*         fprintf(stdout,"Please cite:\n"); */
+
+/*         /\*        fprintf(stdout,"  Kalign 3: multiple sequence alignment of large data sets */
+/* Timo Lassmann */
+/* Bioinformatics, btz795, https://doi.org/10.1093/bioinformatics/btz795 */
+/*         *\/ */
+/*         fprintf(stdout,"  Lassmann, Timo.\n"); */
+/*         fprintf(stdout,"  \"Kalign 3: multiple sequence alignment of large data sets.\"\n"); */
+/*         fprintf(stdout,"  Bioinformatics (2019) \n"); */
+/*         fprintf(stdout,"  https://doi.org/10.1093/bioinformatics/btz795\n"); */
+/*         fprintf(stdout,"\n"); */
+
+
+/*         return OK; */
+/* } */
+
 
 int print_help(char **argv )
 {
@@ -220,7 +243,7 @@ int print_help(char **argv )
         fprintf(stdout,"\nUsage: %s [-options] %s\n\n",tmp,usage);
 
         fprintf(stdout,"Options:\n\n");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  );
+        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <l> nucleotides." ,"[500]"  );
 
 

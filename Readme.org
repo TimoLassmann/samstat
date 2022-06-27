@@ -53,5 +53,6 @@ For each input file SAMStat will create a single html page named after the input
 
 * Please cite:
 
-Lassmann et al. (2010) "SAMStat: monitoring biases in next generation sequencing data." Bioinformatics 27.1 (2011): 130-131. [[doi:10.1093/bioinformatics/btq614][doi:10.1093/bioinformatics/btq614]]
+Lassmann et al. (2010) "SAMStat: monitoring biases in next generation sequencing data." Bioinformatics 27.1 (2011): 130-131. [[https://doi.org/10.1093%2Fbioinformatics%2Fbtq614][doi:10.1093/bioinformatics/btq614]]
+
 

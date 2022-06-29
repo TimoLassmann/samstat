@@ -140,7 +140,7 @@ int file_stat_section(tld_strbuf *o, char* filename)
                 tld_append(o, "<p>File size: ");
                 snprintf(buffer, 256,"%ld", buf.st_size);
                 tld_append(o, buffer);
-                tld_append(o, "bytes, created ");
+                tld_append(o, " bytes, created ");
                 if(!strftime(buffer, 256, "%F %H:%M:%S", &newtime )){
                         ERROR_MSG("Could not make time string.");
                 }

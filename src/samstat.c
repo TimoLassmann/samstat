@@ -144,7 +144,6 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 /* if(p->pst && m->n_seq < 1000000){ */
                 /*         pst_model_add_seq(m, sb); */
                 /* } */
-
                 /* LOG_MSG("L: %d",sb->L); */
                 //debug_seq_buffier_print(sb);
                 /* break; */

@@ -1,6 +1,8 @@
+
 #include "tld.h"
 #include <math.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -28,7 +30,7 @@ static int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int re
 static int ins_composition_section(tld_strbuf *o, struct metrics *m, int read);
 static int del_composition_section(tld_strbuf *o, struct metrics *m, int read);
 
-static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len);
+static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint64_t *x, uint64_t* y,  int len);
 static int add_real_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, double *x, double* y,  int len);
 static int report_header(tld_strbuf *out_buffer);
 static int report_footer(tld_strbuf *out_buffer);
@@ -136,7 +138,7 @@ int file_stat_section(tld_strbuf *o, char* filename)
 
                 localtime_r(&buf.st_mtime, &newtime);
                 tld_append(o, "<p>File size: ");
-                snprintf(buffer, 256,"%lld", buf.st_size);
+                snprintf(buffer, 256,"%ld", buf.st_size);
                 tld_append(o, buffer);
                 tld_append(o, "bytes, created ");
                 if(!strftime(buffer, 256, "%F %H:%M:%S", &newtime )){
@@ -427,18 +429,18 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
 
         if(m->n_paired){
                 RUN(tld_append(o, "<p>"));
-                snprintf(buf, 256,"%d", m->n_R1_reads+m->n_R2_reads);
+                snprintf(buf, 256,"%lu", m->n_R1_reads+m->n_R2_reads);
                 RUN(tld_append(o, buf));
                 RUN(tld_append(o, " - in total<br>"));
                 if(m->n_paired){
-                        snprintf(buf, 256,"%d", m->n_paired);
+                        snprintf(buf, 256,"%"PRId64"", m->n_paired);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, " - paired in sequencing ("));
                         snprintf(buf, 256,"%0.1f", (double)m->n_paired / (double) (m->n_R1_reads+m->n_R2_reads) * 100.0);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, "%)<br>"));
 
-                        snprintf(buf, 256,"%d", m->n_proper_paired);
+                        snprintf(buf, 256,"%"PRId64"", m->n_proper_paired);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, " - properly paired ("));
                         snprintf(buf, 256,"%0.1f", (double)m->n_proper_paired / (double) m->n_paired * 100.0);
@@ -465,14 +467,14 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         o->len--;
         RUN(tld_append(o, "],"));
 
-        uint32_t total = 0;
+        uint64_t total = 0;
         RUN(tld_append(o, "["));
         for(int i = 0; i < m->mapq_map->n_bin;i++){
                 total += m->seq_comp_R1[i]->n_counts;
-                snprintf(buf, 256, "%d,", m->seq_comp_R1[i]->n_counts);
+                snprintf(buf, 256, "%"PRId64",", m->seq_comp_R1[i]->n_counts);
                 RUN(tld_append(o,buf));
         }
-        snprintf(buf, 256, "%d,", total);
+        snprintf(buf, 256, "%"PRId64",", total);
         RUN(tld_append(o,buf));
         o->len--;
         RUN(tld_append(o, "],"));
@@ -488,14 +490,14 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
 
         if(m->n_paired){
                 RUN(tld_append(o, ","));
-                uint32_t total = 0;
+                uint64_t total = 0;
                 RUN(tld_append(o, "["));
                 for(int i = 0; i < m->mapq_map->n_bin;i++){
                         total += m->seq_comp_R2[i]->n_counts;
-                        snprintf(buf, 256, "%d,", m->seq_comp_R2[i]->n_counts);
+                        snprintf(buf, 256, "%"PRId64",", m->seq_comp_R2[i]->n_counts);
                         RUN(tld_append(o,buf));
                 }
-                snprintf(buf, 256, "%d,", total);
+                snprintf(buf, 256, "%"PRId64",", total);
                 RUN(tld_append(o,buf));
                 o->len--;
                 RUN(tld_append(o, "],"));
@@ -662,6 +664,7 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                                         total += j * q->data[i][j];
                                         n+= q->data[i][j];
                                 }
+                                /* LOG_MSG("MEAN: %f %f", total, n); */
                                 if(n == 0){
                                         mean[i] = 0.0;
                                         stderr[i] = 0.0;
@@ -1444,7 +1447,7 @@ ERROR:
 }
 
 
-int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint32_t *x, uint32_t* y,  int len)
+int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint64_t *x, uint64_t* y,  int len)
 {
         ASSERT(y != NULL, "no y");
         char buf[256];
@@ -1463,17 +1466,17 @@ int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type,
                 RUN(tld_append(o,"x: ["));
 
                 for(int i = 0 ; i < len;i++){
-                        snprintf(buf, 256,"%d,",x[i]);
+                        snprintf(buf, 256,"%"PRId64",",x[i]);
                         RUN(tld_append(o,buf));
                 }
                 o->len--;
                 RUN(tld_append(o,"],\n"));
         }
         RUN(tld_append(o,"y: ["));
-        snprintf(buf, 256,"%d", y[0]);
+        snprintf(buf, 256,"%"PRId64"", y[0]);
         RUN(tld_append(o,buf));
         for(int i = 1 ; i < len;i++){
-                snprintf(buf, 256,",%d",y[i]);
+                snprintf(buf, 256,",%"PRId64"",y[i]);
                 RUN(tld_append(o,buf));
         }
         RUN(tld_append(o,"],\n"));

@@ -22,37 +22,37 @@ struct mapqual_bins {
 };
 
 struct error_composition {
-        uint32_t** mis;
-        uint32_t* ins;
-        uint32_t* del;
+        uint64_t** mis;
+        uint64_t* ins;
+        uint64_t* del;
         int len;
         int L;
-        uint32_t n_mis;
-        uint32_t n_ins;
-        uint32_t n_del;
+        uint64_t n_mis;
+        uint64_t n_ins;
+        uint64_t n_del;
 };
 
 struct seq_composition {
-        uint32_t** data;
+        uint64_t** data;
         int L;
-        uint32_t n_counts;
+        uint64_t n_counts;
         int len;
 };
 
 struct qual_composition {
-        uint32_t** data;
+        uint64_t** data;
         int len;
         int L;
-        uint32_t n_counts;
+        uint64_t n_counts;
 };
 
 struct len_composition {
-        uint32_t* data;
-        uint32_t* mapped_data;
+        uint64_t* data;
+        uint64_t* mapped_data;
         int len;
         int L;
-        uint32_t n_counts;
-        uint32_t n_counts_mapped;
+        uint64_t n_counts;
+        uint64_t n_counts_mapped;
 };
 
 
@@ -78,10 +78,10 @@ struct metrics {
         uint8_t n_mapq_bins;
         uint8_t is_aligned;
 
-        uint32_t n_R1_reads;
-        uint32_t n_R2_reads;
-        uint32_t n_paired;
-        uint32_t n_proper_paired;
+        uint64_t n_R1_reads;
+        uint64_t n_R2_reads;
+        uint64_t n_paired;
+        uint64_t n_proper_paired;
 };
 
 /* EXTERN int metrics_alloc(struct metrics **metrics); */

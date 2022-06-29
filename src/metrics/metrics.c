@@ -881,7 +881,7 @@ int resize_len_comp(struct len_composition* s,int new_max_len)
         /* ASSERT(new_max_len >= s->len,"New len is shorter??"); */
         int alloc_len;
         if(new_max_len > s->len){
-                uint32_t* new = NULL;
+                uint64_t* new = NULL;
                 alloc_len = s->len;
                 while(new_max_len >= alloc_len){
                         alloc_len = alloc_len + alloc_len / 2;

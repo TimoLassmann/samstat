@@ -298,8 +298,8 @@ int print_help(char **argv )
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <p> sequences.","[unlimited]");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <l> nucleotides." ,"[500]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <n> sequences.","[unlimited]");
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[500]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
 
         fprintf(stdout,"\n");
@@ -318,7 +318,7 @@ int print_help(char **argv )
 ;
 
         fprintf(stdout,"   %s ~/tmp/*.bam -p 1000000 -d ~/samstat_reports/\n",tmp);
-        fprintf(stdout,"   - will write QC reports for all BAM files in ~tmp, based on the top 1000000 sequences to: ~/samstat_reports/test.bam.samstat.html\n\n")
+        fprintf(stdout,"   - will write QC reports for all BAM files in ~/tmp, based on the top 1000000 sequences to: ~/samstat_reports/test.bam.samstat.html\n\n")
 ;
 
         /* fprintf(stdout,"\n"); */

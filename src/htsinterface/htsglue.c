@@ -116,12 +116,11 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         /* LOG_MSG("%d", qual_ptr[0]); */
                         if(qual_ptr[0] == 0xFF){
                                 /* char* fill = NULL; */
-
-                                galloc(&buffer, s->len);
+                                /* galloc(&buffer, s->len); */
                                 memset(buffer, 0xFF, s->len);
+                                buffer[s->len] = 0;
                                 tld_append(s->qual, buffer);
                                 /* gfree(fill); */
-
                                 /* s->qual[0] = 0xFF; */
                                 /* s->qual[s->len-1] = 0xFF;  HACK! - this ensures that we have 255
                                                              at the beginning whether or not the sequences

@@ -1,4 +1,5 @@
 
+#include "core/tld-core.h"
 #include "misc/misc.h"
 #include "tld.h"
 #include <math.h>
@@ -668,17 +669,18 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
 
 
         RUN(tld_append(o, "<script>\n"));
-        RUN(tld_append(o, "var basex = [\n"));
-        for(int i = 0 ; i < r_len;i++){
-                for(int j = 0; j < q->L;j++){
-                        snprintf(buf, 256,"%d,",i);
-                        RUN(tld_append(o,buf));
-                }
-        }
-        o->len--;
-        RUN(tld_append(o, "]\n"));
+        /* RUN(tld_append(o, "var basex = [\n")); */
+        /* for(int i = 0 ; i < r_len;i++){ */
+        /*         for(int j = 0; j < q->L;j++){ */
+        /*                 snprintf(buf, 256,"%d,",i); */
+        /*                 RUN(tld_append(o,buf)); */
+        /*         } */
+        /* } */
+        /* o->len--; */
+        /* RUN(tld_append(o, "]\n")); */
 
         for(int mapq_idx = 0; mapq_idx < m->n_mapq_bins; mapq_idx++){
+                /* r_len = MACRO_MIN(q->len, r_len); */
                 switch (read) {
                 case 0:
                 case 1:
@@ -688,9 +690,10 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         q = m->qual_comp_R2[mapq_idx];
                         break;
                 }
-
+                /* LOG_MSG("len going in  %d (%d)", r_len, mapq_idx); */
                 if(q->n_counts > 0){
                         /* calc mean */
+                        int print_len = r_len;
                         for(int i = 0 ; i < r_len;i++){
                                 double total = 0.0;
                                 double n = 0.0;
@@ -700,8 +703,13 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                                 }
                                 /* LOG_MSG("MEAN: %f %f", total, n); */
                                 if(n == 0){
-                                        mean[i] = 0.0;
-                                        stderr[i] = 0.0;
+                                        /* LOG_MSG(" map %d reached a zero at %d",mapq_idx, i); */
+                                        /* i = r_len; */
+                                        /* r_len = i; */
+                                        print_len  = i;
+                                        break;
+                                        /* mean[i] = 0.0; */
+                                        /* stderr[i] = 0.0; */
                                         /* LOG_MSG("should not happen : %f total: %f", n,total); */
                                 }else{
                                         mean[i] = total / n;
@@ -716,6 +724,7 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                                 }
                         }
 
+
                         snprintf(buf, 256,"var qualtrace%d = {\n",mapq_idx);
                         RUN(tld_append(o,buf));
 
@@ -725,7 +734,7 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         RUN(tld_append(o,"',\n"));
 
                         RUN(tld_append(o,"x: ["));
-                        for(int i = 0 ; i < r_len;i++){
+                        for(int i = 0 ; i < print_len;i++){
                                 snprintf(buf, 256,"%d,",i+1);
                                 RUN(tld_append(o,buf));
                         }
@@ -733,7 +742,7 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         RUN(tld_append(o,"],\n"));
 
                         RUN(tld_append(o,"y: ["));
-                        for(int i = 0 ; i < r_len;i++){
+                        for(int i = 0 ; i < print_len;i++){
                                 snprintf(buf, 256,"%f,",mean[i]);
                                 RUN(tld_append(o,buf));
                         }
@@ -743,7 +752,7 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         RUN(tld_append(o,"error_y: {\n"));
                         RUN(tld_append(o,"type: 'data',\n"));
                         RUN(tld_append(o,"array : ["));
-                        for(int i = 0 ; i < r_len;i++){
+                        for(int i = 0 ; i < print_len;i++){
                                 snprintf(buf, 256,"%f,",stderr[i]);
                                 RUN(tld_append(o,buf));
                         }

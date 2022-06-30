@@ -16,7 +16,7 @@ static int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offs
 static int collect_error_comp(struct metrics *m, struct tl_seq *s);
 static int collect_len_comp(struct metrics *m, struct tl_seq *s);
 
-static int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int *idx);
+static inline int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int *idx);
 
 static int alloc_seq_comp(struct seq_composition **seq_comp, int L,int report_max_len);
 /* static int resize_seq_comp(struct seq_composition* s,int newL, int new_max_len); */
@@ -46,6 +46,7 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                 if(sb->sequences[i]->data){
                         struct aln_data* a = NULL;
                         a = sb->sequences[i]->data;
+
                         if(a->flag & BAM_FPAIRED){
                                 m->n_paired++;
                                 if(a->flag & BAM_FPROPER_PAIR){
@@ -62,6 +63,7 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                                 if(m->min_len_R1 > (uint32_t)sb->sequences[i]->len){
                                         m->min_len_R1 = sb->sequences[i]->len;
                                 }
+
                         }else if(a->flag & BAM_FREAD2){
                                 m->n_R2_reads++;
                                 if(m->max_len_R2 < (uint32_t)sb->sequences[i]->len){
@@ -209,6 +211,8 @@ void free_mapqual_bins(struct mapqual_bins *m)
 int collect_seq_comp(struct metrics *m, struct tl_seq *s)
 {
         struct seq_composition* c = NULL;
+        uint8_t* seq = NULL;
+        uint64_t** data = NULL;
         int mapq_idx = 0;
         int read = 1;
         int start = 0;
@@ -228,29 +232,30 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
         }
         int m_len = MACRO_MIN((int)m->report_max_len, s->len-end);
         int idx = 0;
-        for(int i = start;i < m_len;i++){
+        data = c->data;
+        seq = s->seq->str;
 
-                char let = s->seq->str[i];
+        for(int i = start;i < m_len;i++){
+                char let = seq[i];
                 switch (let) {
                 case 'A':
                 case 'a':
-                        c->data[0][idx]++;
+                        data[0][idx]++;
                         break;
                 case 'C':
                 case 'c':
-                        c->data[1][idx]++;
+                        data[1][idx]++;
                         break;
                 case 'G':
                 case 'g':
-                        c->data[2][idx]++;
+                        data[2][idx]++;
                         break;
                 case 'T':
                 case 't':
-                        c->data[3][idx]++;
+                        data[3][idx]++;
                         break;
                 default:
-                        c->data[4][idx]++;
-
+                        data[4][idx]++;
                         break;
                 }
                 idx++;
@@ -265,6 +270,8 @@ ERROR:
 int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
 {
         struct qual_composition* c = NULL;
+        uint8_t* qual = NULL;
+        uint64_t** data = NULL;
         int mapq_idx = 0;
         int read = 1;
         int start = 0;
@@ -277,6 +284,7 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
         }else if(read ==2){
                 c = m->qual_comp_R2[mapq_idx];
         }
+
         /* LOG_MSG("Qual len: %d", s->qual->len); */
         /* s->seq */
         if(s->qual->str[0] == 0xFF){
@@ -295,12 +303,14 @@ int collect_qual_comp(struct metrics *m, struct tl_seq *s, const int offset)
 
         int m_len = MACRO_MIN((int)m->report_max_len, s->len-end);
         int idx = 0;
+        qual = s->qual->str;
+        data = c->data;
         for(int i = start;i < m_len;i++){
-                int q = (int)s->qual->str[i] - offset;
+                int q = (int)qual[i] - offset;
                 if(q > 41){
                         q = 41;
                 }
-                c->data[idx][q]++;
+                data[idx][q]++;
                 idx++;
         }
         c->n_counts++;
@@ -345,9 +355,10 @@ int collect_error_comp(struct metrics *m, struct tl_seq *s)
         for(int i = 0;i < m_len;i++){
                 /* three possibilities */
 
-                if(r[i] == '-' && g[i] == '-'){
+                /* if(r[i] == '-' && g[i] == '-'){ */
 
-                }else if(r[i] != '-' && g[i] == '-'){
+                /* }else  */
+                if(r[i] != '-' && g[i] == '-'){
                         if(i){
                                 if(g[i-1] != '-'){
                                         c->ins[rp]++;
@@ -396,7 +407,6 @@ int collect_error_comp(struct metrics *m, struct tl_seq *s)
                                 c->n_mis++;
                         }
                         rp++;
-
                 }
         }
         /* c->n_counts++; */
@@ -441,7 +451,7 @@ ERROR:
         return FAIL;
 }
 
-int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int *idx)
+inline int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *read, int *idx)
 {
         *idx = MAPQUALBIN_UNMAP;
         *read = 1;
@@ -505,7 +515,7 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
         }
 
         m->n_paired = 0;
-
+        m->is_partial_report = 0;
         RUN(get_mapqual_bins(&m->mapq_map));
         m->n_mapq_bins = m->mapq_map->n_bin;
         MMALLOC(m->seq_comp_R1, sizeof(struct seq_composition*) * m->mapq_map->n_bin);
@@ -517,7 +527,6 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
         MMALLOC(m->qual_comp_R2, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->error_comp_R2, sizeof(struct error_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->len_comp_R2, sizeof(struct len_composition*) * m->mapq_map->n_bin);
-
 
         for(int i = 0; i < m->mapq_map->n_bin;i++){
                 m->seq_comp_R1[i] = NULL;

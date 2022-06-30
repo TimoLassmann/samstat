@@ -77,11 +77,14 @@ struct metrics {
         uint32_t report_max_len;
         uint8_t n_mapq_bins;
         uint8_t is_aligned;
+        uint8_t is_partial_report;
 
         uint64_t n_R1_reads;
         uint64_t n_R2_reads;
         uint64_t n_paired;
         uint64_t n_proper_paired;
+
+        /* uint64_t rev_stat[8]; */
 };
 
 /* EXTERN int metrics_alloc(struct metrics **metrics); */

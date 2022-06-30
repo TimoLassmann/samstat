@@ -1,11 +1,16 @@
 #include <getopt.h>
+#include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 
+#include "misc/misc.h"
 #include "tld.h"
 #define PARAM_IMPORT
 #include "param.h"
 
 #include "../config.h"
+
+#define OPT_VERBOSE 1
 
 int sanity_check_param(struct samstat_param *p);
 int detect_file_type(char *filename, int* type);
@@ -23,25 +28,32 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
 
         while (1){
                 static struct option long_options[] ={
+                        {"peek",required_argument,0,'p'},
                         {"len",required_argument,0,'l'},
+                        {"dir",required_argument,0,'d'},
+                        {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
                         {"version",0,0,'v'},
                         {0, 0, 0, 0}
                 };
 
                 int option_index = 0;
-                c = getopt_long_only (argc, argv,"hvpl:",long_options, &option_index);
+                c = getopt_long_only (argc, argv,"p:l:d:hv",long_options, &option_index);
 
                 if (c == -1){
                         break;
                 }
 
                 switch(c) {
-                case 0:
+                case OPT_VERBOSE:
+                        p->verbose = 1;
                         break;
-                /* case 'p': */
-                /*         p->pst = 1; */
-                /*         break; */
+                case 'd':
+                        p->outdir = optarg;
+                        break;
+                case 'p':
+                        p->top_n = atoi(optarg);
+                        break;
                 case 'h':
                         help = 1;
                         break;
@@ -105,13 +117,43 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         *param = p;
         return OK;
 ERROR:
+        WARNING_MSG("Something went wrong with parsing the command line options.");
+        /* WARNING_MSG("Something went wrong with parsing the command line options."); */
+        /* print_help(argv); */
         param_free(p);
         return FAIL;
 }
 
 int sanity_check_param(struct samstat_param *p)
 {
+        if(p->top_n < 10){
+                ERROR_MSG("Option -p/-peek: has to be >= 10.");
+        }
 
+        if(p->outdir){
+                if(tld_dir_exists(p->outdir) == FAIL){
+                        ERROR_MSG("Option -d/-dir: output directory %s does not exist",p->outdir);
+                }
+                char *ptr = NULL;
+                ptr = realpath(p->outdir, NULL);
+                if(!ptr){
+                        ERROR_MSG("Could not obtain the full path for %s.", p->outdir);
+                }
+                p->outdir = ptr;
+
+                /* int l = strnlen(p->outdir, 1024); */
+                /* if(p->outdir[l-1] == '/'){ */
+                /*         p->outdir[l-1] = 0; */
+                /* } */
+                /* char *symlinkpath = "/tmp/symlink/file"; */
+                /* char actualpath [PATH_MAX+1]; */
+
+
+
+                /* ptr = realpath(symlinkpath, actualpath); */
+
+
+        }
         /* check report length */
         if(p->report_max_len <= 0){
                 ERROR_MSG("Option -l/-len: the report length has to be > 0");
@@ -240,16 +282,63 @@ int print_help(char **argv )
         char* tmp = NULL;
 
         RUN(tlfilename(argv[0], &tmp));
-        fprintf(stdout,"\nUsage: %s [-options] %s\n\n",tmp,usage);
-
-        fprintf(stdout,"Options:\n\n");
-        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <l> nucleotides." ,"[500]"  );
 
 
         fprintf(stdout,"\n");
+        fprintf(stdout,"%s (%s)\n", tmp, PACKAGE_VERSION);
+        fprintf(stdout,"\n");
+        fprintf(stdout,"Copyright (C) 2011,2022 Timo Lassmann\n");
+        fprintf(stdout,"\n");
+
+
+
+        fprintf(stdout,"Usage: %s [-options] %s\n\n",tmp,usage);
+
+        fprintf(stdout,"Options:\n\n");
+        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
+        fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <p> sequences.","[unlimited]");
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <l> nucleotides." ,"[500]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
+
+        fprintf(stdout,"\n");
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-h/-help","Prints help message." ,"[]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-v/-version","Prints version information." ,"[]"  );
+
+        fprintf(stdout,"\n");
+
+        fprintf(stdout,"Examples:\n\n");
+
+        fprintf(stdout,"   %s ~/tmp/test.bam \n",tmp);
+        fprintf(stdout,"   - will write a QC report to: ~/tmp/test.bam.samstat.html\n\n");
+
+        fprintf(stdout,"   %s ~/tmp/test.bam -p 1000000 -d ~/samstat_reports/\n",tmp);
+        fprintf(stdout,"   - will write a QC report based on the top 1000000 sequences to: ~/samstat_reports/test.bam.samstat.html\n\n")
+;
+
+        fprintf(stdout,"   %s ~/tmp/*.bam -p 1000000 -d ~/samstat_reports/\n",tmp);
+        fprintf(stdout,"   - will write QC reports for all BAM files in ~tmp, based on the top 1000000 sequences to: ~/samstat_reports/test.bam.samstat.html\n\n")
+;
+
+        /* fprintf(stdout,"\n"); */
+        /* fprintf(stdout,"\n"); */
+        /* fprintf(stdout,"Please cite:\n"); */
+
+        /* fprintf(stdout,"  Lassmann, Timo, Yoshihide Hayashizaki, and Carsten O. Daub.\n"); */
+
+        /* fprintf(stdout,"  \"SAMStat: monitoring biases in next generation sequencing data.\"\n"); */
+        /* fprintf(stdout,"  Bioinformatics 27.1 (2011): 130-131. \n"); */
+        /* fprintf(stdout,"  https://doi.org/10.1093/bioinformatics/btq614\n"); */
+
+        /* fprintf(stdout,"\n"); */
+
+        MFREE(tmp);
         return OK;
 ERROR:
+        if(tmp){
+                MFREE(tmp);
+        }
         return FAIL;
 }
 
@@ -260,11 +349,13 @@ int param_init(struct samstat_param **param)
 
         MMALLOC(p, sizeof(struct samstat_param));
         p->buffer_size = 1000000;
-        p->quiet = 0;
+        p->verbose = 0;
         p->n_infile = 0;
         p->infile = NULL;
         p->outfile = NULL;
+        p->outdir = NULL;
         p->file_type = NULL;
+        p->top_n = UINT64_MAX;
         /* p->pst = 0; */
         p->report_max_len = 500;
         *param = p;
@@ -285,6 +376,10 @@ void param_free(struct samstat_param *p)
                 if(p->infile){
                         MFREE(p->infile);
                 }
+                if(p->outdir){
+                        MFREE(p->outdir);
+                }
+
                 MFREE(p);
         }
 

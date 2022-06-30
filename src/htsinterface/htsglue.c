@@ -1,4 +1,6 @@
 #include "sam.h"
+#include "seq/tld-seq.h"
+#include "string/str.h"
 #include "tld.h"
 #include <htslib/sam.h>
 #include <string.h>
@@ -65,6 +67,10 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
         bam1_t *b = f_handle->b;
         bam_hdr_t *h = f_handle->header;
         int r = 0;
+        char* buffer = NULL;
+        int b_len = 1024;
+
+        galloc(&buffer, b_len);
 
         while ((r = sam_read1(f_handle->in, h, b)) >= 0){
                 if(!(b->core.flag & BAM_FSECONDARY)){
@@ -87,24 +93,34 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
 
                         s->len = b->core.l_qseq;
 
-                        /* read in the sequence... */
-                        /* while(s->len+1 >= s->malloc_len){ */
-                        /*         resize_tl_seq(s); */
-                        /* } */
 
-                        for (int i = 0; i < s->len; ++i){
-                                tld_append_char(s->seq, seq_nt16_str[bam_seqi(seq, i)]);
+                        if(s->len > b_len){
+                                while(b_len <= s->len){
+                                        b_len = b_len + 1024;
+                                }
+                                gfree(buffer);
+                                buffer = NULL;
+                                galloc(&buffer,b_len);
                         }
+                        for (int i = 0; i < s->len; ++i){
+                                buffer[i] = seq_nt16_str[bam_seqi(seq, i)];
+                        }
+                        buffer[s->len] = 0;
+
+                        tld_append(s->seq, buffer);
+                        /* for (int i = 0; i < s->len; ++i){ */
+                        /*         tld_append_char(s->seq, seq_nt16_str[bam_seqi(seq, i)]); */
+                        /* } */
                         /* s->seq[s->len ] = 0; */
 
                         /* LOG_MSG("%d", qual_ptr[0]); */
                         if(qual_ptr[0] == 0xFF){
-                                char* fill = NULL;
+                                /* char* fill = NULL; */
 
-                                galloc(&fill, s->len);
-                                memset(fill, 0xFF, s->len);
-                                tld_append(s->qual, fill);
-                                gfree(fill);
+                                galloc(&buffer, s->len);
+                                memset(buffer, 0xFF, s->len);
+                                tld_append(s->qual, buffer);
+                                /* gfree(fill); */
 
                                 /* s->qual[0] = 0xFF; */
                                 /* s->qual[s->len-1] = 0xFF;  HACK! - this ensures that we have 255
@@ -118,10 +134,15 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                                 /* s->qual[s->len] = 0 ; */
                         }else{
                                 for (int i = 0; i < s->len; ++i){
-                                        tld_append_char(s->qual, qual_ptr[i] + 33);
+                                        buffer[i] = qual_ptr[i] + 33;
+                                }
+                                buffer[s->len] = 0;
+                                tld_append(s->qual, buffer);
+                                /* for (int i = 0; i < s->len; ++i){ */
+                                        /* tld_append_char(s->qual, qual_ptr[i] + 33); */
                                         /* s->qual[i] = qual_ptr[i] + 33; */
                                         /* sb_ptr->base_qual[i] = qual_ptr[i] + 33; */
-                                }
+                                /* } */
                                 /* s->qual[s->len] = 0 ; */
                         }
                         /* extra stuff  */
@@ -163,8 +184,12 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         }
                 }
         }
+        gfree(buffer);
         return OK;
 ERROR:
+        if(buffer){
+                gfree(buffer);
+        }
         return FAIL;
 }
 

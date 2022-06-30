@@ -1,4 +1,5 @@
 
+#include "misc/misc.h"
 #include "tld.h"
 #include <math.h>
 #include <stdint.h>
@@ -19,6 +20,8 @@ static int print_title(tld_strbuf *o,struct samstat_param *p,int id);
 
 static int file_stat_section(tld_strbuf *o, char* filename);
 static int version_stat_section(tld_strbuf *o);
+
+static int partial_warning_section(tld_strbuf *o , struct metrics* m);
 static int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m);
 static int length_distribution_section(tld_strbuf *o, struct metrics *m, int read);
 static int base_composition_section(tld_strbuf *o, struct metrics *m, int read);
@@ -48,8 +51,15 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
 
         RUN(print_title(out, p,id));
         RUN(file_stat_section(out, p->infile[id]));
+
+
         RUN(version_stat_section(out));
+        if(m->is_partial_report){
+                RUN(partial_warning_section(out,m));
+        }
+
         /* LOG_MSG("Mapping overview"); */
+
         RUN(mapping_quality_overview_section(out,m));
 
         /* LOG_MSG("Length distribution"); */
@@ -83,8 +93,17 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
         }
         RUN(report_footer(out));
 
-        /* if(p->outfile){ */
-        snprintf(buffer,1024,"%s.samstat.html", p->infile[id]);
+        if(p->outdir){
+                char* filename = NULL;
+                tlfilename(p->infile[id], &filename);
+                snprintf(buffer,1024,"%s/%s.samstat.html",p->outdir, filename);
+                MFREE(filename);
+
+        }else{
+                /* if(p->outfile){ */
+                snprintf(buffer,1024,"%s.samstat.html", p->infile[id]);
+        }
+        LOG_MSG("Writing to: %s", buffer);
         f_ptr = fopen(buffer, "w");
         fprintf(f_ptr,"%s", TLD_STR(out));
         fclose(f_ptr);
@@ -158,6 +177,21 @@ int file_stat_section(tld_strbuf *o, char* filename)
 ERROR:
         return FAIL;
 }
+
+int partial_warning_section(tld_strbuf *o , struct metrics* m)
+{
+        char buf[256];
+        snprintf(buf, 256,"%"PRId64"", m->n_R1_reads+m->n_R2_reads);
+        RUN(tld_append(o,"<h2 style=\"color: red;border-bottom: none;\"> Warning: this is partial report based on the first "));
+        RUN(tld_append(o,buf));
+
+        RUN(tld_append(o," reads only.</h2>"));
+
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
 {
@@ -429,7 +463,7 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
 
         if(m->n_paired){
                 RUN(tld_append(o, "<p>"));
-                snprintf(buf, 256,"%lu", m->n_R1_reads+m->n_R2_reads);
+                snprintf(buf, 256,"%"PRId64"", m->n_R1_reads+m->n_R2_reads);
                 RUN(tld_append(o, buf));
                 RUN(tld_append(o, " - in total<br>"));
                 if(m->n_paired){

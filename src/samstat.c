@@ -7,7 +7,7 @@
 #include "report/report.h"
 /* #include "pst.h" */
 #include <stdint.h>
-
+#include <inttypes.h>
     /* int detect_file_type(char *filename, int* type); */
 int process_sam_bam_file(struct samstat_param *p, int id);
 int process_fasta_fastq_file(struct samstat_param *p, int id);
@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 {
         struct samstat_param* param = NULL;
 
-        parse_param(argc, argv, &param);
+        RUN(parse_param(argc, argv, &param));
 
         /* fprintf(stdout,"Hello world\n"); */
         /* fprintf(stdout,"HTS version:%d\n", HTS_VERSION); */
@@ -40,60 +40,8 @@ int main(int argc, char *argv[])
                         process_sam_bam_file(param,i);
                 }
         }
-
         param_free(param);
-        /* exit(0); */
-        /* struct sam_bam_file* f_handle = NULL; */
-/*         struct tl_seq_buffer* sb = NULL; */
 
-/*         RUN(alloc_tl_seq_buffer(&sb, 20)); */
-/*         add_aln_data(sb); */
-
-/*         RUN(open_bam(&f_handle, argv[1])); */
-/*         while(1){ */
-/*                 RUN(read_bam_chunk(f_handle, sb)); */
-/*                 if(sb->num_seq == 0){ */
-/*                         break; */
-/*                 } */
-/*                 for(int i = 0 ; i < sb->num_seq;i++){ */
-/*                         struct aln_data* a = (struct aln_data*) sb->sequences[i]->data; */
-/*                         fprintf(stdout,"%s\n%s\n", TLD_STR( sb->sequences[i]->name), */
-/*                                 TLD_STR()b->sequences[i]->seq */
-/*                                 /\* TLD_STR(a->md), *\/ */
-/*                                 /\* a->error, *\/ */
-/*                                 /\* a->reverse *\/ */
-/*                                 ); */
-
-/*                         parse_alignment(sb->sequences[i]); */
-/*                         /\* get_readable_cigar(a, NULL); *\/ */
-/*                         char* cig = NULL; */
-/*                         get_readable_cigar(a, &cig); */
-/*                         fprintf(stdout,"Cigar: %s\n",cig); */
-/*                         fprintf(stdout,"   MD: %s\n",TLD_STR(a->md)); */
-/*                         gfree(cig); */
-
-/*                         fprintf(stdout, "%s (genome)\n",a->genome); */
-/*                         for(int i = 0; i < a->aln_len;i++){ */
-/*                                 if(a->genome[i] == a->read[i]){ */
-/*                                         fprintf(stdout,"|"); */
-/*                                 }else{ */
-/*                                         fprintf(stdout," "); */
-/*                                 } */
-/*                         } */
-/*                         fprintf(stdout,"\n"); */
-
-/*                         fprintf(stdout, "%s (read)\n",a->read); */
-
-/*                 } */
-/*                 break; */
-/* /\* sb->num_seq = 0; *\/ */
-/*                 reset_tl_seq_buffer(sb); */
-/*         } */
-        /* RUN(close_bam(f_handle)); */
-
-
-        /* clear_aln_data(sb); */
-        /* free_tl_seq_buffer(sb); */
         return EXIT_SUCCESS;
 ERROR:
         return EXIT_FAILURE;
@@ -105,8 +53,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-        /* struct pst_model* m = NULL; */
         struct metrics* metrics = NULL;
+        uint64_t n_read = 0;
         /* p->buffer_size = 1000; */
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
@@ -126,7 +74,6 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         metrics->is_aligned = 1;
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
-
                 RUN(read_bam_chunk(f_handle, sb));
                 sb->L = TL_SEQ_BUFFER_DNA;
                 sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
@@ -139,6 +86,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         parse_alignment(sb->sequences[i]);
                         fix_orientation(sb->sequences[i]);
                 }
+
                 RUN(get_metrics(sb,metrics));
 
                 /* if(p->pst && m->n_seq < 1000000){ */
@@ -149,11 +97,19 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 /* break; */
                 /* struct pst_model* m = NULL; */
                 /* pst_model_create(&m, sb); */
-                LOG_MSG("Processed %d sequences", sb->num_seq);
-                /* exit(0); */
+                n_read += sb->num_seq;
+                if(p->verbose){
+                        LOG_MSG("Processed %"PRId64" sequences", n_read);
+                }
+                if(n_read > p->top_n){
+                        if(p->verbose){
+                                LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
+                        }
+                        metrics->is_partial_report = 1;
+                        break;
+                }
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
-                /* exit(0); */
         }
         RUN(close_bam(f_handle));
 
@@ -180,8 +136,8 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-        /* struct pst_model* m = NULL; */
         struct metrics* metrics = NULL;
+        uint64_t n_read = 0;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
@@ -212,27 +168,29 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         }
                         sb->data = a;
                 }
-                LOG_MSG("%d BQ offset ", sb->base_quality_offset);
+                /* LOG_MSG("%d BQ offset ", sb->base_quality_offset); */
                 //total_r+= sb->num_seq;
-                LOG_MSG("Finished reading chunk: found %d ",sb->num_seq);
+                /* LOG_MSG("Finished reading chunk: found %d ",sb->num_seq); */
 
 
                 if(sb->num_seq == 0){
                         break;
                 }
+
+
                 RUN(get_metrics(sb,metrics));
 
-                /* LOG_MSG("starting pst"); */
-                /* if(p->pst && m->n_seq < 1000000){ */
-                /*         pst_model_add_seq(m, sb); */
-                /* } */
-                /* pst_model_create(&m, sb); */
-
-                /* LOG_MSG("L: %d",sb->L); */
-                //debug_seq_buffer_print(sb);
-                /* for(int i = 0; i < sb->num_seq;i++){ */
-                /*         fprintf(stdout, "%s\n", sb->sequences[i]->seq); */
-                /* } */
+                n_read += sb->num_seq;
+                if(p->verbose){
+                        LOG_MSG("Processed %"PRId64" sequences", n_read);
+                }
+                if(n_read > p->top_n){
+                        if(p->verbose){
+                                LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
+                        }
+                        metrics->is_partial_report = 1;
+                        break;
+                }
                 reset_tl_seq_buffer(sb);
         }
         /* if(p->pst){ */

@@ -52,6 +52,7 @@ int parse_alignment(struct tl_seq *s)
         struct aln_data* a = NULL;
         uint8_t* genome = NULL;
         uint8_t* read = NULL;
+        uint8_t* seq = NULL;
         int sp;
         int rp;
         char Op;
@@ -111,12 +112,14 @@ int parse_alignment(struct tl_seq *s)
 
         genome = a->genome;
         read = a->read;
-        for(int i = 0;i < aln_len;i++){
-                genome[i] = 0;
-                read[i] = 0;
-        }
+        /* for(int i = 0;i < aln_len;i++){ */
+        /*         genome[i] = '-'; */
+        /*         read[i] = '-'; */
+        /* } */
         rp = 0;
         sp = 0;
+
+        seq = s->seq->str;
         for(int i = 0;i < a->n_cigar;i++){
                 Op = bam_cigar_opchr(a->cigar[i]);
                 Oplen = bam_cigar_oplen(a->cigar[i]);
@@ -136,7 +139,7 @@ int parse_alignment(struct tl_seq *s)
                 case '=':
                 case 'X':
                         for(int j = 0; j < Oplen;j++){
-                                read[rp] = s->seq->str[sp];
+                                read[rp] = seq[sp];
                                 genome[rp] = read[rp];
                                 sp++;
                                 rp++;
@@ -144,15 +147,15 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 case 'I':
                         for(int j = 0; j < Oplen;j++){
-                                read[rp] = s->seq->str[sp];
-                                genome[rp] = 255;
+                                read[rp] = seq[sp];
+                                genome[rp] = '-';
                                 sp++;
                                 rp++;
                         }
                         break;
                 case 'D':
                         for(int j = 0; j < Oplen;j++){
-                                read[rp] = 255;
+                                read[rp] = '-';
                                 genome[rp] = 'N';
                                 rp++;
                         }
@@ -190,7 +193,7 @@ int parse_alignment(struct tl_seq *s)
 
                                 int c = atoi(tmp_num);
                                 for(j = 0; j < c;j++){
-                                        if(genome[pos] != 255){
+                                        if(genome[pos] != '-'){
                                                 genome[pos] = read[pos];
                                         }else{
                                                 c++;
@@ -204,7 +207,7 @@ int parse_alignment(struct tl_seq *s)
                         }else if(md[i] == '^'){
                                 i++;
                         }
-                        while(genome[pos] == 255){
+                        while(genome[pos] == '-'){
                                 pos++;
                         }
                 }
@@ -220,14 +223,14 @@ int parse_alignment(struct tl_seq *s)
         /*         fprintf(stdout,"Filing done \n"); */
         /* } */
 
-        for(int i = 0; i < aln_len;i++){
-                if(genome[i] == 255){
-                        genome[i] = '-';
-                }
-                if(read[i] == 255){
-                        read[i] = '-';
-                }
-        }
+        /* for(int i = 0; i < aln_len;i++){ */
+        /*         if(genome[i] == 255){ */
+        /*                 genome[i] = '-'; */
+        /*         } */
+        /*         if(read[i] == 255){ */
+        /*                 read[i] = '-'; */
+        /*         } */
+        /* } */
         /* fprintf(stdout,"%s - genome len: %d\n%s - read\n", genome ,aln_len, read); */
         return OK;
 ERROR:

@@ -15,10 +15,12 @@
 struct samstat_param {
         char** infile;
         char* outfile;
+        char* outdir;
         uint8_t* file_type;
         int buffer_size;
         int n_infile;
-        int quiet;
+        int verbose;
+        uint64_t top_n;
         uint32_t report_max_len;
         /* uint8_t pst; */
 };

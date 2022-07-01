@@ -20,24 +20,17 @@ int main(int argc, char *argv[])
 
         RUN(parse_param(argc, argv, &param));
 
-        /* fprintf(stdout,"Hello world\n"); */
-        /* fprintf(stdout,"HTS version:%d\n", HTS_VERSION); */
-        int* g = NULL;
-
-        galloc(&g,100);
-        for(int i = 0; i < 100;i++){
-                g[i] = i;
-        }
-        gfree(g);
-
         for(int i = 0 ; i < param->n_infile;i++){
+                if(param->verbose){
+                        LOG_MSG("Processing: %s", param->infile[i]);
+                }
                 int t = -1;
                 /* RUN(detect_file_type(param->infile[i], &t)); */
                 t = param->file_type[i];
                 if(t == FILE_TYPE_FASTAQ){
-                        process_fasta_fastq_file(param,i);
+                        RUN(process_fasta_fastq_file(param,i));
                 }else if(t == FILE_TYPE_SAMBAM){
-                        process_sam_bam_file(param,i);
+                        RUN(process_sam_bam_file(param,i));
                 }
         }
         param_free(param);

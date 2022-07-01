@@ -1,6 +1,7 @@
 
 #include "core/tld-core.h"
 #include "misc/misc.h"
+#include "string/str.h"
 #include "tld.h"
 #include <math.h>
 #include <stdint.h>
@@ -9,6 +10,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "../config.h"
+
+#include "lst.h"
 
 #define REPORT_IMPORT
 #include "report.h"
@@ -35,8 +38,10 @@ static int ins_composition_section(tld_strbuf *o, struct metrics *m, int read);
 static int del_composition_section(tld_strbuf *o, struct metrics *m, int read);
 
 static int add_count_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, uint64_t *x, uint64_t* y,  int len);
-static int add_real_data(tld_strbuf *o,char *name, char* label,char* color,char* type, int vis, double *x, double* y,  int len);
-static int report_header(tld_strbuf *out_buffer);
+static int add_real_data(tld_strbuf *o, char *name, char *label, char *color, char *type, int vis, double *x, double *y, int len);
+
+
+static int report_header(tld_strbuf *out_buffer, char *filename);
 static int report_footer(tld_strbuf *out_buffer);
 
 
@@ -46,13 +51,32 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
         tld_strbuf* out = NULL;
         FILE* f_ptr = NULL;
         char buffer[1024];
+
+        /* lst_node* root = NULL; */
+
+        /* lst_append(&root, "Apple"); */
+        /* lst_append(&root, "Apple"); */
+        /* lst_append(&root, "Apple"); */
+        /* lst_append(&root, "Apple"); */
+
+        /* lst_print(root); */
+
+        /* lst_concatenate(root,':'); */
+        /* lst_print(root); */
+        /* lst_free(root); */
+        /* exit(0); */
+
+
         RUN(tld_strbuf_alloc(&out, 1024));
 
-        RUN(report_header(out));
+        char* n = NULL;
+        RUN(tlfilename(p->infile[id], &n));
+        RUN(report_header(out, n));
+        MFREE(n);
 
         RUN(print_title(out, p,id));
-        RUN(file_stat_section(out, p->infile[id]));
 
+        RUN(file_stat_section(out, p->infile[id]));
 
         RUN(version_stat_section(out));
         if(m->is_partial_report){
@@ -197,6 +221,7 @@ ERROR:
 int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct len_composition* l = NULL;
+        lst_node* n = NULL;
         char buf[256];
         char name[256];
         char target[16];
@@ -410,51 +435,72 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
         }
         o->len--;
         RUN(tld_append(o,"];\n"));
+
+        /* The actual plotting command  */
         RUN(tld_append(o,"Plotly.newPlot('"));
-        /* snprintf(buf, 256,"inserrcomp"); */
+
+
+        /* Adding the target div */
         RUN(tld_append(o, target));
         RUN(tld_append(o,"', "));
 
-        snprintf(buf, 256,"len_comp_data,");
+
+
+        /* Adding the data */
+        snprintf(buf, 256,"len_comp_data");
         RUN(tld_append(o,buf ));
-        /* RUN(tld_append(o,"base_comp_layout,")); */
 
-        RUN(tld_append(o,"{barmode: 'group',\n"));
-        RUN(tld_append(o,"title: 'Length distribution',\n"));
+        RUN(tld_append(o, ",\n"));
 
-        RUN(tld_append(o,"xaxis: {\n"));
-        RUN(tld_append(o,"title: 'Length'\n"));
-        RUN(tld_append(o,"},\n"));
-        RUN(tld_append(o,"yaxis: {\n"));
-        RUN(tld_append(o,"title: 'Density'\n"));
-        RUN(tld_append(o,"}}\n"));
-        RUN(tld_append(o,");\n"));
+        /* Create layout using lst struct  */
+        lst_append(&n,"barmode: 'group'");
+        lst_append(&n,"title: 'Length distribution'");
+        lst_append(&n,"xaxis: {title: 'Length'}");
+        lst_append(&n,"yaxis: {title: 'Density'}");
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+        RUN(tld_append(o, TLD_STR(n->data)));
+
+
+        lst_free(n);
+        n = NULL;
+        /* config section - here the svg buttom */
+        lst_append(&n,"format : 'svg'");
+        lst_append(&n,"filename : 'LengthDistribution'");
+        lst_append(&n,"height : 500");
+        lst_append(&n,"width : 700");
+        lst_append(&n, "scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+
+
+        RUN(tld_append(o, ")\n"));
         RUN(tld_append(o,"</script>\n"));
+        lst_free(n);
         return OK;
 ERROR:
         return FAIL;
 }
-/* Length histogram */
-/* var y = []; */
-/* for (var i = 0; i < 500; i ++) { */
-/* 	y[i] = Math.random(); */
-/* } */
-
-/* var data = [ */
-/*   { */
-/*     y: y, */
-/*     type: 'histogram', */
-/* 	marker: { */
-/*     color: 'pink', */
-/* 	}, */
-/*   } */
-/* ]; */
-/* Plotly.newPlot('myDiv', data); */
-
 
 int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
 {
         char buf[256];
+        lst_node* n = NULL;
         if(!m->is_aligned){
                 return OK;
         }
@@ -545,7 +591,6 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
                 RUN(tld_append(o,buf));
                 o->len--;
                 RUN(tld_append(o, "]\n"));
-
         }
 
         RUN(tld_append(o, "]\n"));
@@ -585,7 +630,33 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
         RUN(tld_append(o, "}\n"));
 
 
-        RUN(tld_append(o, "Plotly.newPlot('MappingStatsTable', mappingtable_data,mapping_table_layout);\n"));
+        RUN(tld_append(o, "Plotly.newPlot('MappingStatsTable', mappingtable_data,mapping_table_layout\n"));
+
+
+        /* config section - here the svg buttom */
+        lst_append(&n,"format : 'svg'");
+        lst_append(&n,"filename : 'MappingOverview'");
+        lst_append(&n,"height : 500");
+        lst_append(&n,"width : 700");
+        lst_append(&n, "scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+
+        lst_free(n);
+        RUN(tld_append(o, ")\n"));
 
         RUN(tld_append(o, "</script>\n"));
 
@@ -597,6 +668,8 @@ ERROR:
 int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct qual_composition* q = NULL;
+        lst_node* n = NULL;
+
         char buf[256];
         char target[16];
         double* mean = NULL;
@@ -666,8 +739,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
         }else{
                 RUN(tld_append(o,"<p>Base quality distribution.</p>"));
         }
-
-
         RUN(tld_append(o, "<script>\n"));
         /* RUN(tld_append(o, "var basex = [\n")); */
         /* for(int i = 0 ; i < r_len;i++){ */
@@ -797,7 +868,33 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
 
         RUN(tld_append(o,"Plotly.newPlot('"));
         RUN(tld_append(o,target)) ;
-        RUN(tld_append(o,"', qualdata, quallayout);\n"));
+        RUN(tld_append(o,"', qualdata, quallayout"));
+
+
+        lst_append(&n,"format : 'svg'");
+        lst_append(&n,"filename : 'BaseQuality'");
+        lst_append(&n,"height : 500");
+        lst_append(&n,"width : 700");
+        lst_append(&n, "scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+
+        lst_free(n);
+
+        RUN(tld_append(o,");\n"));
 
         RUN(tld_append(o,"</script>\n"));
 
@@ -815,6 +912,7 @@ ERROR:
 int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct seq_composition* seq_comp = NULL;
+        lst_node* n = NULL;
         char buf[256];
         char name[256];
         char nuc[5] = "ACGTN";
@@ -998,9 +1096,32 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 }
         }
         o->len--;
-        RUN(tld_append(o,"]}]}\n"));
+        RUN(tld_append(o,"]}]}"));
 
-        RUN(tld_append(o,");\n"));
+
+        lst_append(&n,"format : 'svg'");
+        lst_append(&n,"filename : 'BaseCompostition'");
+        lst_append(&n,"height : 500");
+        lst_append(&n,"width : 700");
+        lst_append(&n,"scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+        lst_free(n);
+
+        RUN(tld_append(o, ")\n"));
         RUN(tld_append(o,"</script>\n"));
         return OK;
 ERROR:
@@ -1040,6 +1161,7 @@ ERROR:
 int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct error_composition* e = NULL;
+        lst_node* n = NULL;
         char buf[256];
         char name[256];
         char target[16];
@@ -1218,7 +1340,31 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read)
                 }
         }
         o->len--;
-        RUN(tld_append(o,"]}]}\n"));
+        RUN(tld_append(o,"]}]}"));
+
+        lst_append(&n,"format : 'svg'");
+        lst_append(&n,"filename : 'MismatchProfile'");
+        lst_append(&n,"height : 500");
+        lst_append(&n,"width : 700");
+        lst_append(&n, "scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+
+        lst_free(n);
+
 
         RUN(tld_append(o,");\n"));
         RUN(tld_append(o,"</script>\n"));
@@ -1230,6 +1376,7 @@ ERROR:
 int ins_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct error_composition* e = NULL;
+        lst_node* n = NULL;
         char buf[256];
         char name[256];
         char target[16];
@@ -1348,7 +1495,31 @@ int ins_composition_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o,"yaxis: {\n"));
         RUN(tld_append(o,"title: 'Counts'\n"));
         RUN(tld_append(o,"}}\n"));
+
+
+        lst_append(&n,"format : 'svg'");
+        lst_append(&n,"filename : 'InsertionProfile'");
+        lst_append(&n,"height : 500");
+        lst_append(&n,"width : 700");
+        lst_append(&n, "scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+
+        lst_free(n);
+
         RUN(tld_append(o,");\n"));
+
         RUN(tld_append(o,"</script>\n"));
         return OK;
 ERROR:
@@ -1358,6 +1529,7 @@ ERROR:
 int del_composition_section(tld_strbuf *o, struct metrics *m, int read)
 {
         struct error_composition* e = NULL;
+        lst_node* n = NULL;
         char buf[256];
         char name[256];
         char target[16];
@@ -1482,6 +1654,30 @@ int del_composition_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o,"yaxis: {\n"));
         RUN(tld_append(o,"title: 'Counts'\n"));
         RUN(tld_append(o,"}}\n"));
+
+
+
+        /* config section */
+        lst_append(&n, "format : 'svg'");
+        lst_append(&n, "filename : 'DeletionProfile'");
+        lst_append(&n, "height : 500");
+        lst_append(&n, "width : 700");
+        lst_append(&n, "scale : 1");
+
+
+        lst_concatenate(n, ",\n");
+        tld_prepend(n->data, "toImageButtonOptions : {\n");
+        tld_append(n->data, "}");
+        /* encapsulate whole config */
+        tld_prepend(n->data, "{");
+        tld_append(n->data, "}");
+
+
+        RUN(tld_append(o, ",\n"));
+
+        RUN(tld_append(o, TLD_STR(n->data)));
+        lst_free(n);
+
         RUN(tld_append(o,");\n"));
         RUN(tld_append(o,"</script>\n"));
         return OK;
@@ -1609,13 +1805,26 @@ ERROR:
         return FAIL;
 }
 
+int report_header(tld_strbuf *out_buffer, char *filename)
 
-int report_header(tld_strbuf *out_buffer)
 {
         RUN(tld_append(out_buffer, "<!DOCTYPE html>\n"));
         RUN(tld_append(out_buffer, "<html>\n"));
+
+        RUN(tld_append(out_buffer, "<head>\n"));
+
+        RUN(tld_append(out_buffer, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"/>\n"))
         RUN(tld_append(out_buffer, "<script src=\"https://d3js.org/d3.v4.js\"></script>\n"));
         RUN(tld_append(out_buffer, "<script src=\"https://cdn.plot.ly/plotly-latest.min.js\"></script>\n"));
+
+
+
+        RUN(tld_append(out_buffer, "<title>\n"));
+        RUN(tld_append(out_buffer, filename));
+        RUN(tld_append(out_buffer, "</title>\n"));
+
+        RUN(tld_append(out_buffer, "</head>\n"));
+
         /* RUN(tld_append(out_buffer, "<title>%s</title>\n", "ARFFF"); */
 
         RUN(tld_append(out_buffer, "<style>\n"));

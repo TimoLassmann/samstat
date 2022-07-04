@@ -69,6 +69,9 @@ struct metrics {
         struct len_composition** len_comp_R2;
 
         struct mapqual_bins* mapq_map;
+
+        char* output_description;
+
         uint32_t min_len_R1;
         uint32_t max_len_R1;
 
@@ -88,6 +91,10 @@ struct metrics {
 };
 
 /* EXTERN int metrics_alloc(struct metrics **metrics); */
+
+EXTERN int metrics_set_output_desc(struct metrics *m, char *in_filename);
+
+
 EXTERN int metrics_alloc(struct metrics **metrics, int report_max_len);
 EXTERN void metrics_free(struct metrics *m);
 EXTERN int get_metrics(struct tl_seq_buffer *sb, struct metrics *m);

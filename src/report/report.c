@@ -182,7 +182,7 @@ int file_stat_section(tld_strbuf *o, char* filename)
 
                 localtime_r(&buf.st_mtime, &newtime);
                 tld_append(o, "<p>File size: ");
-                snprintf(buffer, 256,"%ld", buf.st_size);
+                snprintf(buffer, 256,"%"PRId64"", (uint64_t)buf.st_size);
                 tld_append(o, buffer);
                 tld_append(o, " bytes, created ");
                 if(!strftime(buffer, 256, "%F %H:%M:%S", &newtime )){
@@ -468,7 +468,9 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
         n = NULL;
         /* config section - here the svg buttom */
         lst_append(&n,"format : 'svg'");
-        lst_append(&n,"filename : 'LengthDistribution'");
+        snprintf(buf, 256, "filename : '%s_LengthDistribution'",m->output_description);
+        lst_append(&n,buf);
+
         lst_append(&n,"height : 500");
         lst_append(&n,"width : 700");
         lst_append(&n, "scale : 1");
@@ -634,8 +636,13 @@ int mapping_quality_overview_section(tld_strbuf *o, struct metrics *m)
 
 
         /* config section - here the svg buttom */
+
+
+
         lst_append(&n,"format : 'svg'");
-        lst_append(&n,"filename : 'MappingOverview'");
+        snprintf(buf, 256, "filename : '%s_MappingOverview'",m->output_description);
+
+        lst_append(&n,buf);
         lst_append(&n,"height : 500");
         lst_append(&n,"width : 700");
         lst_append(&n, "scale : 1");
@@ -872,7 +879,10 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
 
 
         lst_append(&n,"format : 'svg'");
-        lst_append(&n,"filename : 'BaseQuality'");
+
+        snprintf(buf, 256, "filename : '%s_BaseQuality'",m->output_description);
+        lst_append(&n,buf);
+
         lst_append(&n,"height : 500");
         lst_append(&n,"width : 700");
         lst_append(&n, "scale : 1");
@@ -1100,7 +1110,10 @@ int base_composition_section(tld_strbuf *o, struct metrics *m, int read)
 
 
         lst_append(&n,"format : 'svg'");
-        lst_append(&n,"filename : 'BaseCompostition'");
+        snprintf(buf, 256, "filename : '%s_BaseComposition'",m->output_description);
+        lst_append(&n,buf);
+
+
         lst_append(&n,"height : 500");
         lst_append(&n,"width : 700");
         lst_append(&n,"scale : 1");
@@ -1343,7 +1356,10 @@ int mismatch_composition_section(tld_strbuf *o, struct metrics *m, int read)
         RUN(tld_append(o,"]}]}"));
 
         lst_append(&n,"format : 'svg'");
-        lst_append(&n,"filename : 'MismatchProfile'");
+        snprintf(buf, 256, "filename : '%s_MismatchProfile'",m->output_description);
+        lst_append(&n,buf);
+
+
         lst_append(&n,"height : 500");
         lst_append(&n,"width : 700");
         lst_append(&n, "scale : 1");
@@ -1498,7 +1514,10 @@ int ins_composition_section(tld_strbuf *o, struct metrics *m, int read)
 
 
         lst_append(&n,"format : 'svg'");
-        lst_append(&n,"filename : 'InsertionProfile'");
+
+        snprintf(buf, 256, "filename : '%s_InsertionProfile'",m->output_description);
+        lst_append(&n,buf);
+
         lst_append(&n,"height : 500");
         lst_append(&n,"width : 700");
         lst_append(&n, "scale : 1");
@@ -1659,7 +1678,10 @@ int del_composition_section(tld_strbuf *o, struct metrics *m, int read)
 
         /* config section */
         lst_append(&n, "format : 'svg'");
-        lst_append(&n, "filename : 'DeletionProfile'");
+        snprintf(buf, 256, "filename : '%s_DeletionProfile'",m->output_description);
+        lst_append(&n,buf);
+
+
         lst_append(&n, "height : 500");
         lst_append(&n, "width : 700");
         lst_append(&n, "scale : 1");

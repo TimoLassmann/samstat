@@ -64,6 +64,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
 
         RUN(metrics_alloc(&metrics, p->report_max_len));
+
+        RUN(metrics_set_output_desc(metrics, p->infile[id]));
         metrics->is_aligned = 1;
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
@@ -138,6 +140,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
 
         RUN(metrics_alloc(&metrics, p->report_max_len));
+        RUN(metrics_set_output_desc(metrics, p->infile[id]));
         metrics->is_aligned = 0;
 
         /* if(p->pst){ */

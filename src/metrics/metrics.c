@@ -1,3 +1,4 @@
+#include "misc/misc.h"
 #include "tld.h"
 #include "sam.h"
 #include "../sambamparse/sam_bam_parse.h"
@@ -482,6 +483,18 @@ inline int set_read_mapqbin( struct tl_seq *s, struct mapqual_bins* map, int *re
         return OK;
 }
 
+
+int metrics_set_output_desc(struct metrics *m, char *in_filename)
+{
+
+        RUN(tlfilename(in_filename, &m->output_description));
+
+
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int metrics_alloc(struct metrics **metrics, int report_max_len)
 {
 
@@ -509,7 +522,7 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
 
         m->report_max_len = 500;
         m->n_proper_paired = 0;
-
+        m->output_description = NULL;
         if(report_max_len != -1){
                 m->report_max_len = report_max_len;
         }
@@ -577,7 +590,10 @@ void metrics_free(struct metrics *m)
                         if(m->len_comp_R2[i]){
                                 free_len_comp(m->len_comp_R2[i]);
                         }
+                }
 
+                if(m->output_description){
+                        MFREE(m->output_description);
                 }
                 MFREE(m->seq_comp_R1);
                 MFREE(m->qual_comp_R1);

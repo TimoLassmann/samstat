@@ -147,12 +147,7 @@ int sanity_check_param(struct samstat_param *p)
                 /* } */
                 /* char *symlinkpath = "/tmp/symlink/file"; */
                 /* char actualpath [PATH_MAX+1]; */
-
-
-
                 /* ptr = realpath(symlinkpath, actualpath); */
-
-
         }
         /* check report length */
         if(p->report_max_len <= 0){
@@ -184,10 +179,7 @@ int sanity_check_param(struct samstat_param *p)
                 for(int i = 0; i < p->n_infile;i++){
                         LOG_MSG("   %s", p->infile[i]);
                 }
-
                 ERROR_MSG("Quitting");
-
-
         }else{
                 if(n_fasta && n_sam){
                         WARNING_MSG("Found both fasta and sam/bam files.");
@@ -198,8 +190,6 @@ int sanity_check_param(struct samstat_param *p)
                         }
                 }
         }
-
-
         return OK;
 ERROR:
         return FAIL;

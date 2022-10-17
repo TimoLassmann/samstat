@@ -309,6 +309,7 @@ int length_distribution_section(tld_strbuf *o, struct metrics *m, int read)
                                         /* LOG_MSG("Adding %d",i); */
                                         x[c] = (double) i;
                                         y[c] = (double) l->data[i];
+                                        /* LOG_MSG("%f %f", x[c],y[c]); */
                                         c++;
                                 }
                                 /* dat[i] = (double) l->data[i]; */

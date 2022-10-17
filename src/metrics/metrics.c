@@ -3,6 +3,8 @@
 #include "sam.h"
 #include "../sambamparse/sam_bam_parse.h"
 #include "../htsinterface/htsglue.h"
+
+#include "convert_tables.h"
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -237,28 +239,29 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
         seq = s->seq->str;
 
         for(int i = start;i < m_len;i++){
-                char let = seq[i];
-                switch (let) {
-                case 'A':
-                case 'a':
-                        data[0][idx]++;
-                        break;
-                case 'C':
-                case 'c':
-                        data[1][idx]++;
-                        break;
-                case 'G':
-                case 'g':
-                        data[2][idx]++;
-                        break;
-                case 'T':
-                case 't':
-                        data[3][idx]++;
-                        break;
-                default:
-                        data[4][idx]++;
-                        break;
-                }
+                /* char let = seq[i]; */
+                data[nuc_to_internal[seq[i]]][idx]++;
+                /* switch (let) { */
+                /* case 'A': */
+                /* case 'a': */
+                /*         data[0][idx]++; */
+                /*         break; */
+                /* case 'C': */
+                /* case 'c': */
+                /*         data[1][idx]++; */
+                /*         break; */
+                /* case 'G': */
+                /* case 'g': */
+                /*         data[2][idx]++; */
+                /*         break; */
+                /* case 'T': */
+                /* case 't': */
+                /*         data[3][idx]++; */
+                /*         break; */
+                /* default: */
+                /*         data[4][idx]++; */
+                /*         break; */
+                /* } */
                 idx++;
         }
         c->n_counts++;

@@ -20,6 +20,20 @@ endif()
 
 add_subdirectory(tld)
 
+if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h)
+else()
+   add_executable(converttablegen
+    metrics/convert_tables.c
+    )  
+  target_link_libraries(converttablegen PRIVATE tld-dev)
+
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
+    COMMAND converttablegen ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
+    DEPENDS converttablegen
+    )
+endif()
+
 
 add_executable(samstat
   samstat.c
@@ -30,6 +44,7 @@ add_executable(samstat
   report/report.c
   report/lst.c
   tools/tools.c
+  ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
   )
 
 target_link_directories(samstat PUBLIC ${HTSLIB_SRC_DIR})
@@ -47,7 +62,7 @@ else()
   target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR})
   target_link_libraries(samstat PRIVATE hts)
 endif()
-
+target_include_directories(samstat PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 #target_link_libraries(samstat PRIVATE hts)
 target_link_libraries(samstat PRIVATE tld-dev)

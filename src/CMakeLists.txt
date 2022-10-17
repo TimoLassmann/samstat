@@ -29,6 +29,7 @@ add_executable(samstat
   metrics/metrics.c
   report/report.c
   report/lst.c
+  tools/tools.c
   )
 
 target_link_directories(samstat PUBLIC ${HTSLIB_SRC_DIR})

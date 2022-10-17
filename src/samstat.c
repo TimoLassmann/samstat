@@ -5,6 +5,7 @@
 #include "param/param.h"
 #include "metrics/metrics.h"
 #include "report/report.h"
+#include "tools/tools.h"
 /* #include "pst.h" */
 #include <stdint.h>
 #include <inttypes.h>
@@ -51,6 +52,11 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         /* p->buffer_size = 1000; */
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
+
+        get_file_size(p->infile[id], &n_read);
+
+        LOG_MSG("File size: %d,",n_read);
+        exit(0);
 
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);

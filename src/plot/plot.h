@@ -23,14 +23,24 @@ struct plot_data {
         tld_strbuf* ylabel;
         tld_strbuf* id;
         tld_strbuf* save_file_name;
-
-        int32_t type;
+        uint8_t* is_plot;
+        int8_t group_size;
+        int8_t viz;
+        int8_t type;
+        int8_t mod;
 };
 
 
 #define PLOT_TYPE_SCATTER 0
 #define PLOT_TYPE_LINES 1
 #define PLOT_TYPE_BAR 2
+
+#define PLOT_MOD_NORMAL 0
+#define PLOT_MOD_ERROR_BAR 1
+#define PLOT_MOD_DENSITY 2
+
+#define PLOT_VIZ_ALL 0
+#define PLOT_VIZ_FIRSTGROUP 1
 
 #define PLOT_TYPE_SHIFT 8
 #define PLOT_TYPE_MASK 0xFF

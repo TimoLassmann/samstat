@@ -21,7 +21,9 @@ struct samstat_param {
         int n_infile;
         int verbose;
         uint64_t top_n;
-        uint32_t report_max_len;
+        int32_t report_max_len;
+        double subsample;
+        uint64_t seed;
         /* uint8_t pst; */
 };
 

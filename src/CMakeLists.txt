@@ -19,6 +19,7 @@ endif()
 # endif()
 
 add_subdirectory(tld)
+add_subdirectory(plot)
 
 if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h)
 else()

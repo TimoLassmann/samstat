@@ -53,10 +53,10 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        get_file_size(p->infile[id], &n_read);
+        /* get_file_size(p->infile[id], &n_read); */
 
-        LOG_MSG("File size: %d,",n_read);
-        exit(0);
+        /* LOG_MSG("File size: %"PRId64",",n_read); */
+        /* exit(0); */
 
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
@@ -69,7 +69,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         /* } */
 
 
-        RUN(metrics_alloc(&metrics, p->report_max_len));
+        RUN(metrics_alloc(&metrics, p));
 
         RUN(metrics_set_output_desc(metrics, p->infile[id]));
         metrics->is_aligned = 1;
@@ -145,7 +145,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
 
-        RUN(metrics_alloc(&metrics, p->report_max_len));
+        RUN(metrics_alloc(&metrics, p));
         RUN(metrics_set_output_desc(metrics, p->infile[id]));
         metrics->is_aligned = 0;
 
@@ -173,7 +173,6 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 /* LOG_MSG("%d BQ offset ", sb->base_quality_offset); */
                 //total_r+= sb->num_seq;
                 /* LOG_MSG("Finished reading chunk: found %d ",sb->num_seq); */
-
 
                 if(sb->num_seq == 0){
                         break;

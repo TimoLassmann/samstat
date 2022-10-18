@@ -4,9 +4,15 @@ set (FLAGS "-fPIC")
 # Enable ExternalProject CMake module
 include(ExternalProject)
 
+set(htslib_URL ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/htslib-1.16.tar.bz2)
+
+# calculate the MD5 sum of the file downloaded and set it in a variable
+set(htslib_URL_MD5 d31777ef90d1369a52049ba0ac3c0375)
+
 ExternalProject_Add(htslib
         BUILD_IN_SOURCE 1        
-        URL https://github.com/samtools/htslib/releases/download/1.15.1/htslib-1.15.1.tar.bz2
+        URL ${htslib_URL}
+	    URL_MD5 ${htslib_URL_MD5}
         PREFIX ${htslib_PREFIX}
         UPDATE_COMMAND ""
         CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_BINARY_DIR}/htslib --disable-bz2 --disable-lzma --disable-libcurl --disable-s3 

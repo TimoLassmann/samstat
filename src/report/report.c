@@ -101,6 +101,7 @@ int create_report(struct metrics *m, struct samstat_param *p, int id)
                 RUN(base_composition_section(out, m,2));
         }else{
                 RUN(base_composition_section(out, m,0));
+
         }
         /* LOG_MSG("Base quality"); */
         if(m->n_paired){
@@ -1829,7 +1830,6 @@ ERROR:
 }
 
 int report_header(tld_strbuf *out_buffer, char *filename)
-
 {
         RUN(tld_append(out_buffer, "<!DOCTYPE html>\n"));
         RUN(tld_append(out_buffer, "<html>\n"));
@@ -1851,6 +1851,9 @@ int report_header(tld_strbuf *out_buffer, char *filename)
         /* RUN(tld_append(out_buffer, "<title>%s</title>\n", "ARFFF"); */
 
         RUN(tld_append(out_buffer, "<style>\n"));
+
+
+
         //RUN(tld_append(out_buffer, "canvas{\n"));
         //RUN(tld_append(out_buffer, "}\n"));
 

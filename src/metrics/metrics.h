@@ -55,12 +55,40 @@ struct len_composition {
         uint64_t n_counts_mapped;
 };
 
+struct stat_collection {
+        struct seq_composition** seq_comp_s;
+        struct qual_composition** qual_comp_s;
+        struct error_composition** error_comp_s;
+
+        struct seq_composition** seq_comp_m;
+        struct qual_composition** qual_comp_m;
+        struct error_composition** error_comp_m;
+
+        struct seq_composition** seq_comp_e;
+        struct qual_composition** qual_comp_e;
+        struct error_composition** error_comp_e;
+
+        int n_bin;
+        int is_long;
+
+        /* type indicates R1/R2  Start/ MID / END seq/qual/error */
+        uint32_t type;
+};
 
 struct metrics {
         struct seq_composition** seq_comp_R1;
         struct qual_composition** qual_comp_R1;
         struct error_composition** error_comp_R1;
         struct len_composition** len_comp_R1;
+
+        /* for long reads  */
+        struct seq_composition** seq_comp_R1_mid;
+        struct qual_composition** qual_comp_R1_mid;
+        struct error_composition** error_comp_R1_mid;
+
+        struct seq_composition** seq_comp_R1_end;
+        struct qual_composition** qual_comp_R1_end;
+        struct error_composition** error_comp_R1_end;
 
 
         struct seq_composition** seq_comp_R2;
@@ -77,7 +105,7 @@ struct metrics {
 
         uint32_t min_len_R2;
         uint32_t max_len_R2;
-        uint32_t report_max_len;
+        int32_t report_max_len;
         uint8_t n_mapq_bins;
         uint8_t is_aligned;
         uint8_t is_partial_report;
@@ -86,16 +114,19 @@ struct metrics {
         uint64_t n_R2_reads;
         uint64_t n_paired;
         uint64_t n_proper_paired;
-
+        uint8_t is_long;
+        struct rng_state* rng;
+        double sub_sample;
         /* uint64_t rev_stat[8]; */
 };
 
 /* EXTERN int metrics_alloc(struct metrics **metrics); */
-
+struct samstat_param;
 EXTERN int metrics_set_output_desc(struct metrics *m, char *in_filename);
 
 
-EXTERN int metrics_alloc(struct metrics **metrics, int report_max_len);
+
+EXTERN int metrics_alloc(struct metrics **metrics, struct samstat_param* p);
 EXTERN void metrics_free(struct metrics *m);
 EXTERN int get_metrics(struct tl_seq_buffer *sb, struct metrics *m);
 

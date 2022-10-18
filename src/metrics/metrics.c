@@ -3,7 +3,8 @@
 #include "sam.h"
 #include "../sambamparse/sam_bam_parse.h"
 #include "../htsinterface/htsglue.h"
-
+#include "../param/param.h"
+#include "../tools/tools.h"
 #include "convert_tables.h"
 #include <limits.h>
 #include <stdint.h>
@@ -39,12 +40,18 @@ static void free_len_comp(struct len_composition *s);
 
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
+static int sub_sample_sb(struct tl_seq_buffer *sb,struct rng_state* rng, double f);
 
 
 int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
 {
         int len_change = 0;
-
+        if(sb->max_len > m->report_max_len*2){
+                m->is_long = 1;
+        }
+        if(m->sub_sample < 1.0){
+                sub_sample_sb(sb, m->rng, m->sub_sample);
+        }
         for(int i = 0; i < sb->num_seq;i++){
                 if(sb->sequences[i]->data){
                         struct aln_data* a = NULL;
@@ -105,6 +112,13 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                         RUN(alloc_qual_comp(&m->qual_comp_R1[i],m->report_max_len));
                         RUN(alloc_error_comp(&m->error_comp_R1[i], sb->L,m->report_max_len));
                         RUN(alloc_len_comp(&m->len_comp_R1[i], m->max_len_R1));
+
+                        if(m->is_long){
+                                RUN(alloc_seq_comp(&m->seq_comp_R1_end[i], sb->L,m->report_max_len));
+                                RUN(alloc_qual_comp(&m->qual_comp_R1_end[i],m->report_max_len));
+                                RUN(alloc_error_comp(&m->error_comp_R1_end[i], sb->L,m->report_max_len));
+                        }
+
                 } else if(len_change == 1){
                         RUN(resize_len_comp(m->len_comp_R1[i], m->max_len_R1));
                 }
@@ -136,6 +150,50 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
         }
 
 
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int sub_sample_sb(struct tl_seq_buffer *sb,struct rng_state* rng, double f)
+{
+        struct tl_seq** buf = NULL;
+        int* sel = NULL;
+        int sample_size = 0;
+        int start = 0;
+        int end = sb->num_seq-1;
+
+        int begin = 0;
+
+        sample_size = (int) round((double) sb->num_seq * f);
+
+        if(sample_size == 0){
+                return OK;
+        }
+        galloc(&sel, sb->num_seq);
+        RUN(sample_wo_replacement(sb->num_seq, sample_size, rng, sel));
+        MMALLOC(buf, sizeof(struct tl_seq*) * sb->num_seq);
+        begin = 0;
+        for(int i = 0 ;i < sample_size;i++){
+                for(int j = begin; j < sel[i];j++){
+                        buf[end] = sb->sequences[j];
+                        end--;
+                }
+                buf[start] = sb->sequences[sel[i]];
+                start++;
+                begin = sel[i]+1;
+                /* LOG_MSG("Sel: %d %d",i, sel[i]); */
+        }
+        for(int j = begin; j < sb->num_seq;j++){
+                buf[end] = sb->sequences[j];
+                end--;
+        }
+        for(int i = 0; i < sb->num_seq;i++){
+                sb->sequences[i] = buf[i];
+        }
+        sb->num_seq = sample_size;
+
+        MFREE(buf);
         return OK;
 ERROR:
         return FAIL;
@@ -239,32 +297,23 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
         seq = s->seq->str;
 
         for(int i = start;i < m_len;i++){
-                /* char let = seq[i]; */
                 data[nuc_to_internal[seq[i]]][idx]++;
-                /* switch (let) { */
-                /* case 'A': */
-                /* case 'a': */
-                /*         data[0][idx]++; */
-                /*         break; */
-                /* case 'C': */
-                /* case 'c': */
-                /*         data[1][idx]++; */
-                /*         break; */
-                /* case 'G': */
-                /* case 'g': */
-                /*         data[2][idx]++; */
-                /*         break; */
-                /* case 'T': */
-                /* case 't': */
-                /*         data[3][idx]++; */
-                /*         break; */
-                /* default: */
-                /*         data[4][idx]++; */
-                /*         break; */
-                /* } */
                 idx++;
         }
         c->n_counts++;
+
+        if(m->is_long){
+                c = m->seq_comp_R1_end[mapq_idx];
+                data = c->data;
+                start =  s->len-end - m->report_max_len;
+                idx = 0;
+                for(int i = start;i < m->report_max_len;i++){
+                        data[nuc_to_internal[seq[i]]][idx]++;
+                        idx++;
+                }
+                c->n_counts++;
+        }
+
         return OK;
 ERROR:
         return FAIL;
@@ -498,7 +547,7 @@ ERROR:
         return FAIL;
 }
 
-int metrics_alloc(struct metrics **metrics, int report_max_len)
+int metrics_alloc(struct metrics **metrics, struct samstat_param* p)
 {
 
         struct metrics* m = NULL;
@@ -508,6 +557,14 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
         m->qual_comp_R1 = NULL;
         m->error_comp_R1 = NULL;
         m->len_comp_R1 = NULL;
+
+        m->seq_comp_R1_mid = NULL;
+        m->qual_comp_R1_mid = NULL;
+        m->error_comp_R1_mid = NULL;
+
+        m->seq_comp_R1_end = NULL;
+        m->qual_comp_R1_end = NULL;
+        m->error_comp_R1_end = NULL;
 
         m->seq_comp_R2 = NULL;
         m->qual_comp_R2 = NULL;
@@ -526,8 +583,15 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
         m->report_max_len = 500;
         m->n_proper_paired = 0;
         m->output_description = NULL;
-        if(report_max_len != -1){
-                m->report_max_len = report_max_len;
+
+        m->rng = NULL;
+
+        RUN(init_rng(&m->rng, p->seed));
+        m->sub_sample = p->subsample;
+
+        m->is_long = 0;
+        if(p->report_max_len != -1){
+                m->report_max_len = p->report_max_len;
         }
 
         m->n_paired = 0;
@@ -539,6 +603,17 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
         MMALLOC(m->error_comp_R1, sizeof(struct error_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->len_comp_R1, sizeof(struct len_composition*) * m->mapq_map->n_bin);
 
+
+        MMALLOC(m->seq_comp_R1_mid , sizeof(struct seq_composition*) * m->mapq_map->n_bin);
+        MMALLOC(m->qual_comp_R1_mid, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
+        MMALLOC(m->error_comp_R1_mid, sizeof(struct error_composition*) * m->mapq_map->n_bin);
+
+        MMALLOC(m->seq_comp_R1_end, sizeof(struct seq_composition*) * m->mapq_map->n_bin);
+        MMALLOC(m->qual_comp_R1_end, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
+        MMALLOC(m->error_comp_R1_end, sizeof(struct error_composition*) * m->mapq_map->n_bin);
+
+
+
         MMALLOC(m->seq_comp_R2, sizeof(struct seq_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->qual_comp_R2, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->error_comp_R2, sizeof(struct error_composition*) * m->mapq_map->n_bin);
@@ -549,6 +624,14 @@ int metrics_alloc(struct metrics **metrics, int report_max_len)
                 m->qual_comp_R1[i] = NULL;
                 m->error_comp_R1[i] = NULL;
                 m->len_comp_R1[i] = NULL;
+
+                m->seq_comp_R1_mid[i] = NULL;
+                m->qual_comp_R1_mid[i] = NULL;
+                m->error_comp_R1_mid[i] = NULL;
+
+                m->seq_comp_R1_end[i] = NULL;
+                m->qual_comp_R1_end[i] = NULL;
+                m->error_comp_R1_end[i] = NULL;
 
                 m->seq_comp_R2[i] = NULL;
                 m->qual_comp_R2[i] = NULL;
@@ -566,7 +649,9 @@ ERROR:
 void metrics_free(struct metrics *m)
 {
         if(m){
-
+                if(m->rng){
+                        free_rng(m->rng);
+                }
                 for(int i = 0; i < m->n_mapq_bins;i++){
                         if(m->seq_comp_R1[i]){
                                 free_seq_comp(m->seq_comp_R1[i]);
@@ -580,6 +665,28 @@ void metrics_free(struct metrics *m)
                         if(m->len_comp_R1[i]){
                                 free_len_comp(m->len_comp_R1[i]);
                         }
+
+                        if(m->seq_comp_R1_mid[i]){
+                                free_seq_comp(m->seq_comp_R1_mid[i]);
+                        }
+                        if(m->qual_comp_R1_mid[i]){
+                                free_qual_comp(m->qual_comp_R1_mid[i]);
+                        }
+                        if(m->error_comp_R1_mid[i]){
+                                free_error_comp(m->error_comp_R1_mid[i]);
+                        }
+
+
+                        if(m->seq_comp_R1_end[i]){
+                                free_seq_comp(m->seq_comp_R1_end[i]);
+                        }
+                        if(m->qual_comp_R1_end[i]){
+                                free_qual_comp(m->qual_comp_R1_end[i]);
+                        }
+                        if(m->error_comp_R1_end[i]){
+                                free_error_comp(m->error_comp_R1_end[i]);
+                        }
+
 
                         if(m->seq_comp_R2[i]){
                                 free_seq_comp(m->seq_comp_R2[i]);
@@ -602,6 +709,15 @@ void metrics_free(struct metrics *m)
                 MFREE(m->qual_comp_R1);
                 MFREE(m->error_comp_R1);
                 MFREE(m->len_comp_R1);
+
+                MFREE(m->seq_comp_R1_mid);
+                MFREE(m->qual_comp_R1_mid);
+                MFREE(m->error_comp_R1_mid);
+
+                MFREE(m->seq_comp_R1_end);
+                MFREE(m->qual_comp_R1_end);
+                MFREE(m->error_comp_R1_end);
+
 
                 MFREE(m->seq_comp_R2);
                 MFREE(m->qual_comp_R2);

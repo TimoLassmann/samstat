@@ -11,6 +11,8 @@
 #include "../config.h"
 
 #define OPT_VERBOSE 1
+#define OPT_SUBSAMPLE 2
+#define OPT_SEED 3
 
 int sanity_check_param(struct samstat_param *p);
 int detect_file_type(char *filename, int* type);
@@ -31,6 +33,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         {"peek",required_argument,0,'p'},
                         {"len",required_argument,0,'l'},
                         {"dir",required_argument,0,'d'},
+                        {"sub",required_argument,0,OPT_SUBSAMPLE},
+                        {"seed",required_argument,0,OPT_SEED},
                         {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
                         {"version",0,0,'v'},
@@ -47,6 +51,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 switch(c) {
                 case OPT_VERBOSE:
                         p->verbose = 1;
+                        break;
+                case OPT_SUBSAMPLE:
+                        p->subsample = atof(optarg);
                         break;
                 case 'd':
                         p->outdir = optarg;
@@ -149,6 +156,12 @@ int sanity_check_param(struct samstat_param *p)
                 /* char actualpath [PATH_MAX+1]; */
                 /* ptr = realpath(symlinkpath, actualpath); */
         }
+        if(p->subsample < 0.0){
+                ERROR_MSG("Option -sub: has to be greater than 0.0");
+        }else if(p->subsample > 1.0){
+                ERROR_MSG("Option -sub: has to be smaller than 1.0");
+        }
+
         /* check report length */
         if(p->report_max_len <= 0){
                 ERROR_MSG("Option -l/-len: the report length has to be > 0");
@@ -289,7 +302,10 @@ int print_help(char **argv )
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <n> sequences.","[unlimited]");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[500]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  );
+        fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--seed","Random number seed." ,"[0]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
 
         fprintf(stdout,"\n");
@@ -346,8 +362,10 @@ int param_init(struct samstat_param **param)
         p->outdir = NULL;
         p->file_type = NULL;
         p->top_n = UINT64_MAX;
+        p->subsample = 1.0;
         /* p->pst = 0; */
-        p->report_max_len = 500;
+        p->report_max_len = 250;
+        p->seed = 0;
         *param = p;
         return OK;
 ERROR:

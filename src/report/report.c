@@ -798,7 +798,7 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                                         for(int j = 0; j < q->L;j++){
                                                 double s = mean[i] - (double) j ;
                                                 total += q->data[i][j] *  s * s;
-                                                n+= q->data[i][j];
+                                                n += q->data[i][j];
                                         }
                                         stderr[i] = sqrt(total / n) / sqrt(n);
                                 }

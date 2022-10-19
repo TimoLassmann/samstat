@@ -23,11 +23,16 @@ int main(void)
 
         plot_add(out,pd);
 
+
+        pd->id->str[0] = 'C';
+        pd->mod =  PLOT_MOD_DENSITY;
+
+
+        plot_add(out,pd);
+
         html_end(out);
         fprintf(stdout,"%s",TLD_STR(out));
         plot_data_free(pd);
-
-
 
 
 
@@ -38,12 +43,11 @@ ERROR:
         return EXIT_FAILURE;
 }
 
-
 int random_plot_data(struct plot_data **p, struct rng_state *rng)
 {
         struct plot_data *pd = NULL;
         char buf[17];
-        int x = 10;
+        int x = 50;
 
         int group_size = 2 + tl_random_int(rng,6);
         int y = group_size * (tl_random_int(rng, 3)+1);

@@ -22,6 +22,7 @@ struct series_data {
 
 static int write_data_normal(tld_strbuf *o, struct plot_data *d);
 static int write_data_error(tld_strbuf *o, struct plot_data *d);
+static int write_data_density(tld_strbuf *o, struct plot_data *d);
 
 static int add_count_data(tld_strbuf *o,struct series_data* s_data, uint64_t *x, uint64_t* y,  int len);
 static int add_real_data(tld_strbuf *o, struct series_data *s_data, double *x,
@@ -56,6 +57,9 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
                 break;
         case PLOT_MOD_ERROR_BAR:
                 RUN(write_data_error(o, d));
+                break;
+        case PLOT_MOD_DENSITY:
+                RUN(write_data_density(o, d));
                 break;
         default:
                 RUN(write_data_normal(o, d));
@@ -172,6 +176,64 @@ ERROR:
         return FAIL;
 }
 
+int write_data_density(tld_strbuf *o, struct plot_data *d)
+{
+        struct series_data* s_data = NULL;
+        RUN(series_data_alloc(&s_data,0));
+        for(int i = 0; i < d->L;i++){
+                double** density = NULL;
+                double* x = NULL;
+                double* y = NULL;
+                galloc(&x,MACRO_MAX(10,d->len));
+                galloc(&y,MACRO_MAX(10,d->len));
+                int c = 0;
+                for(int j = 0; j < d->len;j++){
+                        if(d->data[i][j]){
+                                /* LOG_MSG("Adding %d",i); */
+                                x[c] = (double) j;
+                                y[c] = (double) d->data[i][j];
+                                /* LOG_MSG("%f %f", x[c],y[c]); */
+                                c++;
+                        }
+                        /* dat[i] = (double) l->data[i]; */
+                }
+
+                if(c == 0){
+                        ERROR_MSG("Not a single sequence found in length distribution");
+                }else if(c == 1){
+                        galloc(&density, 1,2);
+                        density[0][0] = x[0];
+                        density[0][1] = 1.0;
+                }else {
+                        tld_kde_count_pdf(x,y,c,  &density);
+                }
+
+                for(int j = 0; j < c;j++){
+                        x[j] = density[j][0];
+                        y[j] = density[j][1];
+                }
+                snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
+                snprintf(s_data->label,s_data->alloc_len, "%s", d->series_label[i]);
+                s_data->color[0] = 0;
+                snprintf(s_data->type ,s_data->alloc_len, "lines");
+                fprintf(stderr,"%s\n",s_data->type );
+                s_data->vis = 1;
+
+                ADD_DATA(o, s_data, x, y,c);
+                d->is_plot[i] = 1;
+                gfree(x);
+                gfree(y);
+                gfree(density);
+        }
+
+        series_data_free(s_data);
+        return OK;
+ERROR:
+        series_data_free(s_data);
+        return FAIL;
+
+}
+
 int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, int plot_len)
 {
         struct series_data* s_data = NULL;
@@ -195,7 +257,7 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
                 for(int j = start; j < d->L;j++){
                         double s =  ms[i][0] - (double) (j-start) ;
                         total += d->data[j][i] *  s * s;
-                        n+= d->data[j][i];
+                        n += d->data[j][i];
                 }
                 ms[i][1] = sqrt(total / n) / sqrt(n);
         }
@@ -421,12 +483,47 @@ int plot_data_alloc(struct plot_data** plot_data,int x, int y)
         galloc(&pd->is_plot,pd->L);
         galloc(&pd->series_label,pd->L,256);
         galloc(&pd->group_label,pd->L,256);
+
+        for(int i =0;i < pd->L;i++){
+                for(int j = 0; j < pd->len;j++){
+                        pd->data[i][j] = 0;
+                }
+        }
+
         *plot_data = pd;
         return OK;
 ERROR:
         plot_data_free(pd);
         return FAIL;
 }
+
+int plot_data_resize_len(struct plot_data* pd,int x)
+{
+        if(pd->len > x){
+                ERROR_MSG("New len is smaller than before!");
+        }
+        uint64_t** new = NULL;
+        int old_len = pd->len;
+        pd->len = x;
+        galloc(&new,pd->L,pd->len);
+
+        for(int i = 0; i < pd->L;i++){
+                for(int j = 0; j < old_len;j++){
+                        new[i][j] = pd->data[i][j];
+                }
+                for(int j = old_len; j < pd->len;j++){
+                        new[i][j] = 0;
+                }
+
+        }
+
+        gfree(pd->data);
+        pd->data = new;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 void plot_data_free(struct plot_data *pd)
 {

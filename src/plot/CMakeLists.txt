@@ -1,5 +1,6 @@
 add_library(plot STATIC
-  plot.c  
+  plot.c
+  plot_interval.c
   )
 
 target_include_directories(plot 

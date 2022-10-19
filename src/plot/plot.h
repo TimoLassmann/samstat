@@ -24,12 +24,13 @@ struct plot_data {
         tld_strbuf* id;
         tld_strbuf* save_file_name;
         uint8_t* is_plot;
+        int32_t bin_start;
+        int32_t bin_size;
         int8_t group_size;
         int8_t viz;
         int8_t type;
         int8_t mod;
 };
-
 
 #define PLOT_TYPE_SCATTER 0
 #define PLOT_TYPE_LINES 1

@@ -14,8 +14,8 @@ int main(void)
         RUN(init_rng(&rng,0));
         RUN(random_plot_data(&pd,rng));
 
-        pd->bin_start = 10;
-        pd->bin_size = 10;
+        /* pd->bin_start = 10; */
+        /* pd->bin_size = 10; */
         html_header(out,"TEST");
         pd->id->str[0] = 'A';
         plot_add(out,pd);

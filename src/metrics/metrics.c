@@ -113,12 +113,6 @@ int get_metrics(struct tl_seq_buffer *sb, struct metrics *m)
                         RUN(alloc_error_comp(&m->error_comp_R1[i], sb->L,m->report_max_len));
                         RUN(alloc_len_comp(&m->len_comp_R1[i], m->max_len_R1));
 
-                        if(m->is_long){
-                                RUN(alloc_seq_comp(&m->seq_comp_R1_end[i], sb->L,m->report_max_len));
-                                RUN(alloc_qual_comp(&m->qual_comp_R1_end[i],m->report_max_len));
-                                RUN(alloc_error_comp(&m->error_comp_R1_end[i], sb->L,m->report_max_len));
-                        }
-
                 } else if(len_change == 1){
                         RUN(resize_len_comp(m->len_comp_R1[i], m->max_len_R1));
                 }
@@ -301,18 +295,6 @@ int collect_seq_comp(struct metrics *m, struct tl_seq *s)
                 idx++;
         }
         c->n_counts++;
-
-        if(m->is_long){
-                c = m->seq_comp_R1_end[mapq_idx];
-                data = c->data;
-                start =  s->len-end - m->report_max_len;
-                idx = 0;
-                for(int i = start;i < m->report_max_len;i++){
-                        data[nuc_to_internal[seq[i]]][idx]++;
-                        idx++;
-                }
-                c->n_counts++;
-        }
 
         return OK;
 ERROR:
@@ -558,14 +540,6 @@ int metrics_alloc(struct metrics **metrics, struct samstat_param* p)
         m->error_comp_R1 = NULL;
         m->len_comp_R1 = NULL;
 
-        m->seq_comp_R1_mid = NULL;
-        m->qual_comp_R1_mid = NULL;
-        m->error_comp_R1_mid = NULL;
-
-        m->seq_comp_R1_end = NULL;
-        m->qual_comp_R1_end = NULL;
-        m->error_comp_R1_end = NULL;
-
         m->seq_comp_R2 = NULL;
         m->qual_comp_R2 = NULL;
         m->error_comp_R2 = NULL;
@@ -604,16 +578,6 @@ int metrics_alloc(struct metrics **metrics, struct samstat_param* p)
         MMALLOC(m->len_comp_R1, sizeof(struct len_composition*) * m->mapq_map->n_bin);
 
 
-        MMALLOC(m->seq_comp_R1_mid , sizeof(struct seq_composition*) * m->mapq_map->n_bin);
-        MMALLOC(m->qual_comp_R1_mid, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
-        MMALLOC(m->error_comp_R1_mid, sizeof(struct error_composition*) * m->mapq_map->n_bin);
-
-        MMALLOC(m->seq_comp_R1_end, sizeof(struct seq_composition*) * m->mapq_map->n_bin);
-        MMALLOC(m->qual_comp_R1_end, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
-        MMALLOC(m->error_comp_R1_end, sizeof(struct error_composition*) * m->mapq_map->n_bin);
-
-
-
         MMALLOC(m->seq_comp_R2, sizeof(struct seq_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->qual_comp_R2, sizeof(struct qual_composition*) * m->mapq_map->n_bin);
         MMALLOC(m->error_comp_R2, sizeof(struct error_composition*) * m->mapq_map->n_bin);
@@ -624,14 +588,6 @@ int metrics_alloc(struct metrics **metrics, struct samstat_param* p)
                 m->qual_comp_R1[i] = NULL;
                 m->error_comp_R1[i] = NULL;
                 m->len_comp_R1[i] = NULL;
-
-                m->seq_comp_R1_mid[i] = NULL;
-                m->qual_comp_R1_mid[i] = NULL;
-                m->error_comp_R1_mid[i] = NULL;
-
-                m->seq_comp_R1_end[i] = NULL;
-                m->qual_comp_R1_end[i] = NULL;
-                m->error_comp_R1_end[i] = NULL;
 
                 m->seq_comp_R2[i] = NULL;
                 m->qual_comp_R2[i] = NULL;
@@ -666,27 +622,6 @@ void metrics_free(struct metrics *m)
                                 free_len_comp(m->len_comp_R1[i]);
                         }
 
-                        if(m->seq_comp_R1_mid[i]){
-                                free_seq_comp(m->seq_comp_R1_mid[i]);
-                        }
-                        if(m->qual_comp_R1_mid[i]){
-                                free_qual_comp(m->qual_comp_R1_mid[i]);
-                        }
-                        if(m->error_comp_R1_mid[i]){
-                                free_error_comp(m->error_comp_R1_mid[i]);
-                        }
-
-
-                        if(m->seq_comp_R1_end[i]){
-                                free_seq_comp(m->seq_comp_R1_end[i]);
-                        }
-                        if(m->qual_comp_R1_end[i]){
-                                free_qual_comp(m->qual_comp_R1_end[i]);
-                        }
-                        if(m->error_comp_R1_end[i]){
-                                free_error_comp(m->error_comp_R1_end[i]);
-                        }
-
 
                         if(m->seq_comp_R2[i]){
                                 free_seq_comp(m->seq_comp_R2[i]);
@@ -709,15 +644,6 @@ void metrics_free(struct metrics *m)
                 MFREE(m->qual_comp_R1);
                 MFREE(m->error_comp_R1);
                 MFREE(m->len_comp_R1);
-
-                MFREE(m->seq_comp_R1_mid);
-                MFREE(m->qual_comp_R1_mid);
-                MFREE(m->error_comp_R1_mid);
-
-                MFREE(m->seq_comp_R1_end);
-                MFREE(m->qual_comp_R1_end);
-                MFREE(m->error_comp_R1_end);
-
 
                 MFREE(m->seq_comp_R2);
                 MFREE(m->qual_comp_R2);

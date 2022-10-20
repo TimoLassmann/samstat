@@ -41,6 +41,7 @@ add_executable(samstat
   htsinterface/htsglue.c
   sambamparse/sam_bam_parse.c
   param/param.c
+  collect/collect.c
   metrics/metrics.c
   report/report.c
   report/lst.c
@@ -66,4 +67,4 @@ endif()
 target_include_directories(samstat PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 #target_link_libraries(samstat PRIVATE hts)
-target_link_libraries(samstat PRIVATE tld-dev)
+target_link_libraries(samstat PRIVATE tld-dev module_plot)

@@ -54,6 +54,7 @@ struct plot_data {
 
 EXTERN int plot_add(tld_strbuf *o, struct plot_data *d);
 
+EXTERN int plot_data_config(struct plot_data *d, int8_t type, int8_t mod, int8_t group_size, int viz , char* id, char* title, char* x_label, char* y_label, char* savename,char** series_lab, char** group_lab );
 EXTERN int plot_data_alloc(struct plot_data **plot_data, int x, int y);
 EXTERN int plot_data_resize_len(struct plot_data* pd,int x);
 EXTERN void plot_data_free(struct plot_data *pd);

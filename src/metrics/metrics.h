@@ -1,6 +1,8 @@
 #ifndef METRICS_H
 #define METRICS_H
 
+#include "plot.h"
+
 #include "seq/tld-seq.h"
 #include <stdint.h>
 #ifdef METRICS_IMPORT
@@ -55,46 +57,17 @@ struct len_composition {
         uint64_t n_counts_mapped;
 };
 
-struct stat_collection {
-        struct seq_composition** seq_comp_s;
-        struct qual_composition** qual_comp_s;
-        struct error_composition** error_comp_s;
-
-        struct seq_composition** seq_comp_m;
-        struct qual_composition** qual_comp_m;
-        struct error_composition** error_comp_m;
-
-        struct seq_composition** seq_comp_e;
-        struct qual_composition** qual_comp_e;
-        struct error_composition** error_comp_e;
-
-        int n_bin;
-        int is_long;
-
-        /* type indicates R1/R2  Start/ MID / END seq/qual/error */
-        uint32_t type;
-};
-
 struct metrics {
         struct seq_composition** seq_comp_R1;
         struct qual_composition** qual_comp_R1;
         struct error_composition** error_comp_R1;
         struct len_composition** len_comp_R1;
 
-        /* for long reads  */
-        struct seq_composition** seq_comp_R1_mid;
-        struct qual_composition** qual_comp_R1_mid;
-        struct error_composition** error_comp_R1_mid;
-
-        struct seq_composition** seq_comp_R1_end;
-        struct qual_composition** qual_comp_R1_end;
-        struct error_composition** error_comp_R1_end;
-
-
         struct seq_composition** seq_comp_R2;
         struct qual_composition** qual_comp_R2;
         struct error_composition** error_comp_R2;
         struct len_composition** len_comp_R2;
+
 
         struct mapqual_bins* mapq_map;
 

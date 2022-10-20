@@ -331,8 +331,6 @@ ERROR:
 int add_plot_instr(tld_strbuf *o, struct plot_data *d)
 {
         char buf[256];
-        /* int viz = d->type >> PLOT_TYPE_SHIFT; */
-
         /* Data */
         RUN(tld_append(o,"var "));
         snprintf(buf, 256,"%s_data", TLD_STR(d->id));
@@ -343,9 +341,6 @@ int add_plot_instr(tld_strbuf *o, struct plot_data *d)
                         snprintf(buf, 256,"%s_%d,", TLD_STR(d->id),i);
                         RUN(tld_append(o,buf));
                 }
-
-                /* snprintf(s_data->name,s_data->alloc_len, "%s_%d,", TLD_STR(d->id),i); */
-
         }
         o->len--;
         RUN(tld_append(o,"];\n"));
@@ -396,7 +391,6 @@ int add_plot_instr(tld_strbuf *o, struct plot_data *d)
                 }
                 RUN(tld_append(o,",]}],\n"));
         }
-
 
         RUN(tld_append(o,"xaxis: {\n"));
         if(d->x_is_categorical){
@@ -497,6 +491,47 @@ ERROR:
         return FAIL;
 }
 
+int plot_data_config(struct plot_data *d, int8_t type, int8_t mod, int8_t group_size, int viz , char* id, char* title, char* x_label, char* y_label, char* savename ,char** series_lab,char** group_lab)
+{
+        ASSERT(d != NULL, "No plot data");
+        int group =0;
+        d->type = type;
+        d->mod = mod;
+        d->group_size = group_size;
+        d->viz = viz;
+        RUN(tld_append(d->id, id));
+        RUN(tld_append(d->title, title));
+        RUN(tld_append(d->xlabel, x_label));
+        RUN(tld_append(d->ylabel, y_label));
+        RUN(tld_append(d->save_file_name, savename));
+
+        /* LOG_MSG("%d === L",d->L); */
+        for(int i = 0; i < d->L;i++){
+                if(i % group_size == 0){
+                        group++;
+                }
+                if(series_lab){
+                        /* LOG_MSG("%d %d %d", i,group_size,i % group_size ); */
+                        snprintf(d->series_label[i], 256, "%s", series_lab[ i % group_size]);
+
+                }else{
+                        snprintf(d->series_label[i], 256, "%d", i);
+                }
+                if(group_lab){
+                        /* LOG_MSG("%d - adding group label %d %s", i, group,group_lab[group-1]); */
+                        snprintf(d->group_label[i], 256, "%s", group_lab[group-1]);
+                }else{
+                        snprintf(d->group_label[i], 256, "Aha");
+                }
+                /* LOG_MSG("%d %s %s",i,d->group_label[i],d->series_label[i]  ); */
+        }
+        /* exit(0); */
+
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int plot_data_alloc(struct plot_data** plot_data,int x, int y)
 {
 
@@ -521,7 +556,7 @@ int plot_data_alloc(struct plot_data** plot_data,int x, int y)
         pd->type = PLOT_TYPE_SCATTER;
         pd->mod = PLOT_MOD_NORMAL;
         pd->bin_size = 0;
-        pd->bin_start= 0;
+        pd->bin_start = 250;
         pd->x_is_categorical = 0;
         pd->target_n_clu = 500;
         RUN(tld_strbuf_alloc(&pd->title, 256));
@@ -552,7 +587,8 @@ ERROR:
 int plot_data_resize_len(struct plot_data* pd,int x)
 {
         if(pd->len > x){
-                ERROR_MSG("New len is smaller than before!");
+                 /* WARNING_MSG("New len is smaller than before!"); */
+                return OK;
         }
         uint64_t** new = NULL;
         int old_len = pd->len;

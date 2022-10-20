@@ -45,12 +45,12 @@ int clu_data(struct plot_data *d)
                 /* d->clu_len = d->len; */
         }else if(d->len <= 1000){
                 /* needs to be removed ... */
-                d->bin_start = 50;
-                d->target_n_clu = 150;
+                /* d->bin_start = 50; */
+                /* d->target_n_clu = 500; */
                 get_plot_interval_lin(d, &ic);
                 d->x_is_categorical = 1;
         }else{
-                d->bin_start = 50;
+                /* d->bin_start = 50; */
                 get_plot_interval_exp(d, &ic);
                 d->x_is_categorical = 1;
         }

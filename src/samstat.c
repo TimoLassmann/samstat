@@ -4,6 +4,7 @@
 #include "htsinterface/htsglue.h"
 #include "param/param.h"
 #include "metrics/metrics.h"
+#include "collect/collect.h"
 #include "report/report.h"
 #include "tools/tools.h"
 /* #include "pst.h" */
@@ -48,6 +49,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
         struct metrics* metrics = NULL;
+
+        struct stat_collection* s = NULL;
         uint64_t n_read = 0;
         /* p->buffer_size = 1000; */
 
@@ -57,7 +60,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         /* LOG_MSG("File size: %"PRId64",",n_read); */
         /* exit(0); */
-
+        stat_collection_alloc(&s);
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
         RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
@@ -87,6 +90,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         parse_alignment(sb->sequences[i]);
                         fix_orientation(sb->sequences[i]);
                 }
+
+                collect_stats(sb, s);
 
                 RUN(get_metrics(sb,metrics));
 
@@ -119,6 +124,20 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         /* } */
 
         /* RUN(debug_metrics_print(metrics)); */
+        tld_strbuf* out = NULL;
+        tld_strbuf_alloc(&out, 1024);
+        html_header(out,"TEST");
+
+        plot_add(out,s->base_comp_R1);
+        if(s->n_paired){
+                plot_add(out,s->base_comp_R2);
+        }
+        html_end(out);
+
+        fprintf(stdout,"%s",TLD_STR(out));
+
+
+        stat_collection_free(s);
         create_report(metrics, p,id);
         metrics_free(metrics);
         if(sb->data){

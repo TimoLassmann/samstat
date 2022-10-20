@@ -24,7 +24,6 @@ struct bin_data {
 };
 
 
-
 static int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_data **bin_data);
 static int bin_data_alloc(struct bin_data **bin_data, int len);
 static void bin_data_free(struct bin_data *b);
@@ -39,10 +38,9 @@ static int write_data_normal(tld_strbuf *o, struct plot_data *d);
 static int write_data_error(tld_strbuf *o, struct plot_data *d);
 static int write_data_density(tld_strbuf *o, struct plot_data *d);
 
-static int add_count_data(tld_strbuf *o,struct series_data* s_data, uint64_t *x, uint64_t* y,  int len);
-static int add_real_data(tld_strbuf *o, struct series_data *s_data, double *x,
-                         double *y, int len);
-static int add_data_series_error(tld_strbuf *o,struct series_data* s_data, double *x, double** y,  int len);
+static int add_count_data(tld_strbuf *o,struct series_data* s_data, char** x, uint64_t* y,  int len);
+static int add_real_data(tld_strbuf *o, struct series_data *s_data, char** x, double *y, int len);
+static int add_data_series_error(tld_strbuf *o,struct series_data* s_data, char** x, double** y,  int len);
 static int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, int plot_len);
 
 
@@ -58,11 +56,18 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
         for(int i= 0; i < d->L;i++){
                 d->is_plot[i] = 0;
         }
+        if(d->mod != PLOT_MOD_DENSITY){
+                clu_data(d);
+        }
+
+
 
         RUN(tld_append(o, "<div id=\""));
         snprintf(buf, 256,"%s_target", TLD_STR(d->id));
         RUN(tld_append(o, buf));
         RUN(tld_append(o, "\" style=\"width:100%;max-width:1400px\"></div>\n"));
+
+
 
 
         RUN(tld_append(o,"<script>\n"));
@@ -83,32 +88,41 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
 
         RUN(add_plot_instr(o,d));
 
+        if(d->clu_len){
+                gfree(d->clu_data);
+                d->clu_data = NULL;
+                d->clu_len = 0;
+                gfree(d->x_axis_labels);
+        }
 
         RUN(tld_append(o,"</script>\n"));
-
-
         return OK;
 ERROR:
         return FAIL;
 }
-
 
 int write_data_normal(tld_strbuf *o, struct plot_data *d)
 {
         struct series_data* s_data = NULL;
         RUN(series_data_alloc(&s_data,0));
         int plot_len = 0;
+        uint64_t** l_d = NULL;
+        int l_len;
+        l_d = d->data;
+        l_len = d->len;
+        if(d->clu_len){
+                l_d = d->clu_data;
+                l_len = d->clu_len;
+        }
         for(int i = 0; i < d->L;i++){
-                for(int j = 0; j < d->len;j++){
-                        if(d->data[i][j]){
+                for(int j = 0; j < l_len;j++){
+                        if(l_d[i][j]){
                                 if(j > plot_len){
                                         plot_len = j+1;
                                 }
                         }
                 }
         }
-
-
         for(int i = 0; i < d->L;i++){
                 d->is_plot[i] = 1;
                 snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
@@ -138,22 +152,7 @@ int write_data_normal(tld_strbuf *o, struct plot_data *d)
                         }
                 }
 
-                /* if(i < d->group_size && d->viz == PLOT_VIZ_FIRSTGROUP){ */
-                /*         s_data->vis = 1; */
-                /* }else if( d->viz == PLOT_VIZ_ALL){ */
-                /*         s_data->vis = 1; */
-                /* }else{ */
-                /*         s_data->vis = 0; */
-                /* } */
-
-                if(d->bin_size){
-                        struct bin_data* b = NULL;
-                        RUN(to_bin_data(d->data[i], plot_len, d->bin_start, d->bin_size, &b));
-                        ADD_DATA(o, s_data, b->x, b->y ,b->len);
-                        bin_data_free(b);
-                }else{
-                        ADD_DATA(o, s_data, NULL, d->data[i],plot_len);
-                }
+                ADD_DATA(o, s_data, d->x_axis_labels, l_d[i],plot_len);
         }
 
         series_data_free(s_data);
@@ -169,28 +168,31 @@ int write_data_error(tld_strbuf *o, struct plot_data *d)
         /* double* stderr = NULL; */
         /* double** ms = NULL; */
         /* RUN(series_data_alloc(&s_data,0)); */
+        ASSERT(d != NULL, " No data to plot");
+
+        uint64_t** l_d = NULL;
+        int l_len;
+        l_d = d->data;
+        l_len = d->len;
+        if(d->clu_len){
+                l_d = d->clu_data;
+                l_len = d->clu_len;
+        }
         int plot_len = 0;
         for(int i = 0; i < d->L;i++){
-                for(int j = 0; j < d->len;j++){
-                        if(d->data[i][j]){
+                for(int j = 0; j < l_len;j++){
+                        if(l_d[i][j]){
                                 if(j > plot_len){
                                         plot_len = j+1;
                                 }
                         }
                 }
         }
-        /* galloc(&ms, 2,plot_len); */
-        /* galloc(&mean, plot_len); */
-        /* galloc(&stderr, plot_len); */
-
         if(d->group_size < d->L){
                 int start = 0;
                 while(start < d->L){
                         int end = MACRO_MIN(d->L,start + d->group_size);
                         fill_and_write_err(o, d, start, end, plot_len);
-
-
-                        /* RUN(tld_append(o,d->group_label[start])); */
                         start = start + d->group_size;
                 }
         }else{
@@ -214,13 +216,10 @@ int write_data_density(tld_strbuf *o, struct plot_data *d)
                 int c = 0;
                 for(int j = 0; j < d->len;j++){
                         if(d->data[i][j]){
-                                /* LOG_MSG("Adding %d",i); */
                                 x[c] = (double) j;
                                 y[c] = (double) d->data[i][j];
-                                /* LOG_MSG("%f %f", x[c],y[c]); */
                                 c++;
                         }
-                        /* dat[i] = (double) l->data[i]; */
                 }
 
                 if(c == 0){
@@ -243,15 +242,7 @@ int write_data_density(tld_strbuf *o, struct plot_data *d)
                 snprintf(s_data->type ,s_data->alloc_len, "lines");
                 /* fprintf(stderr,"%s\n",s_data->type ); */
                 s_data->vis = 1;
-
-                if(d->bin_size){
-                        struct bin_data* b = NULL;
-                        RUN(to_bin_data(d->data[i], c, d->bin_start, d->bin_size, &b));
-                        ADD_DATA(o, s_data, b->x, b->y ,b->len);
-                        bin_data_free(b);
-                }else{
-                        ADD_DATA(o, s_data, x, y,c);
-                }
+                ADD_DATA(o, s_data, NULL, y,c);
 
                 d->is_plot[i] = 1;
                 gfree(x);
@@ -271,6 +262,16 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
 {
         struct series_data* s_data = NULL;
         double **ms = NULL;
+
+        uint64_t** l_d = NULL;
+        int l_len;
+        l_d = d->data;
+        l_len = d->len;
+        if(d->clu_len){
+                l_d = d->clu_data;
+                l_len = d->clu_len;
+        }
+
         RUN(series_data_alloc(&s_data,0));
         galloc(&ms, plot_len,2);
         for(int i = 0; i < plot_len;i++){
@@ -281,16 +282,16 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
                 double total = 0.0;
                 double n = 0.0;
                 for(int j= start; j < stop;j++){
-                        total += (j-start) * d->data[j][i];
-                        n+= d->data[j][i];
+                        total += (j-start) * l_d[j][i];
+                        n+= l_d[j][i];
                 }
                 ms[i][0] = total / n;
                 total = 0.0;
                 n = 0.0;
                 for(int j = start; j < d->L;j++){
                         double s =  ms[i][0] - (double) (j-start) ;
-                        total += d->data[j][i] *  s * s;
-                        n += d->data[j][i];
+                        total += l_d[j][i] *  s * s;
+                        n += l_d[j][i];
                 }
                 ms[i][1] = sqrt(total / n) / sqrt(n);
         }
@@ -317,7 +318,7 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
         /* if(start == 0){ */
         /*         s_data->vis = 1; */
         /* } */
-        ADD_DATA(o, s_data, NULL, ms,plot_len);
+        ADD_DATA(o, s_data, d->x_axis_labels, ms,plot_len);
         series_data_free(s_data);
         gfree(ms);
         return OK;
@@ -398,8 +399,10 @@ int add_plot_instr(tld_strbuf *o, struct plot_data *d)
 
 
         RUN(tld_append(o,"xaxis: {\n"));
-        /* RUN(tld_append(o,"type: 'category',\n")); */
-        if(d->len > 100){
+        if(d->x_is_categorical){
+                RUN(tld_append(o,"type: 'category',\n"));
+        }
+        if(d->len > 100 && d->mod != PLOT_MOD_DENSITY){
                 RUN(tld_append(o,"range: [0, 75],\n"));
         }
         snprintf(buf, 256,"title: '%s'\n", TLD_STR(d->xlabel));
@@ -500,23 +503,27 @@ int plot_data_alloc(struct plot_data** plot_data,int x, int y)
         struct plot_data* pd = NULL;
         MMALLOC(pd, sizeof(struct plot_data));
         pd->data = NULL;
+        pd->clu_data = NULL;
         pd->series_label = NULL;
         pd->group_label = NULL;
         pd->is_plot = NULL;
         pd->len = x;
+        pd->clu_len = 0;
         pd->L = y;
         pd->title = NULL;
         pd->id = NULL;
         pd->xlabel = NULL;
         pd->ylabel = NULL;
         pd->save_file_name = NULL;
+        pd->x_axis_labels = NULL;
         /* pd->type = 0; */
         pd->viz = pd->L;
         pd->type = PLOT_TYPE_SCATTER;
         pd->mod = PLOT_MOD_NORMAL;
         pd->bin_size = 0;
         pd->bin_start= 0;
-
+        pd->x_is_categorical = 0;
+        pd->target_n_clu = 500;
         RUN(tld_strbuf_alloc(&pd->title, 256));
         RUN(tld_strbuf_alloc(&pd->id, 256));
         RUN(tld_strbuf_alloc(&pd->xlabel, 256));
@@ -634,7 +641,7 @@ void series_data_free(struct series_data *s)
 }
 
 
-int add_count_data(tld_strbuf *o,struct series_data* s_data , uint64_t *x, uint64_t* y,  int len)
+int add_count_data(tld_strbuf *o,struct series_data* s_data , char**x, uint64_t* y,  int len)
 {
         ASSERT(y != NULL, "no y");
         char buf[256];
@@ -653,7 +660,7 @@ int add_count_data(tld_strbuf *o,struct series_data* s_data , uint64_t *x, uint6
                 RUN(tld_append(o,"x: ["));
 
                 for(int i = 0 ; i < len;i++){
-                        snprintf(buf, 256,"%"PRId64",",x[i]);
+                        snprintf(buf, 256,"\"%s\",",x[i]);
                         RUN(tld_append(o,buf));
                 }
                 o->len--;
@@ -692,7 +699,7 @@ ERROR:
         return FAIL;
 }
 
-int add_real_data(tld_strbuf *o,struct series_data* s_data, double *x, double* y,  int len)
+int add_real_data(tld_strbuf *o,struct series_data* s_data, char**x, double* y,  int len)
 {
         ASSERT(y != NULL, "no y");
         char buf[256];
@@ -711,7 +718,7 @@ int add_real_data(tld_strbuf *o,struct series_data* s_data, double *x, double* y
                 RUN(tld_append(o,"x: ["));
 
                 for(int i = 0 ; i < len;i++){
-                        snprintf(buf, 256,"\"%f\",",x[i]);
+                        snprintf(buf, 256,"\"%s\",",x[i]);
                         RUN(tld_append(o,buf));
                 }
                 o->len--;
@@ -753,7 +760,7 @@ ERROR:
 }
 
 
-int add_data_series_error(tld_strbuf *o,struct series_data* s_data, double *x, double** y,  int len)
+int add_data_series_error(tld_strbuf *o,struct series_data* s_data, char**x, double** y,  int len)
 {
         ASSERT(y != NULL, "no y");
         char buf[256];
@@ -772,7 +779,7 @@ int add_data_series_error(tld_strbuf *o,struct series_data* s_data, double *x, d
                 RUN(tld_append(o,"x: ["));
 
                 for(int i = 0 ; i < len;i++){
-                        snprintf(buf, 256,"%f,",x[i]);
+                        snprintf(buf, 256,"\"%s\",",x[i]);
                         RUN(tld_append(o,buf));
                 }
                 o->len--;
@@ -969,7 +976,7 @@ int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_dat
         int idx;
         int max_idx = 0;
         int interval = 0;
-        get_plot_interval(len, bin_start, 50, &interval);
+        /* get_plot_interval(len, bin_start, 50, &interval); */
 
         fprintf(stderr,"interval: %d\n", interval);
 
@@ -1001,7 +1008,7 @@ int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_dat
                 fprintf(stderr,"%d:x:%f %f %f -> %f \n", i,b->x[i], b->y[i] , b->n[i], b->y[i] / b->n[i]);
                 b->y[i] = b->y[i] / b->n[i];
         }
-        exit(0);
+        /* exit(0); */
         *bin_data = b;
         return OK;
 ERROR:

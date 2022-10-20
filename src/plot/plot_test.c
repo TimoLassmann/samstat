@@ -14,7 +14,7 @@ int main(void)
         RUN(init_rng(&rng,0));
         RUN(random_plot_data(&pd,rng));
 
-        pd->bin_start = 3;
+        pd->bin_start = 10;
         pd->bin_size = 10;
         html_header(out,"TEST");
         pd->id->str[0] = 'A';
@@ -49,7 +49,7 @@ int random_plot_data(struct plot_data **p, struct rng_state *rng)
 {
         struct plot_data *pd = NULL;
         char buf[17];
-        int x = 150;
+        int x = 300;
 
         int group_size = 2 + tl_random_int(rng,6);
         int y = group_size * (tl_random_int(rng, 3)+1);

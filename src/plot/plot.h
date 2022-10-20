@@ -14,9 +14,13 @@ typedef struct tld_string_buffer  tld_strbuf;
 
 struct plot_data {
         uint64_t** data;
+        uint64_t** clu_data;
         char** series_label;
         char** group_label;
+        char** x_axis_labels;
+
         int len;
+        int clu_len;
         int L;
         tld_strbuf* title;
         tld_strbuf* xlabel;
@@ -30,6 +34,8 @@ struct plot_data {
         int8_t viz;
         int8_t type;
         int8_t mod;
+        uint8_t x_is_categorical;
+        uint32_t target_n_clu;
 };
 
 #define PLOT_TYPE_SCATTER 0

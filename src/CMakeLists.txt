@@ -49,6 +49,9 @@ add_executable(samstat
   ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
   )
 
+
+add_dependencies(samstat htslib)
+
 target_link_directories(samstat PUBLIC ${HTSLIB_SRC_DIR})
 
 

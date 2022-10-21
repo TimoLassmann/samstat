@@ -134,10 +134,22 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         if(s->n_paired){
                 plot_add(out,s->base_comp_R2);
         }
-        LOG_MSG("Got here");
+
         plot_add(out,s->qual_comp_R1);
         if(s->n_paired){
                 plot_add(out,s->qual_comp_R2);
+        }
+
+        plot_add(out,s->mis_R1);
+        plot_add(out,s->ins_R1);
+        plot_add(out,s->del_R1);
+
+        if(s->n_paired){
+                plot_add(out,s->mis_R2);
+
+                plot_add(out,s->ins_R2);
+
+                plot_add(out,s->del_R2);
         }
         html_end(out);
 

@@ -149,6 +149,8 @@ ERROR:
         return FAIL;
 }
 
+
+
 int sub_sample_sb(struct tl_seq_buffer *sb,struct rng_state* rng, double f)
 {
         struct tl_seq** buf = NULL;
@@ -420,7 +422,6 @@ int collect_error_comp(struct metrics *m, struct tl_seq *s)
                                 case 'A':
                                 case 'a':
                                         c->mis[0][rp]++;
-
                                         break;
                                 case 'C':
                                 case 'c':

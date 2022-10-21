@@ -50,7 +50,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct alphabet* a = NULL;
         struct metrics* metrics = NULL;
 
-        struct stat_collection* s = NULL;
+        /* struct stat_collection* s = NULL; */
         uint64_t n_read = 0;
         /* p->buffer_size = 1000; */
 
@@ -60,7 +60,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         /* LOG_MSG("File size: %"PRId64",",n_read); */
         /* exit(0); */
-        stat_collection_alloc(&s);
+        /* stat_collection_alloc(&s); */
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
         RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
@@ -91,7 +91,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         fix_orientation(sb->sequences[i]);
                 }
 
-                collect_stats(sb, s);
+                /* collect_stats(sb, s); */
 
                 RUN(get_metrics(sb,metrics));
 
@@ -120,43 +120,43 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         RUN(close_bam(f_handle));
 
 
-        stat_collection_finalise(s);
-        /* if(p->pst){ */
-        /*         pst_model_create(m); */
+        /* stat_collection_finalise(s); */
+
+        /* tld_strbuf* out = NULL; */
+        /* tld_strbuf_alloc(&out, 1024); */
+        /* html_header(out,"TEST"); */
+        /* plot_add(out,s->len_dist_R1); */
+        /* /\* if(s->n_paired){ *\/ */
+        /* /\*          plot_add(out,s->len_dist_R2); *\/ */
+        /* /\* } *\/ */
+        /* plot_add(out,s->base_comp_R1); */
+        /* if(s->n_paired){ */
+        /*         plot_add(out,s->base_comp_R2); */
         /* } */
 
-        /* RUN(debug_metrics_print(metrics)); */
-        tld_strbuf* out = NULL;
-        tld_strbuf_alloc(&out, 1024);
-        html_header(out,"TEST");
+        /* plot_add(out,s->qual_comp_R1); */
+        /* if(s->n_paired){ */
+        /*         plot_add(out,s->qual_comp_R2); */
+        /* } */
 
-        plot_add(out,s->base_comp_R1);
-        if(s->n_paired){
-                plot_add(out,s->base_comp_R2);
-        }
+        /* plot_add(out,s->mis_R1); */
+        /* plot_add(out,s->ins_R1); */
+        /* plot_add(out,s->del_R1); */
 
-        plot_add(out,s->qual_comp_R1);
-        if(s->n_paired){
-                plot_add(out,s->qual_comp_R2);
-        }
+        /* if(s->n_paired){ */
+        /*         plot_add(out,s->mis_R2); */
 
-        plot_add(out,s->mis_R1);
-        plot_add(out,s->ins_R1);
-        plot_add(out,s->del_R1);
+        /*         plot_add(out,s->ins_R2); */
 
-        if(s->n_paired){
-                plot_add(out,s->mis_R2);
-
-                plot_add(out,s->ins_R2);
-
-                plot_add(out,s->del_R2);
-        }
-        html_end(out);
-
-        fprintf(stdout,"%s",TLD_STR(out));
+        /*         plot_add(out,s->del_R2); */
+        /* } */
+        /* html_end(out); */
 
 
-        stat_collection_free(s);
+        /* fprintf(stdout,"%s",TLD_STR(out)); */
+        /* tld_strbuf_free(out); */
+
+        /* stat_collection_free(s); */
         create_report(metrics, p,id);
         metrics_free(metrics);
         if(sb->data){
@@ -176,6 +176,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
         struct metrics* metrics = NULL;
+        /* struct stat_collection* s = NULL; */
         uint64_t n_read = 0;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
@@ -186,7 +187,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         RUN(metrics_alloc(&metrics, p));
         RUN(metrics_set_output_desc(metrics, p->infile[id]));
         metrics->is_aligned = 0;
-
+        /* stat_collection_alloc(&s); */
         /* if(p->pst){ */
         /*         pst_model_alloc(&m); */
         /* } */
@@ -216,8 +217,8 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         break;
                 }
 
-
-                RUN(get_metrics(sb,metrics));
+                /* collect_stats(sb, s); */
+                /* RUN(get_metrics(sb,metrics)); */
 
                 n_read += sb->num_seq;
                 if(p->verbose){
@@ -232,6 +233,47 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 }
                 reset_tl_seq_buffer(sb);
         }
+
+
+        /* stat_collection_finalise(s); */
+
+        /* tld_strbuf* out = NULL; */
+        /* tld_strbuf_alloc(&out, 1024); */
+        /* html_header(out,"TEST"); */
+        /* plot_add(out,s->len_dist_R1); */
+        /* /\* if(s->n_paired){ *\/ */
+        /* /\*          plot_add(out,s->len_dist_R2); *\/ */
+        /* /\* } *\/ */
+        /* plot_add(out,s->base_comp_R1); */
+        /* if(s->n_paired){ */
+        /*         plot_add(out,s->base_comp_R2); */
+        /* } */
+
+        /* plot_add(out,s->qual_comp_R1); */
+        /* if(s->n_paired){ */
+        /*         plot_add(out,s->qual_comp_R2); */
+        /* } */
+
+
+        /* if(s->is_aligned){ */
+        /*         plot_add(out,s->mis_R1); */
+        /*         plot_add(out,s->ins_R1); */
+        /*         plot_add(out,s->del_R1); */
+
+        /*         if(s->n_paired){ */
+        /*                 plot_add(out,s->mis_R2); */
+
+        /*                 plot_add(out,s->ins_R2); */
+
+        /*                 plot_add(out,s->del_R2); */
+        /*         } */
+        /* } */
+        /* html_end(out); */
+
+
+        /* fprintf(stdout,"%s",TLD_STR(out)); */
+        /* tld_strbuf_free(out); */
+        /* exit(0); */
         /* if(p->pst){ */
         /*         pst_model_create(m); */
         /* } */

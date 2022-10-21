@@ -4,6 +4,7 @@
 #include "sam.h"
 #include "../htsinterface/htsglue.h"
 
+/* #include "convert_tables.h" */
 /* #include "../metrics/metrics.h" */
 
 
@@ -26,7 +27,7 @@ struct mapqual_bins {
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
 
-/* static int collect_err(struct stat_collection* s, struct tl_seq *itm, int q_idx); */
+static inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read,int q_idx);
 
 int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
 {
@@ -95,100 +96,21 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
                         clip_start = a->n_clip5;
                         clip_end = a->n_clip3;
                         if(a->aln_len){
-                                uint8_t* g = NULL;
-                                uint8_t* r = NULL;
-                                int aln_len;
-                                uint64_t** ins = NULL;
-                                uint64_t** del = NULL;
-                                uint64_t** mis  = NULL;
-
-                                ins = s->ins_R1->data + s->ins_R1->group_size * q_idx;
-                                del = s->del_R1->data + s->del_R1->group_size * q_idx;
-                                mis = s->mis_R1->data + s->mis_R1->group_size * q_idx;
-                                if(read == 2){
-                                        ins = s->ins_R2->data + s->ins_R2->group_size * q_idx;
-                                        del = s->del_R2->data + s->del_R2->group_size * q_idx;
-                                        mis = s->mis_R2->data + s->mis_R2->group_size * q_idx;
-                                }
-                                aln_len = a->aln_len;
-                                r = a->read;
-                                g = a->genome;
-                                /* fprintf(stderr,"%s\n%s\n\n",r,g); */
-                                /* int m_len = MACRO_MIN((int)m->report_max_len, aln_len); */
-                                int rp = 0;
-                                for(int j = 0;j < aln_len;j++){
-                                        /* three possibilities */
-
-                                        /* if(r[i] == '-' && g[i] == '-'){ */
-
-                                        /* }else  */
-                                        if(r[j] != '-' && g[j] == '-'){
-                                                if(j){
-                                                        if(g[j-1] != '-'){
-                                                                ins[0][rp]++;
-                                                                /* s->ins_R1 */
-                                                                /* c->ins[rp]++; */
-                                                                /* c->n_ins++; */
-                                                        }
-                                                }else{
-                                                        ins[0][rp]++;
-                                                        /* c->ins[rp]++; */
-                                                        /* c->n_ins++; */
-                                                }
-                                                rp++;
-                                        }else if(r[j] == '-' && g[j] != '-'){
-                                                if(j){
-                                                        if(r[j-1] != '-'){
-                                                                del[0][rp]++;
-                                                                /* c->del[rp]++; */
-                                                                /* c->n_del++; */
-                                                        }
-                                                }else{
-                                                        del[0][rp]++;
-                                                        /* c->del[rp]++; */
-                                                        /* c->n_del++; */
-                                                }
-                                        }else if(r[j] != '-' && g[j] != '-'){
-                                                if(r[j] != g[j]){
-                                                        /* mis[nuc_to_internal[r[i]]][rp]++; */
-
-                                                        switch ( r[j]) {
-                                                        case 'A':
-                                                        case 'a':
-                                                                mis[0][rp]++;
-                                                                /* c->mis[0][rp]++; */
-                                                                break;
-                                                        case 'C':
-                                                        case 'c':
-                                                                mis[1][rp]++;
-                                                                /* c->mis[1][rp]++; */
-
-                                                                break;
-                                                        case 'G':
-                                                        case 'g':
-                                                                mis[2][rp]++;
-                                                                /* c->mis[2][rp]++; */
-                                                                break;
-                                                        case 'T':
-                                                        case 't':
-                                                                mis[3][rp]++;
-                                                                /* c->mis[3][rp]++; */
-                                                                break;
-                                                        default:
-
-                                                                mis[4][rp]++;
-                                                                /* c->mis[4][rp]++; */
-                                                                break;
-                                                        }
-                                                        /* c->n_mis++; */
-                                                }
-                                                rp++;
-                                        }
-                                }
+                                get_aln_errors(s, a, read, q_idx);
                         }
 
                 }
+                if(read == 1){
+                        t = s->len_dist_R1->data;// + q_idx;
+                }else{
+                        t = s->len_dist_R2->data;// +  q_idx;
+                }
+                /* LOG_MSG("Adding : %d %d %d  ", itm->len - (clip_start + clip_end),  s->len_dist_R1->len,s->len_dist_R2->len ); */
+                t[q_idx][itm->len - (clip_start + clip_end)]++;
+
                 seq = itm->seq->str;
+
+
                 /* start collecting...  */
                 if(read == 1){
                         t = s->base_comp_R1->data  + s->base_comp_R1->group_size * q_idx;
@@ -230,8 +152,65 @@ ERROR:
         return FAIL;
 }
 
+inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read,int q_idx)
+{
 
+#include "convert_tables.h"
+        uint8_t* g = NULL;
+        uint8_t* r = NULL;
+        int aln_len;
+        uint64_t** ins = NULL;
+        uint64_t** del = NULL;
+        uint64_t** mis  = NULL;
 
+        ins = s->ins_R1->data + s->ins_R1->group_size * q_idx;
+        del = s->del_R1->data + s->del_R1->group_size * q_idx;
+        mis = s->mis_R1->data + s->mis_R1->group_size * q_idx;
+        if(read == 2){
+                ins = s->ins_R2->data + s->ins_R2->group_size * q_idx;
+                del = s->del_R2->data + s->del_R2->group_size * q_idx;
+                mis = s->mis_R2->data + s->mis_R2->group_size * q_idx;
+        }
+        aln_len = a->aln_len;
+        r = a->read;
+        g = a->genome;
+        /* fprintf(stderr,"%s\n%s\n\n",r,g); */
+        /* int m_len = MACRO_MIN((int)m->report_max_len, aln_len); */
+        int rp = 0;
+        for(int j = 0;j < aln_len;j++){
+                /* three possibilities */
+
+                /* if(r[i] == '-' && g[i] == '-'){ */
+
+                /* }else  */
+                if(r[j] != '-' && g[j] == '-'){
+                        if(j){
+                                if(g[j-1] != '-'){
+                                        ins[0][rp]++;
+                                }
+                        }else{
+                                ins[0][rp]++;
+                        }
+                        rp++;
+                }else if(r[j] == '-' && g[j] != '-'){
+                        if(j){
+                                if(r[j-1] != '-'){
+                                        del[0][rp]++;
+                                }
+                        }else{
+                                del[0][rp]++;
+                        }
+                }else if(r[j] != '-' && g[j] != '-'){
+                        if(r[j] != g[j]){
+                                mis[nuc_to_internal[r[j]]][rp]++;
+                        }
+                        rp++;
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
 
 int stat_collection_finalise(struct stat_collection *s)
 {
@@ -296,6 +275,7 @@ int stat_collection_alloc(struct stat_collection **stats)
         s->n_read1 = 0;
         s->n_read2 = 0;
 
+        s->is_aligned = 0;
 
         RUN(get_mapqual_bins(&s->mapq_map));
 
@@ -488,6 +468,41 @@ int stat_collection_alloc(struct stat_collection **stats)
                              NULL
                     ));
 
+        /* LOG_MSG("LEN IDST "); */
+        /* Length dist  */
+        RUN(plot_data_config(s->len_dist_R1,
+                             PLOT_TYPE_LINES,
+                             PLOT_MOD_DENSITY,
+                             0,//s->mapq_map->n_bin,
+                             PLOT_VIZ_ALL,
+                             "len_R1",
+                             "Length Distribution",
+                             "Length",
+                             "Counts",
+                             "LengthDistribution",
+                             s->mapq_map->description,
+                             NULL
+
+                    ));
+
+        RUN(plot_data_config(s->len_dist_R2,
+                             PLOT_TYPE_LINES,
+                             PLOT_MOD_DENSITY,
+                             0,//s->mapq_map->n_bin,
+                             PLOT_VIZ_ALL,
+                             "len_R2",
+                             "Length Distribution",
+                             "Length",
+                             "Counts",
+                             "LengthDistribution",
+                             s->mapq_map->description,
+                             NULL
+                    ));
+
+        /* for(int i = 0 ; i < s->ins_R1->L;i++){ */
+        /*         fprintf(stderr,"%d %s\n", i, s->ins_R1->series_label[i]); */
+        /* } */
+        /* exit(0); */
         gfree(base_label);
         *stats = s;
 

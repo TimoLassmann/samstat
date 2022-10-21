@@ -62,6 +62,7 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
                 clu_data(d);
         }
 
+
         set_is_plot(d);
 
 
@@ -96,7 +97,11 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
                 gfree(d->clu_data);
                 d->clu_data = NULL;
                 d->clu_len = 0;
+
+        }
+        if(d->x_axis_labels){
                 gfree(d->x_axis_labels);
+                d->x_axis_labels = NULL;
         }
 
         RUN(tld_append(o,"</script>\n"));
@@ -129,28 +134,34 @@ int set_is_plot(struct plot_data *d)
                 /* fprintf(stderr,"%d -> plot %d\n", i ,d->is_plot[i]); */
         }
         /* correct for groups  */
-        int start = 0;
-        while(start < d->L){
-                int plot = 0;
-                for(int i = start; i < start+d->group_size;i++){
-                        plot += d->is_plot[i];
-                }
-                if(plot){
+        if(d->group_size){
+                int start = 0;
+                while(start < d->L){
+                        int plot = 0;
                         for(int i = start; i < start+d->group_size;i++){
-                                d->is_plot[i] = 1;
+                                plot += d->is_plot[i];
+                        }
+                        if(plot){
+                                for(int i = start; i < start+d->group_size;i++){
+                                        d->is_plot[i] = 1;
+                                }
+                        }
+                        start += d->group_size;
+                }
+
+                /* correct for all Viz */
+                if(d->viz == PLOT_VIZ_ALL){
+                        for(int i = 0; i < d->L;i++){
+                                if(i % d->group_size != 0){
+                                        d->is_plot[i] = 0;
+                                        /* fprintf(stderr," Found group start @ %d\n",i); */
+                                }
                         }
                 }
-                start += d->group_size;
         }
-        /* correct for all Viz */
-        if(d->viz == PLOT_VIZ_ALL){
-        for(int i = 0; i < d->L;i++){
-                if(i % d->group_size != 0){
-                        d->is_plot[i] = 0;
-                        /* fprintf(stderr," Found group start @ %d\n",i); */
-                }
-        }
-        }
+        /* for(int i = 0; i < d->L;i++){ */
+        /*         fprintf(stderr,"%s\t%d -> plot %d\n", TLD_STR(d->title), i ,d->is_plot[i]); */
+        /* } */
 
         return OK;
 }
@@ -273,47 +284,56 @@ int write_data_density(tld_strbuf *o, struct plot_data *d)
         struct series_data* s_data = NULL;
         RUN(series_data_alloc(&s_data,0));
         for(int i = 0; i < d->L;i++){
-                double** density = NULL;
-                double* x = NULL;
-                double* y = NULL;
-                int c = 0;
-                galloc(&x,MACRO_MAX(10,d->len));
-                galloc(&y,MACRO_MAX(10,d->len));
+                if(d->is_plot[i]){
+                        double** density = NULL;
+                        double* x = NULL;
+                        double* y = NULL;
+                        int c = 0;
+                        galloc(&x,MACRO_MAX(10,d->len));
+                        galloc(&y,MACRO_MAX(10,d->len));
 
-                for(int j = 0; j < d->len;j++){
-                        if(d->data[i][j]){
-                                x[c] = (double) j;
-                                y[c] = (double) d->data[i][j];
-                                c++;
+                        for(int j = 0; j < d->len;j++){
+                                if(d->data[i][j]){
+                                        x[c] = (double) j;
+                                        y[c] = (double) d->data[i][j];
+                                        c++;
+                                }
                         }
-                }
 
-                if(c == 0){
-                        ERROR_MSG("Not a single sequence found in length distribution");
-                }else if(c == 1){
-                        galloc(&density, 1,2);
-                        density[0][0] = x[0];
-                        density[0][1] = 1.0;
-                }else {
-                        tld_kde_count_pdf(x,y,c,  &density);
-                }
+                        if(c == 0){
+                                ERROR_MSG("Not a single sequence found in length distribution");
+                        }else if(c == 1){
+                                galloc(&density, 1,2);
+                                density[0][0] = x[0];
+                                density[0][1] = 1.0;
+                        }else {
+                                tld_kde_count_pdf(x,y,c,  &density);
+                        }
+                        galloc(&d->x_axis_labels, d->len, 32);
 
-                for(int j = 0; j < c;j++){
-                        x[j] = density[j][0];
-                        y[j] = density[j][1];
-                }
-                snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
-                snprintf(s_data->label,s_data->alloc_len, "%s", d->series_label[i]);
-                s_data->color[0] = 0;
-                snprintf(s_data->type ,s_data->alloc_len, "lines");
-                /* fprintf(stderr,"%s\n",s_data->type ); */
-                s_data->vis = 1;
-                ADD_DATA(o, s_data, NULL, y,c);
+                        for(int j = 0; j < c;j++){
+                                snprintf(d->x_axis_labels[j],32,"%f",density[j][0]);
+                        }
+                        for(int j = 0; j < c;j++){
+                                x[j] = density[j][0];
+                                y[j] = density[j][1];
+                        }
+                        fprintf(stderr,"%d -> %s\n", i, d->series_label[i]);
+                        snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
+                        snprintf(s_data->label,s_data->alloc_len, "%s", d->series_label[i]);
+                        s_data->color[0] = 0;
+                        snprintf(s_data->type ,s_data->alloc_len, "lines");
+                        /* fprintf(stderr,"%s\n",s_data->type ); */
+                        s_data->vis = 1;
+                        ADD_DATA(o, s_data,d->x_axis_labels, y,c);
 
-                /* d->is_plot[i] = 1; */
-                gfree(x);
-                gfree(y);
-                gfree(density);
+                        /* d->is_plot[i] = 1; */
+                        gfree(x);
+                        gfree(y);
+                        gfree(density);
+                        gfree(d->x_axis_labels);
+                        d->x_axis_labels= NULL;
+                }
         }
 
         series_data_free(s_data);
@@ -591,24 +611,34 @@ int plot_data_config(struct plot_data *d, int8_t type, int8_t mod, int8_t group_
         RUN(tld_append(d->save_file_name, savename));
 
         /* LOG_MSG("%d === L",d->L); */
-        for(int i = 0; i < d->L;i++){
-                if(i % group_size == 0){
-                        group++;
-                }
-                if(series_lab){
-                        /* LOG_MSG("%d %d %d", i,group_size,i % group_size ); */
-                        snprintf(d->series_label[i], 256, "%s", series_lab[ i % group_size]);
+        if(group_size){
+                for(int i = 0; i < d->L;i++){
+                        if(i % group_size == 0){
+                                group++;
+                        }
+                        if(series_lab){
+                                /* LOG_MSG("%d %d %d", i,group_size,i % group_size ); */
+                                snprintf(d->series_label[i], 256, "%s", series_lab[ i % group_size]);
 
-                }else{
-                        snprintf(d->series_label[i], 256, "%d", i);
+                        }else{
+                                snprintf(d->series_label[i], 256, "%d", i);
+                        }
+                        if(group_lab){
+                                /* LOG_MSG("%d - adding group label %d %s", i, group,group_lab[group-1]); */
+                                snprintf(d->group_label[i], 256, "%s", group_lab[group-1]);
+                        }else{
+                                snprintf(d->group_label[i], 256, "Aha");
+                        }
+                        /* LOG_MSG("%d %s %s",i,d->group_label[i],d->series_label[i]  ); */
                 }
-                if(group_lab){
-                        /* LOG_MSG("%d - adding group label %d %s", i, group,group_lab[group-1]); */
-                        snprintf(d->group_label[i], 256, "%s", group_lab[group-1]);
-                }else{
-                        snprintf(d->group_label[i], 256, "Aha");
+        }else{
+                for(int i = 0; i < d->L;i++){
+                        if(series_lab){
+                                /* LOG_MSG("%d %d %d", i,group_size,i % group_size ); */
+                                snprintf(d->series_label[i], 256, "%s", series_lab[i]);
+
+                        }
                 }
-                /* LOG_MSG("%d %s %s",i,d->group_label[i],d->series_label[i]  ); */
         }
         /* exit(0); */
 

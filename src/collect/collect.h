@@ -37,6 +37,7 @@ struct stat_collection {
         uint64_t n_read2;
         uint64_t n_paired;
         uint64_t n_proper_paired;
+        uint8_t is_aligned;
 };
 
 

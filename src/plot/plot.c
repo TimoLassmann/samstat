@@ -24,6 +24,7 @@ struct bin_data {
 };
 
 
+static int set_is_plot(struct plot_data *d);
 static int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_data **bin_data);
 static int bin_data_alloc(struct bin_data **bin_data, int len);
 static void bin_data_free(struct bin_data *b);
@@ -49,6 +50,7 @@ static int add_plot_instr(tld_strbuf *o,struct plot_data *d);
 static int series_data_alloc(struct series_data **series, int len);
 static void series_data_free(struct series_data *s);
 
+
 int plot_add(tld_strbuf *o, struct plot_data *d)
 {
 
@@ -59,6 +61,8 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
         if(d->mod != PLOT_MOD_DENSITY){
                 clu_data(d);
         }
+
+        set_is_plot(d);
 
 
 
@@ -101,30 +105,89 @@ ERROR:
         return FAIL;
 }
 
-int write_data_normal(tld_strbuf *o, struct plot_data *d)
+int set_is_plot(struct plot_data *d)
 {
-        struct series_data* s_data = NULL;
-        RUN(series_data_alloc(&s_data,0));
-        int plot_len = 0;
         uint64_t** l_d = NULL;
         int l_len;
+
+
         l_d = d->data;
         l_len = d->len;
         if(d->clu_len){
                 l_d = d->clu_data;
                 l_len = d->clu_len;
         }
+
+        for(int i = 0; i < d->L;i++){
+                d->is_plot[i] = 0;
+                for(int j = 0; j < l_len;j++){
+                        if(l_d[i][j]){
+                                d->is_plot[i] = 1;
+                                break;
+                        }
+                }
+                /* fprintf(stderr,"%d -> plot %d\n", i ,d->is_plot[i]); */
+        }
+        /* correct for groups  */
+        int start = 0;
+        while(start < d->L){
+                int plot = 0;
+                for(int i = start; i < start+d->group_size;i++){
+                        plot += d->is_plot[i];
+                }
+                if(plot){
+                        for(int i = start; i < start+d->group_size;i++){
+                                d->is_plot[i] = 1;
+                        }
+                }
+                start += d->group_size;
+        }
+        /* correct for all Viz */
+        if(d->viz == PLOT_VIZ_ALL){
+        for(int i = 0; i < d->L;i++){
+                if(i % d->group_size != 0){
+                        d->is_plot[i] = 0;
+                        /* fprintf(stderr," Found group start @ %d\n",i); */
+                }
+        }
+        }
+
+        return OK;
+}
+
+
+int write_data_normal(tld_strbuf *o, struct plot_data *d)
+{
+        struct series_data* s_data = NULL;
+
+        int plot_len = 0;
+        uint64_t** l_d = NULL;
+        int l_len;
+        int will_plot = 0;
+        RUN(series_data_alloc(&s_data,0));
+
+        l_d = d->data;
+        l_len = d->len;
+        if(d->clu_len){
+                l_d = d->clu_data;
+                l_len = d->clu_len;
+        }
+
         for(int i = 0; i < d->L;i++){
                 for(int j = 0; j < l_len;j++){
                         if(l_d[i][j]){
+                                /* d->is_plot[i] = 1; */
                                 if(j > plot_len){
-                                        plot_len = j+1;
+                                        plot_len = j;
                                 }
                         }
                 }
         }
+        plot_len++;
+        LOG_MSG("Normal will: %d %d %d plot_len:%d",will_plot,d->len,d->clu_len,plot_len);
+
         for(int i = 0; i < d->L;i++){
-                d->is_plot[i] = 1;
+                /* d->is_plot[i] = 1; */
                 snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
                 snprintf(s_data->label,s_data->alloc_len, "%s", d->series_label[i]);
                 s_data->color[0] = 0;
@@ -179,15 +242,17 @@ int write_data_error(tld_strbuf *o, struct plot_data *d)
                 l_len = d->clu_len;
         }
         int plot_len = 0;
+
         for(int i = 0; i < d->L;i++){
                 for(int j = 0; j < l_len;j++){
                         if(l_d[i][j]){
                                 if(j > plot_len){
-                                        plot_len = j+1;
+                                        plot_len = j;
                                 }
                         }
                 }
         }
+        plot_len++;
         if(d->group_size < d->L){
                 int start = 0;
                 while(start < d->L){
@@ -211,9 +276,10 @@ int write_data_density(tld_strbuf *o, struct plot_data *d)
                 double** density = NULL;
                 double* x = NULL;
                 double* y = NULL;
+                int c = 0;
                 galloc(&x,MACRO_MAX(10,d->len));
                 galloc(&y,MACRO_MAX(10,d->len));
-                int c = 0;
+
                 for(int j = 0; j < d->len;j++){
                         if(d->data[i][j]){
                                 x[c] = (double) j;
@@ -244,7 +310,7 @@ int write_data_density(tld_strbuf *o, struct plot_data *d)
                 s_data->vis = 1;
                 ADD_DATA(o, s_data, NULL, y,c);
 
-                d->is_plot[i] = 1;
+                /* d->is_plot[i] = 1; */
                 gfree(x);
                 gfree(y);
                 gfree(density);
@@ -264,12 +330,13 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
         double **ms = NULL;
 
         uint64_t** l_d = NULL;
-        int l_len;
+        /* int l_len; */
+
         l_d = d->data;
-        l_len = d->len;
+        /* l_len = d->len; */
         if(d->clu_len){
                 l_d = d->clu_data;
-                l_len = d->clu_len;
+                /* l_len = d->clu_len; */
         }
 
         RUN(series_data_alloc(&s_data,0));
@@ -285,17 +352,25 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
                         total += (j-start) * l_d[j][i];
                         n+= l_d[j][i];
                 }
-                ms[i][0] = total / n;
-                total = 0.0;
-                n = 0.0;
-                for(int j = start; j < d->L;j++){
-                        double s =  ms[i][0] - (double) (j-start) ;
-                        total += l_d[j][i] *  s * s;
-                        n += l_d[j][i];
+                if(!n){
+                        ms[i][0] = 0.0;
+                        ms[i][1] = 0.0;
+                }else{
+                        ms[i][0] = total / n;
+
+
+                        total = 0.0;
+                        n = 0.0;
+                        for(int j = start; j < d->L;j++){
+                                double s =  ms[i][0] - (double) (j-start) ;
+                                total += l_d[j][i] *  s * s;
+                                n += l_d[j][i];
+                        }
+
+                        ms[i][1] = sqrt(total / n) / sqrt(n);
                 }
-                ms[i][1] = sqrt(total / n) / sqrt(n);
         }
-        d->is_plot[start] = 1;
+        /* d->is_plot[start] = 1; */
         snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),start);
         snprintf(s_data->label,s_data->alloc_len, "%s", d->group_label[start]);
         s_data->color[0] = 0;
@@ -321,6 +396,7 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
         ADD_DATA(o, s_data, d->x_axis_labels, ms,plot_len);
         series_data_free(s_data);
         gfree(ms);
+        
         return OK;
 ERROR:
         series_data_free(s_data);
@@ -367,26 +443,35 @@ int add_plot_instr(tld_strbuf *o, struct plot_data *d)
                 RUN(tld_append(o,"buttons: [\n"));
                 int start = 0;
                 while(start < d->L){
-                        if(start){
-                                RUN(tld_append(o,",\n"));
+                        int plot = 0;
+                        for(int i = start; i < start+d->group_size;i++){
+                                plot += d->is_plot[i];
                         }
-                        RUN(tld_append(o,"{\n"));
-                        RUN(tld_append(o,"method: 'restyle',\n"));
-                        RUN(tld_append(o,"args: ['visible', [\n"));
-                        for(int i = 0; i < d->L;i++){
-                                if(i >= start && i < start+d->group_size){
-                                        RUN(tld_append(o,"true,"));
-                                }else{
-                                        RUN(tld_append(o,"false,"));
-                                }
-                        }
-                        o->len--;
-                        RUN(tld_append(o,"]],\n"));
-                        RUN(tld_append(o,"label: '"));
-                        RUN(tld_append(o,d->group_label[start]));
-                        RUN(tld_append(o,"'\n"));
 
-                        RUN(tld_append(o,"}\n"));
+                        if(plot){
+                                if(start){
+                                        RUN(tld_append(o,",\n"));
+                                }
+                                RUN(tld_append(o,"{\n"));
+                                RUN(tld_append(o,"method: 'restyle',\n"));
+                                RUN(tld_append(o,"args: ['visible', [\n"));
+                                for(int i = 0; i < d->L;i++){
+                                        if(d->is_plot[i]){
+                                                if(i >= start && i < start+d->group_size ){
+                                                        RUN(tld_append(o,"true,"));
+                                                }else{
+                                                        RUN(tld_append(o,"false,"));
+                                                }
+                                        }
+                                }
+                                o->len--;
+                                RUN(tld_append(o,"]],\n"));
+                                RUN(tld_append(o,"label: '"));
+                                RUN(tld_append(o,d->group_label[start]));
+                                RUN(tld_append(o,"'\n"));
+
+                                RUN(tld_append(o,"}\n"));
+                        }
                         start = start + d->group_size;
                 }
                 RUN(tld_append(o,",]}],\n"));

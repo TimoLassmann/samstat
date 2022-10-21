@@ -39,7 +39,7 @@ int clu_data(struct plot_data *d)
                 d->x_is_categorical = 0;
                 galloc(&d->x_axis_labels, d->len, 32);
                 for(int i = 0; i < d->len;i++){
-                        snprintf(d->x_axis_labels[i],32,"%d",i);
+                        snprintf(d->x_axis_labels[i],32,"%d",i+1);
                 }
                 /* d->clu_data = d->data; */
                 /* d->clu_len = d->len; */

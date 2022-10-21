@@ -691,7 +691,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                         /* RUN(tld_append(o, "<h2>Base quality distribution</h2>\n")); */
                         q = m->qual_comp_R1[mapq_idx];
                         /* r_len = m->max_len_R1; */
-
                 }else{
                         if(read == 1){
                                 /* snprintf(target, 16,"qualcompR1"); */
@@ -704,7 +703,6 @@ int base_quality_section(tld_strbuf *o, struct metrics *m, int read)
                                 q = m->qual_comp_R2[mapq_idx];
                                 /* r_len = m->max_len_R2; */
                         }else{
-
                                 ERROR_MSG("Samstat does not support protocols producing more than 2 reads.");
                         }
                 }

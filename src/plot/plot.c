@@ -2,6 +2,7 @@
 
 #include "plot_interval.h"
 
+#include <ctype.h>
 #define  PLOT_IMPORT
 #include "plot.h"
 
@@ -15,19 +16,19 @@ struct series_data {
         int alloc_len;
 };
 
-struct bin_data {
-        double* x;
-        double* y;
-        double* n;
-        int alloc_len;
-        int len;
+struct cnf_plot{
+        uint8_t** visible;
+        int32_t n_group;
+        tld_strbuf* datasets;
 };
 
 
+static int create_internal_plot_id(struct plot_data *d, int idx,
+                                   tld_strbuf *out);
 static int set_is_plot(struct plot_data *d);
-static int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_data **bin_data);
-static int bin_data_alloc(struct bin_data **bin_data, int len);
-static void bin_data_free(struct bin_data *b);
+/* static int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_data **bin_data); */
+/* static int bin_data_alloc(struct bin_data **bin_data, int len); */
+/* static void bin_data_free(struct bin_data *b); */
 
 #define ADD_DATA(O,S,X,Y,L) _Generic((Y),                               \
                                      uint64_t*: add_count_data,         \
@@ -46,7 +47,7 @@ static int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int 
 
 
 static int add_plot_instr(tld_strbuf *o,struct plot_data *d);
-
+static int count_plot_groups(struct plot_data *d, int *n_groups);
 static int series_data_alloc(struct series_data **series, int len);
 static void series_data_free(struct series_data *s);
 
@@ -61,11 +62,18 @@ int plot_add(tld_strbuf *o, struct plot_data *d)
         if(d->mod != PLOT_MOD_DENSITY){
                 clu_data(d);
         }
+        /* Here I should figure out what to plot */
+        /* Rules:
+           1) if no groups add all series with data; plot all
+           2) if groups, filter out groups that have no data in ANY series
+           if due to filtering only one group remains revert to plot as in 1)
 
+           Nice to have: create string specifying the series to plot
+        */
 
         set_is_plot(d);
 
-
+        fprintf(stderr,"%s -> %d\n",TLD_STR(d->title), d->group_size);
 
         RUN(tld_append(o, "<div id=\""));
         snprintf(buf, 256,"%s_target", TLD_STR(d->id));
@@ -125,15 +133,20 @@ int set_is_plot(struct plot_data *d)
 
         for(int i = 0; i < d->L;i++){
                 d->is_plot[i] = 0;
+                /* d->is_visible[i] =  */
                 for(int j = 0; j < l_len;j++){
                         if(l_d[i][j]){
                                 d->is_plot[i] = 1;
                                 break;
                         }
                 }
-                /* fprintf(stderr,"%d -> plot %d\n", i ,d->is_plot[i]); */
+                if(d->is_plot[i]){
+                        d->is_visible[i] = 1;
+                }
+                fprintf(stderr,"%d -> plot %d %d - in beg.. group size %d.\n", i ,d->is_plot[i], d->is_visible[i], d->group_size);
         }
         /* correct for groups  */
+        d->n_group = 0;
         if(d->group_size){
                 int start = 0;
                 while(start < d->L){
@@ -142,30 +155,91 @@ int set_is_plot(struct plot_data *d)
                                 plot += d->is_plot[i];
                         }
                         if(plot){
+
                                 for(int i = start; i < start+d->group_size;i++){
-                                        d->is_plot[i] = 1;
+                                        if(d->is_plot[i] && d->n_group){
+                                                d->is_visible[i] = 0;
+                                        }
+                                        /* d->is_plot[i] = 1; */
                                 }
+                                d->n_group++;
                         }
                         start += d->group_size;
                 }
 
                 /* correct for all Viz */
-                if(d->viz == PLOT_VIZ_ALL){
-                        for(int i = 0; i < d->L;i++){
-                                if(i % d->group_size != 0){
-                                        d->is_plot[i] = 0;
-                                        /* fprintf(stderr," Found group start @ %d\n",i); */
-                                }
-                        }
-                }
+                /* if(d->viz == PLOT_VIZ_ALL){ */
+                /*         for(int i = 0; i < d->L;i++){ */
+                /*                 if(i % d->group_size != 0){ */
+                /*                         d->is_plot[i] = 0; */
+                /*                         /\* fprintf(stderr," Found group start @ %d\n",i); *\/ */
+                /*                 } */
+                /*         } */
+                /* } */
         }
-        /* for(int i = 0; i < d->L;i++){ */
-        /*         fprintf(stderr,"%s\t%d -> plot %d\n", TLD_STR(d->title), i ,d->is_plot[i]); */
-        /* } */
+        /* This is the actual number of groups not the expected one. */
+        if(d->n_group){
+                galloc(&d->visible_tf, d->n_group, d->L);
+                int start = 0;
+                for(int i = 0; i < d->n_group;i++){
+
+                        for(int j = 0; j < d->L; j++){
+                                d->visible_tf[i][j] = 0;
+                                if(d->is_plot[j]){
+                                        if(j >= start && j < start + d->group_size){
+                                                d->visible_tf[i][j] = 1;
+                                        }
+                                }
+
+                        }
+                        start += d->group_size;
+                }
+                for(int j = 0; j < d->L; j++){
+                        fprintf(stderr,"%d",d->is_plot[j]);
+                }
+                fprintf(stderr,"\n");
+                for(int i = 0; i < d->n_group;i++){
+
+                        for(int j = 0; j < d->L; j++){
+                                fprintf(stderr,"%d",d->visible_tf[i][j]);
+                        }
+                        fprintf(stderr,"\n");
+                }
+                fprintf(stderr,"\n");
+
+        }
+        tld_strbuf* test = NULL;
+        tld_strbuf_alloc(&test, 1024);
+        for(int i = 0; i < d->L;i++){
+                create_internal_plot_id(d,i, test);
+                fprintf(stderr,"%s\t%d -> plot %d v:%d %s %s %s\n", TLD_STR(d->title), i ,d->is_plot[i],d->is_visible[i], d->series_label[i] , d->group_label[i], TLD_STR(test));
+        }
+        fprintf(stderr,"%d groups\n", d->n_group);
 
         return OK;
+ERROR:
+        return FAIL;
 }
 
+
+static int create_internal_plot_id(struct plot_data *d, int idx,
+                                   tld_strbuf *out)
+{
+        out->len = 0;
+        /* out->str[0] = 0; */
+        tld_append(out, TLD_STR(d->id));
+        tld_append(out, "_");
+        tld_append(out, d->group_label[idx]);
+        tld_append(out, "_");
+        tld_append(out, d->series_label[idx]);
+
+        for(int i = 0; i < out->len;i++){
+                if(isspace((int) out->str[i])){
+                        out->str[i] = '_';
+                }
+        }
+        return OK;
+}
 
 int write_data_normal(tld_strbuf *o, struct plot_data *d)
 {
@@ -195,38 +269,40 @@ int write_data_normal(tld_strbuf *o, struct plot_data *d)
                 }
         }
         plot_len++;
-        LOG_MSG("Normal will: %d %d %d plot_len:%d",will_plot,d->len,d->clu_len,plot_len);
+        /* LOG_MSG("Normal will: %d %d %d plot_len:%d",will_plot,d->len,d->clu_len,plot_len); */
 
         for(int i = 0; i < d->L;i++){
-                /* d->is_plot[i] = 1; */
-                snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
-                snprintf(s_data->label,s_data->alloc_len, "%s", d->series_label[i]);
-                s_data->color[0] = 0;
-                switch (d->type) {
-                case PLOT_TYPE_SCATTER:
-                        snprintf(s_data->type ,s_data->alloc_len, "scatter");
-                        break;
-                case PLOT_TYPE_LINES:
-                        snprintf(s_data->type ,s_data->alloc_len, "lines");
-                        break;
-                case PLOT_TYPE_BAR:
-                        snprintf(s_data->type ,s_data->alloc_len, "bar");
-                        break;
-                default:
-                        snprintf(s_data->type ,s_data->alloc_len, "scatter");
-                        break;
-                }
-                /* fprintf(stderr,"%s\n",s_data->type ); */
-                s_data->vis = 0;
-                if(d->viz == PLOT_VIZ_ALL){
-                        s_data->vis = 1;
-                }else{
-                        if(i < d->group_size){
-                                s_data->vis = 1;
+                if(d->is_plot[i]){
+                        /* d->is_plot[i] = 1; */
+                        snprintf(s_data->name,s_data->alloc_len, "%s_%d", TLD_STR(d->id),i);
+                        snprintf(s_data->label,s_data->alloc_len, "%s", d->series_label[i]);
+                        s_data->color[0] = 0;
+                        switch (d->type) {
+                        case PLOT_TYPE_SCATTER:
+                                snprintf(s_data->type ,s_data->alloc_len, "scatter");
+                                break;
+                        case PLOT_TYPE_LINES:
+                                snprintf(s_data->type ,s_data->alloc_len, "lines");
+                                break;
+                        case PLOT_TYPE_BAR:
+                                snprintf(s_data->type ,s_data->alloc_len, "bar");
+                                break;
+                        default:
+                                snprintf(s_data->type ,s_data->alloc_len, "scatter");
+                                break;
                         }
-                }
+                        /* fprintf(stderr,"%s\n",s_data->type ); */
+                        s_data->vis = 1;
+                        if(d->viz == PLOT_VIZ_ALL){
+                                s_data->vis = 1;
+                        }else{
+                                if(i < d->group_size){
+                                        s_data->vis = 1;
+                                }
+                        }
 
-                ADD_DATA(o, s_data, d->x_axis_labels, l_d[i],plot_len);
+                        ADD_DATA(o, s_data, d->x_axis_labels, l_d[i],plot_len);
+                }
         }
 
         series_data_free(s_data);
@@ -454,47 +530,55 @@ int add_plot_instr(tld_strbuf *o, struct plot_data *d)
         RUN(tld_append(o,"',\n"));
         /* Buttom?  */
 
-        if(d->group_size < d->L && d->viz == PLOT_VIZ_FIRSTGROUP){
-                RUN(tld_append(o,"updatemenus: [{\n"));
-                RUN(tld_append(o,"x: 0.5,\n"));
-                RUN(tld_append(o,"xanchor: 'center',\n"));
-                RUN(tld_append(o,"y: 1.09,\n"));
-                RUN(tld_append(o,"yanchor: 'top',\n"));
-                RUN(tld_append(o,"buttons: [\n"));
-                int start = 0;
-                while(start < d->L){
-                        int plot = 0;
-                        for(int i = start; i < start+d->group_size;i++){
-                                plot += d->is_plot[i];
-                        }
 
-                        if(plot){
-                                if(start){
-                                        RUN(tld_append(o,",\n"));
+        if(d->group_size < d->L && d->viz == PLOT_VIZ_FIRSTGROUP){
+                /* Determine how many groups are actually there to plot  */
+                int n_group = 0;
+                /* count_plot_groups(d, &n_group); */
+                n_group = 10;
+                if(n_group > 1){
+
+                        RUN(tld_append(o,"updatemenus: [{\n"));
+                        RUN(tld_append(o,"x: 0.5,\n"));
+                        RUN(tld_append(o,"xanchor: 'center',\n"));
+                        RUN(tld_append(o,"y: 1.09,\n"));
+                        RUN(tld_append(o,"yanchor: 'top',\n"));
+                        RUN(tld_append(o,"buttons: [\n"));
+                        int start = 0;
+                        while(start < d->L){
+                                int plot = 0;
+                                for(int i = start; i < start+d->group_size;i++){
+                                        plot += d->is_plot[i];
                                 }
-                                RUN(tld_append(o,"{\n"));
-                                RUN(tld_append(o,"method: 'restyle',\n"));
-                                RUN(tld_append(o,"args: ['visible', [\n"));
-                                for(int i = 0; i < d->L;i++){
-                                        if(d->is_plot[i]){
-                                                if(i >= start && i < start+d->group_size ){
-                                                        RUN(tld_append(o,"true,"));
-                                                }else{
-                                                        RUN(tld_append(o,"false,"));
+
+                                if(plot){
+                                        if(start){
+                                                RUN(tld_append(o,",\n"));
+                                        }
+                                        RUN(tld_append(o,"{\n"));
+                                        RUN(tld_append(o,"method: 'restyle',\n"));
+                                        RUN(tld_append(o,"args: ['visible', [\n"));
+                                        for(int i = 0; i < d->L;i++){
+                                                if(d->is_plot[i]){
+                                                        if(i >= start && i < start+d->group_size ){
+                                                                RUN(tld_append(o,"true,"));
+                                                        }else{
+                                                                RUN(tld_append(o,"false,"));
+                                                        }
                                                 }
                                         }
-                                }
-                                o->len--;
-                                RUN(tld_append(o,"]],\n"));
-                                RUN(tld_append(o,"label: '"));
-                                RUN(tld_append(o,d->group_label[start]));
-                                RUN(tld_append(o,"'\n"));
+                                        o->len--;
+                                        RUN(tld_append(o,"]],\n"));
+                                        RUN(tld_append(o,"label: '"));
+                                        RUN(tld_append(o,d->group_label[start]));
+                                        RUN(tld_append(o,"'\n"));
 
-                                RUN(tld_append(o,"}\n"));
+                                        RUN(tld_append(o,"}\n"));
+                                }
+                                start = start + d->group_size;
                         }
-                        start = start + d->group_size;
+                        RUN(tld_append(o,",]}],\n"));
                 }
-                RUN(tld_append(o,",]}],\n"));
         }
 
         RUN(tld_append(o,"xaxis: {\n"));
@@ -596,6 +680,28 @@ ERROR:
         return FAIL;
 }
 
+int count_plot_groups(struct plot_data *d, int *n_groups)
+{
+        int n = 0;
+        int start = 0;
+        while(start < d->L){
+                int plot = 0;
+                for(int i = start; i < start+d->group_size;i++){
+                        plot += d->is_plot[i];
+                }
+                if(plot){
+                        n++;
+                }
+                start = start + d->group_size;
+        }
+        LOG_MSG("Number of groups : %d %s", n, TLD_STR(d->title));
+        *n_groups = n;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+
 int plot_data_config(struct plot_data *d, int8_t type, int8_t mod, int8_t group_size, int viz , char* id, char* title, char* x_label, char* y_label, char* savename ,char** series_lab,char** group_lab)
 {
         ASSERT(d != NULL, "No plot data");
@@ -657,6 +763,9 @@ int plot_data_alloc(struct plot_data** plot_data,int x, int y)
         pd->series_label = NULL;
         pd->group_label = NULL;
         pd->is_plot = NULL;
+        pd->is_visible = NULL;
+        pd->visible_tf = NULL;
+        pd->n_group = 0;
         pd->len = x;
         pd->clu_len = 0;
         pd->L = y;
@@ -682,11 +791,13 @@ int plot_data_alloc(struct plot_data** plot_data,int x, int y)
 
         galloc(&pd->data,pd->L,pd->len );
         galloc(&pd->is_plot,pd->L);
+        galloc(&pd->is_visible,pd->L);
         galloc(&pd->series_label,pd->L,256);
         galloc(&pd->group_label,pd->L,256);
 
         for(int i =0;i < pd->L;i++){
                 pd->is_plot[i] = 0;
+                pd->is_visible[i] = 0;
                 for(int j = 0; j < pd->len;j++){
                         pd->data[i][j] = 0;
                 }
@@ -737,9 +848,13 @@ void plot_data_free(struct plot_data *pd)
                 tld_strbuf_free(pd->ylabel);
                 tld_strbuf_free(pd->save_file_name);
 
+                if(pd->visible_tf){
+                        gfree(pd->visible_tf);
+                }
                 gfree(pd->data);
                 gfree(pd->series_label);
                 gfree(pd->is_plot);
+                gfree(pd->is_visible);
                 gfree(pd->group_label);
                 MFREE(pd);
         }
@@ -1121,90 +1236,98 @@ ERROR:
         return FAIL;
 }
 
-int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_data **bin_data)
-{
-        struct bin_data* b = NULL;
-        int idx;
-        int max_idx = 0;
-        int interval = 0;
-        /* get_plot_interval(len, bin_start, 50, &interval); */
+/* struct bin_data { */
+/*         double* x; */
+/*         double* y; */
+/*         double* n; */
+/*         int alloc_len; */
+/*         int len; */
+/* }; */
 
-        fprintf(stderr,"interval: %d\n", interval);
+/* int to_bin_data(uint64_t *x, int len,int bin_start, int bin_size, struct bin_data **bin_data) */
+/* { */
+/*         struct bin_data* b = NULL; */
+/*         int idx; */
+/*         int max_idx = 0; */
+/*         int interval = 0; */
+/*         /\* get_plot_interval(len, bin_start, 50, &interval); *\/ */
 
-        RUN(bin_data_alloc(&b, len));
-        idx = 0;
-        for(int i = 0; i < len;i++){
+/*         fprintf(stderr,"interval: %d\n", interval); */
 
-                if(i <= bin_start){
-                        b->x[idx] = i;
-                        b->y[idx] = x[i];
-                        b->n[idx] = 1.0;
-                        fprintf(stderr,"%d -> %d single \n", i, idx);
-                        idx++;
-                }else{
-                        idx = (i-1) / bin_size + bin_start +1;
-                        fprintf(stderr,"%d -> %d\n", i, idx);
-                        b->x[idx] = MACRO_MAX(i, b->x[idx]);
-                        b->y[idx] += x[i];
-                        b->n[idx] += 1.0;
+/*         RUN(bin_data_alloc(&b, len)); */
+/*         idx = 0; */
+/*         for(int i = 0; i < len;i++){ */
 
-                }
-                max_idx = MACRO_MAX(max_idx, idx);
-        }
-        max_idx+= 1;
-        fprintf(stderr,"Max idx : %d\n", max_idx);
-        b->len = max_idx;
-        for(int i = 0; i < b->len;i++){
-                ASSERT(b->n[i] > 0.0,"N can never be zero!");
-                fprintf(stderr,"%d:x:%f %f %f -> %f \n", i,b->x[i], b->y[i] , b->n[i], b->y[i] / b->n[i]);
-                b->y[i] = b->y[i] / b->n[i];
-        }
-        /* exit(0); */
-        *bin_data = b;
-        return OK;
-ERROR:
-        bin_data_free(b);
-        return FAIL;
-}
+/*                 if(i <= bin_start){ */
+/*                         b->x[idx] = i; */
+/*                         b->y[idx] = x[i]; */
+/*                         b->n[idx] = 1.0; */
+/*                         fprintf(stderr,"%d -> %d single \n", i, idx); */
+/*                         idx++; */
+/*                 }else{ */
+/*                         idx = (i-1) / bin_size + bin_start +1; */
+/*                         fprintf(stderr,"%d -> %d\n", i, idx); */
+/*                         b->x[idx] = MACRO_MAX(i, b->x[idx]); */
+/*                         b->y[idx] += x[i]; */
+/*                         b->n[idx] += 1.0; */
 
-int bin_data_alloc(struct bin_data **bin_data, int len)
-{
-        struct bin_data* b = NULL;
-        MMALLOC(b, sizeof(struct bin_data));
-        b->len = 0;
-        b->alloc_len = len;
-        b->x = NULL;
-        b->y = NULL;
-        b->n = NULL;
-        galloc(&b->x, b->alloc_len);
-        galloc(&b->y, b->alloc_len);
-        galloc(&b->n, b->alloc_len);
-        for(int i = 0; i < b->alloc_len;i++){
-                b->x[i] = 0;
-                b->y[i] = 0;
-                b->n[i] = 0;
-        }
-        *bin_data = b;
+/*                 } */
+/*                 max_idx = MACRO_MAX(max_idx, idx); */
+/*         } */
+/*         max_idx+= 1; */
+/*         fprintf(stderr,"Max idx : %d\n", max_idx); */
+/*         b->len = max_idx; */
+/*         for(int i = 0; i < b->len;i++){ */
+/*                 ASSERT(b->n[i] > 0.0,"N can never be zero!"); */
+/*                 fprintf(stderr,"%d:x:%f %f %f -> %f \n", i,b->x[i], b->y[i] , b->n[i], b->y[i] / b->n[i]); */
+/*                 b->y[i] = b->y[i] / b->n[i]; */
+/*         } */
+/*         /\* exit(0); *\/ */
+/*         *bin_data = b; */
+/*         return OK; */
+/* ERROR: */
+/*         bin_data_free(b); */
+/*         return FAIL; */
+/* } */
 
-        return OK;
-ERROR:
-        bin_data_free(b);
-        return FAIL;
-}
+/* int bin_data_alloc(struct bin_data **bin_data, int len) */
+/* { */
+/*         struct bin_data* b = NULL; */
+/*         MMALLOC(b, sizeof(struct bin_data)); */
+/*         b->len = 0; */
+/*         b->alloc_len = len; */
+/*         b->x = NULL; */
+/*         b->y = NULL; */
+/*         b->n = NULL; */
+/*         galloc(&b->x, b->alloc_len); */
+/*         galloc(&b->y, b->alloc_len); */
+/*         galloc(&b->n, b->alloc_len); */
+/*         for(int i = 0; i < b->alloc_len;i++){ */
+/*                 b->x[i] = 0; */
+/*                 b->y[i] = 0; */
+/*                 b->n[i] = 0; */
+/*         } */
+/*         *bin_data = b; */
 
-void bin_data_free(struct bin_data *b)
-{
-        if(b){
-                if(b->x){
-                        gfree(b->x);
-                }
-                if(b->y){
-                        gfree(b->y);
-                }
-                if(b->n){
-                        gfree(b->n);
-                }
-                MFREE(b);
-        }
+/*         return OK; */
+/* ERROR: */
+/*         bin_data_free(b); */
+/*         return FAIL; */
+/* } */
 
-}
+/* void bin_data_free(struct bin_data *b) */
+/* { */
+/*         if(b){ */
+/*                 if(b->x){ */
+/*                         gfree(b->x); */
+/*                 } */
+/*                 if(b->y){ */
+/*                         gfree(b->y); */
+/*                 } */
+/*                 if(b->n){ */
+/*                         gfree(b->n); */
+/*                 } */
+/*                 MFREE(b); */
+/*         } */
+
+/* } */

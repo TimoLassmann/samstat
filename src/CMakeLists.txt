@@ -43,6 +43,7 @@ add_executable(samstat
   param/param.c
   collect/collect.c
   metrics/metrics.c
+  report/stat_report.c
   report/report.c
   report/lst.c
   tools/tools.c

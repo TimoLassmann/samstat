@@ -37,23 +37,23 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
         /* LEt's see if we have to re-allocate stuff  */
 #include "convert_tables.h"
 
-        RUN(plot_data_resize_len(s->base_comp_R1, sb->max_len));
-        RUN(plot_data_resize_len(s->base_comp_R2, sb->max_len));
+        RUN(plot_data_resize_len(s->base_comp_R1, sb->max_len+1));
+        RUN(plot_data_resize_len(s->base_comp_R2, sb->max_len+1));
 
-        RUN(plot_data_resize_len(s->qual_comp_R1, sb->max_len));
-        RUN(plot_data_resize_len(s->qual_comp_R2, sb->max_len));
+        RUN(plot_data_resize_len(s->qual_comp_R1, sb->max_len+1));
+        RUN(plot_data_resize_len(s->qual_comp_R2, sb->max_len+1));
 
-        RUN(plot_data_resize_len(s->mis_R1, sb->max_len));
-        RUN(plot_data_resize_len(s->mis_R2, sb->max_len));
+        RUN(plot_data_resize_len(s->mis_R1, sb->max_len+1));
+        RUN(plot_data_resize_len(s->mis_R2, sb->max_len+1));
 
-        RUN(plot_data_resize_len(s->ins_R1, sb->max_len));
-        RUN(plot_data_resize_len(s->ins_R2, sb->max_len));
+        RUN(plot_data_resize_len(s->ins_R1, sb->max_len+1));
+        RUN(plot_data_resize_len(s->ins_R2, sb->max_len+1));
 
-        RUN(plot_data_resize_len(s->del_R1, sb->max_len));
-        RUN(plot_data_resize_len(s->del_R2, sb->max_len));
+        RUN(plot_data_resize_len(s->del_R1, sb->max_len+1));
+        RUN(plot_data_resize_len(s->del_R2, sb->max_len+1));
 
-        RUN(plot_data_resize_len(s->len_dist_R1, sb->max_len));
-        RUN(plot_data_resize_len(s->len_dist_R2, sb->max_len));
+        RUN(plot_data_resize_len(s->len_dist_R1, sb->max_len+1));
+        RUN(plot_data_resize_len(s->len_dist_R2, sb->max_len+1));
 
         for(int i = 0; i < sb->num_seq;i++){
                 uint8_t* seq = NULL;
@@ -163,12 +163,12 @@ inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read
         uint64_t** del = NULL;
         uint64_t** mis  = NULL;
 
-        ins = s->ins_R1->data + s->ins_R1->group_size * q_idx;
-        del = s->del_R1->data + s->del_R1->group_size * q_idx;
+        ins = s->ins_R1->data;// + s->ins_R1->group_size * q_idx;
+        del = s->del_R1->data;// + s->del_R1->group_size * q_idx;
         mis = s->mis_R1->data + s->mis_R1->group_size * q_idx;
         if(read == 2){
-                ins = s->ins_R2->data + s->ins_R2->group_size * q_idx;
-                del = s->del_R2->data + s->del_R2->group_size * q_idx;
+                ins = s->ins_R2->data;// + s->ins_R2->group_size * q_idx;
+                del = s->del_R2->data;// + s->del_R2->group_size * q_idx;
                 mis = s->mis_R2->data + s->mis_R2->group_size * q_idx;
         }
         aln_len = a->aln_len;
@@ -186,19 +186,19 @@ inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read
                 if(r[j] != '-' && g[j] == '-'){
                         if(j){
                                 if(g[j-1] != '-'){
-                                        ins[0][rp]++;
+                                        ins[q_idx][rp]++;
                                 }
                         }else{
-                                ins[0][rp]++;
+                                ins[q_idx][rp]++;
                         }
                         rp++;
                 }else if(r[j] == '-' && g[j] != '-'){
                         if(j){
                                 if(r[j-1] != '-'){
-                                        del[0][rp]++;
+                                        del[q_idx][rp]++;
                                 }
                         }else{
-                                del[0][rp]++;
+                                del[q_idx][rp]++;
                         }
                 }else if(r[j] != '-' && g[j] != '-'){
                         if(r[j] != g[j]){
@@ -413,7 +413,7 @@ int stat_collection_alloc(struct stat_collection **stats)
         RUN(plot_data_config(s->ins_R1,
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
-                             1,//s->mapq_map->n_bin,
+                             0,//s->mapq_map->n_bin,
                              PLOT_VIZ_ALL,
                              "ins_R1",
                              "Distribution of Insertions",
@@ -427,7 +427,7 @@ int stat_collection_alloc(struct stat_collection **stats)
         RUN(plot_data_config(s->ins_R2,
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
-                             1,//s->mapq_map->n_bin,
+                             0,//s->mapq_map->n_bin,
                              PLOT_VIZ_ALL,
                              "ins_R2",
                              "Distribution of Insertions",
@@ -443,7 +443,7 @@ int stat_collection_alloc(struct stat_collection **stats)
         RUN(plot_data_config(s->del_R1,
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
-                             1,//s->mapq_map->n_bin,
+                             0,//s->mapq_map->n_bin,
                              PLOT_VIZ_ALL,
                              "del_R1",
                              "Distribution of Deletions",
@@ -457,7 +457,7 @@ int stat_collection_alloc(struct stat_collection **stats)
         RUN(plot_data_config(s->del_R2,
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
-                             1,//s->mapq_map->n_bin,
+                             0,//s->mapq_map->n_bin,
                              PLOT_VIZ_ALL,
                              "del_R2",
                              "Distribution of Deletions",
@@ -499,9 +499,14 @@ int stat_collection_alloc(struct stat_collection **stats)
                              NULL
                     ));
 
-        /* for(int i = 0 ; i < s->ins_R1->L;i++){ */
-        /*         fprintf(stderr,"%d %s\n", i, s->ins_R1->series_label[i]); */
-        /* } */
+        fprintf(stderr,"%s -> %d\n", TLD_STR(s->len_dist_R1->title), s->len_dist_R1->group_size);
+        fprintf(stderr,"%s -> %d\n", TLD_STR(s->base_comp_R1->title), s->base_comp_R1->group_size);
+        fprintf(stderr,"%s -> %d\n", TLD_STR(s->qual_comp_R1->title), s->qual_comp_R1->group_size);
+        fprintf(stderr,"%s -> %d\n", TLD_STR(s->mis_R1->title), s->mis_R1->group_size);
+        fprintf(stderr,"%s -> %d\n", TLD_STR(s->ins_R1->title), s->ins_R1->group_size);
+        fprintf(stderr,"%s -> %d\n", TLD_STR(s->del_R1->title), s->del_R1->group_size);
+
+
         /* exit(0); */
         gfree(base_label);
         *stats = s;

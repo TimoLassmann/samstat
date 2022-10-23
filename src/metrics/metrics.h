@@ -1,7 +1,7 @@
 #ifndef METRICS_H
 #define METRICS_H
 
-#include "plot.h"
+/* #include "plot.h" */
 
 #include "seq/tld-seq.h"
 #include <stdint.h>

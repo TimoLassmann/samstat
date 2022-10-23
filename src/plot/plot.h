@@ -18,7 +18,8 @@ struct plot_data {
         char** series_label;
         char** group_label;
         char** x_axis_labels;
-
+        uint8_t** visible_tf;
+        int32_t n_group;
         int len;
         int clu_len;
         int L;
@@ -28,6 +29,7 @@ struct plot_data {
         tld_strbuf* id;
         tld_strbuf* save_file_name;
         uint8_t* is_plot;
+        uint8_t* is_visible;
         int32_t bin_start;
         int32_t bin_size;
         int8_t group_size;

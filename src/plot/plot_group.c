@@ -225,12 +225,14 @@ int plot_groups_alloc(struct plot_group **plot_group, int n)
 
         g->n_groups = n;
         g->plot = 1;
+        g->max_plot_len = -1;
         MMALLOC(g->l, sizeof(struct plot_group_itm*) * g->n_groups);
         for(int i = 0; i < g->n_groups;i++){
                 g->l[i] = NULL;
                 MMALLOC(g->l[i], sizeof(struct plot_group_itm));
                 g->l[i]->start = 0;
                 g->l[i]->stop = 0;
+                g->l[i]->plot_len = 0;
                 g->l[i]->plot = 1;
                 g->l[i]->viz = 1;
                 g->l[i]->plot_series = NULL;

@@ -204,6 +204,8 @@ int plot_add_code(tld_strbuf *o, struct plot_data *d, struct plot_group *g)
         tmp_buffer->len--;
         tmp_buffer->str[tmp_buffer->len] = 0;
 
+
+
         /* Data */
         RUN(tld_append(o,"var "));
         snprintf(buf, 256,"%s_data", TLD_STR(d->id));
@@ -287,18 +289,26 @@ int plot_add_code(tld_strbuf *o, struct plot_data *d, struct plot_group *g)
                 }
                 RUN(tld_append(o,",]}],\n"));
         }
+
+
+        for(int i = 0; i < g->n_groups;i++){
+                g->max_plot_len = MACRO_MAX(g->max_plot_len, g->l[i]->plot_len);
+        }
+
         RUN(tld_append(o,"xaxis: {\n"));
         if(d->x_is_categorical){
                 RUN(tld_append(o,"type: 'category',\n"));
         }
-        if(d->len > 100 && d->mod != PLOT_MOD_DENSITY){
-                RUN(tld_append(o,"range: [0, 100],\n"));
+
+
+        if(g->max_plot_len > 250 && d->mod != PLOT_MOD_DENSITY){
+                RUN(tld_append(o,"range: [0, 250],\n"));
         }
         snprintf(buf, 256,"title: '%s'\n", TLD_STR(d->xlabel));
 
         RUN(tld_append(o,buf ));
 
-        if(d->len > 100){
+        if(g->max_plot_len > 250){
                 RUN(tld_append(o,",\n"));
 
                 RUN(tld_append(o,"rangeslider: {}\n"));
@@ -509,6 +519,7 @@ int write_data_normal(tld_strbuf *o, struct plot_data *d, struct plot_group_itm*
                 }
         }
         plot_len++;
+        g->plot_len = plot_len;
         /* LOG_MSG("Normal will: %d %d %d plot_len:%d",will_plot,d->len,d->clu_len,plot_len); */
         for(int i = g->start; i < g->stop;i++){
                 if(g->plot_series[i]){
@@ -584,7 +595,7 @@ int write_data_error(tld_strbuf *o, struct plot_data *d, struct plot_group_itm* 
                 }
         }
         plot_len++;
-
+        g->plot_len = plot_len;
         fill_and_write_err(o, d, g->start, g->stop, plot_len);
         return OK;
 ERROR:

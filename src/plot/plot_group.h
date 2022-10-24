@@ -11,6 +11,7 @@
 struct plot_data;
 struct plot_group_itm {
         uint8_t* plot_series;
+        int plot_len;
         int start;
         int stop;
         int viz;
@@ -22,6 +23,7 @@ struct plot_group {
         struct plot_group_itm** l;
         int n_groups;
         int plot;
+        int max_plot_len;
 };
 
 

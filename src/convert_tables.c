@@ -16,9 +16,9 @@ int main(int argc, char *argv[])
         }
 
         tld_strbuf_alloc(&b,1024);
-        /* RUN(header(b)); */
+        RUN(header(b));
         RUN(nuc_to_internal(b));
-        /* RUN(footer(b)); */
+        RUN(footer(b));
         f_ptr = fopen(argv[1], "w");
         if(f_ptr == NULL){
                 ERROR_MSG("Unable to open file %s for writing.", argv[1]);

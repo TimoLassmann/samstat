@@ -214,9 +214,9 @@ int get_plot_interval_exp(struct plot_data* pd, struct interval_clu** interval_c
                         clu_id++;
                 }else{
 
-                        if(i < 500){
+                        if(i < 2000){
                                 ival = 10;
-                        }else if(i < 1000){
+                        }else if(i < 5000){
                                 ival = 50;
                         }else if(i < 10000){
                                 ival = 100;
@@ -244,9 +244,9 @@ int get_plot_interval_exp(struct plot_data* pd, struct interval_clu** interval_c
                         clu_id++;
                 }else{
 
-                        if(i < 500){
+                        if(i < 2000){
                                 ival = 10;
-                        }else if(i < 1000){
+                        }else if(i < 5000){
                                 ival = 50;
                         }else if(i < 10000){
                                 ival = 100;

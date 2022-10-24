@@ -49,6 +49,8 @@ struct stat_collection {
         uint64_t n_proper_paired;
         uint8_t is_aligned;
         uint8_t is_partial_report;
+        uint8_t config;
+        uint8_t collect_type;
 };
 
 

@@ -21,18 +21,34 @@
 #define MAPQUALBIN_lt10 2
 #define MAPQUALBIN_UNMAP 3
 
+#define COLLECT_TYPE_SEQ 1
+#define COLLECT_TYPE_SEQQUAL 2
+#define COLLECT_TYPE_ALL 3
+
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
 
-static inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read,int q_idx);
+static int config_stats(struct tl_seq_buffer *sb, struct stat_collection *s);
+static inline int get_aln_errors(struct stat_collection *s, struct aln_data *a,
+                                 int read, int q_idx);
+
+
+static int collect_stats_seq(struct tl_seq_buffer *sb, struct stat_collection *s);
+static int collect_stats_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s);
+static int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s);
+
+
+
 
 int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
 {
-        uint64_t** t= NULL;
-        int32_t q_idx;
-        int32_t idx;
+        /* uint64_t** t= NULL; */
+        /* int32_t q_idx; */
+        /* int32_t idx; */
         /* LEt's see if we have to re-allocate stuff  */
-
+        if(!s->config){
+                config_stats(sb, s);
+        }
 
 
         RUN(plot_data_resize_len(s->base_comp_R1, sb->max_len+1));
@@ -53,6 +69,225 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
         RUN(plot_data_resize_len(s->len_dist_R1, sb->max_len+1));
         RUN(plot_data_resize_len(s->len_dist_R2, sb->max_len+1));
 
+        /* collect_stats_all(sb,s); */
+
+        switch (s->collect_type) {
+        case COLLECT_TYPE_ALL:
+                collect_stats_all(sb,s);
+                break;
+        case COLLECT_TYPE_SEQQUAL:
+                collect_stats_seqqual(sb,s);
+                break;
+        case COLLECT_TYPE_SEQ:
+                collect_stats_seq(sb,s);
+                break;
+        default:
+                collect_stats_all(sb,s);
+        }
+
+        /* for(int i = 0; i < sb->num_seq;i++){ */
+        /*         uint8_t* seq = NULL; */
+        /*         struct tl_seq *itm = sb->sequences[i]; */
+        /*         q_idx = MAPQUALBIN_UNMAP; */
+        /*         int read = 1; */
+        /*         int clip_start = 0; */
+        /*         int clip_end = 0; */
+        /*         if(itm->data){ */
+        /*                 struct aln_data* a = NULL; */
+        /*                 a = itm->data; */
+
+        /*                 if(a->flag & BAM_FPAIRED){ */
+        /*                         s->n_paired++; */
+        /*                         if(a->flag & BAM_FPROPER_PAIR){ */
+        /*                                 s->n_proper_paired++; */
+        /*                         } */
+        /*                 } */
+        /*                 if(a->reverse){ */
+        /*                         LOG_MSG("Oh no I should reverse!"); */
+        /*                         rev_comp_tl_seq(itm); */
+        /*                         if(a->aln_len){ */
+        /*                                 reverse_comp(a->genome, a->aln_len); */
+        /*                                 reverse_comp(a->read, a->aln_len); */
+        /*                         } */
+        /*                         a->reverse = 0; */
+        /*                 } */
+
+        /*                 q_idx = s->mapq_map->map[ a->map_q]; */
+        /*                 if(a->flag  & BAM_FREAD1){ */
+        /*                         read = 1; */
+        /*                         s->n_read1++; */
+        /*                 }else if(a->flag  & BAM_FREAD2){ */
+        /*                         read = 2; */
+        /*                         s->n_read2++; */
+        /*                 } */
+        /*                 if(a->flag & BAM_FUNMAP){ */
+        /*                         q_idx = MAPQUALBIN_UNMAP; */
+        /*                 } */
+        /*                 clip_start = a->n_clip5; */
+        /*                 clip_end = a->n_clip3; */
+        /*                 if(a->aln_len){ */
+        /*                         get_aln_errors(s, a, read, q_idx); */
+        /*                 } */
+        /*         } */
+        /*         if(read == 1){ */
+        /*                 t = s->len_dist_R1->data;// + q_idx; */
+        /*                 s->basic_nums[0][q_idx]++; */
+        /*         }else{ */
+        /*                 t = s->len_dist_R2->data;// +  q_idx; */
+        /*                 s->basic_nums[1][q_idx]++; */
+        /*         } */
+        /*         /\* LOG_MSG("Adding : %d %d %d  ", itm->len - (clip_start + clip_end),  s->len_dist_R1->len,s->len_dist_R2->len ); *\/ */
+        /*         t[q_idx][itm->len - (clip_start + clip_end)]++; */
+
+        /*         seq = itm->seq->str; */
+
+
+        /*         /\* start collecting...  *\/ */
+        /*         if(read == 1){ */
+        /*                 t = s->base_comp_R1->data  + s->base_comp_R1->group_size * q_idx; */
+        /*         }else{ */
+        /*                 t = s->base_comp_R2->data  + s->base_comp_R2->group_size * q_idx; */
+        /*         } */
+        /*         idx = 0; */
+        /*         int len = itm->len - clip_end; */
+        /*         for(int i = clip_start;i < len;i++){ */
+        /*                 t[nuc_to_internal[seq[i]]][idx]++; */
+        /*                 idx++; */
+        /*         } */
+        /*         /\* Quality  *\/ */
+        /*         if(itm->qual->len){ */
+        /*                 if(itm->qual->str[0] != 0xFF){ */
+        /*                         if(read == 1){ */
+        /*                                 t = s->qual_comp_R1->data  + s->qual_comp_R1->group_size * q_idx; */
+        /*                         }else{ */
+        /*                                 t = s->qual_comp_R2->data  + s->qual_comp_R2->group_size * q_idx; */
+        /*                         } */
+        /*                         seq = itm->qual->str; */
+        /*                         idx = 0; */
+        /*                         for(int i = clip_start;i < len;i++){ */
+        /*                                 int q = (int)seq[i] - sb->base_quality_offset; */
+        /*                                 if(q > 41){ */
+        /*                                         q = 41; */
+        /*                                 } */
+        /*                                 /\* LOG_MSG("%d %d", q, idx); *\/ */
+        /*                                 t[q][idx]++; */
+        /*                                 /\* data[idx][q]++; *\/ */
+        /*                                 idx++; */
+        /*                         } */
+        /*                 } */
+        /*         } */
+        /* } */
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int config_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
+{
+        uint8_t has_aln_data = 0;
+        uint8_t has_qual_data = 0;
+
+        for(int i = 0; i < sb->num_seq;i++){
+                struct tl_seq *itm = sb->sequences[i];
+                if(itm->data){
+                        has_aln_data = 1;
+                }
+                if(itm->qual->len){
+                        if(itm->qual->str[0] != 0xFF){
+                                has_qual_data = 1;
+                        }
+                }
+
+        }
+        if(has_aln_data && has_qual_data ){
+                s->collect_type = COLLECT_TYPE_ALL;
+        }else if(!has_aln_data && has_qual_data){
+                s->collect_type = COLLECT_TYPE_SEQQUAL;
+        }else if(!has_aln_data && !has_qual_data){
+                s->collect_type = COLLECT_TYPE_SEQ;
+        }else{
+                s->collect_type = COLLECT_TYPE_ALL;
+        }
+
+        s->config = 1;
+        return OK;
+}
+
+int collect_stats_seq(struct tl_seq_buffer *sb, struct stat_collection *s)
+{
+        uint64_t** t= NULL;
+        int32_t q_idx;
+        q_idx = MAPQUALBIN_UNMAP;
+
+        for(int i = 0; i < sb->num_seq;i++){
+                uint8_t* seq = NULL;
+
+                struct tl_seq *itm = sb->sequences[i];
+
+
+                t = s->len_dist_R1->data;// + q_idx;
+                s->basic_nums[0][q_idx]++;
+
+                /* LOG_MSG("Adding : %d %d %d  ", itm->len - (clip_start + clip_end),  s->len_dist_R1->len,s->len_dist_R2->len ); */
+                t[q_idx][itm->len]++;
+
+                seq = itm->seq->str;
+
+
+                /* start collecting...  */
+                t = s->base_comp_R1->data  + s->base_comp_R1->group_size * q_idx;
+                int len = itm->len;
+                for(int i = 0;i < len;i++){
+                        t[nuc_to_internal[seq[i]]][i]++;
+                }
+        }
+        return OK;
+}
+
+
+int collect_stats_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
+{
+        uint64_t** t= NULL;
+        uint64_t** t_q= NULL;
+        int32_t q_idx;
+
+        q_idx = MAPQUALBIN_UNMAP;
+        for(int i = 0; i < sb->num_seq;i++){
+                uint8_t* seq = NULL;
+                uint8_t* qual = NULL;
+                struct tl_seq *itm = sb->sequences[i];
+
+                t = s->len_dist_R1->data;// + q_idx;
+                s->basic_nums[0][q_idx]++;
+
+                /* LOG_MSG("Adding : %d %d %d  ", itm->len - (clip_start + clip_end),  s->len_dist_R1->len,s->len_dist_R2->len ); */
+                t[q_idx][itm->len]++;
+
+                seq = itm->seq->str;
+                qual = itm->qual->str;
+
+                /* start collecting...  */
+                t = s->base_comp_R1->data  + s->base_comp_R1->group_size * q_idx;
+                t_q = s->qual_comp_R1->data  + s->qual_comp_R1->group_size * q_idx;
+                int len = itm->len;
+                for(int i = 0;i < len;i++){
+                        t[nuc_to_internal[seq[i]]][i]++;
+                        int q = (int)qual[i] - sb->base_quality_offset;
+                        if(q > 41){
+                                q = 41;
+                        }
+                        t_q[q][i]++;
+                }
+        }
+        return OK;
+}
+
+
+int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s)
+{
+        uint64_t** t= NULL;
+        int32_t q_idx;
+        int32_t idx;
         for(int i = 0; i < sb->num_seq;i++){
                 uint8_t* seq = NULL;
                 struct tl_seq *itm = sb->sequences[i];
@@ -96,7 +331,6 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
                         if(a->aln_len){
                                 get_aln_errors(s, a, read, q_idx);
                         }
-
                 }
                 if(read == 1){
                         t = s->len_dist_R1->data;// + q_idx;
@@ -145,12 +379,10 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
                                 }
                         }
                 }
-
         }
         return OK;
-ERROR:
-        return FAIL;
 }
+
 
 inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read,int q_idx)
 {
@@ -278,6 +510,8 @@ int stat_collection_alloc(struct stat_collection **stats)
 
         s->is_aligned = 0;
         s->is_partial_report = 0;
+        s->config = 0;
+        s->collect_type = 0;
         RUN(get_mapqual_bins(&s->mapq_map));
 
 

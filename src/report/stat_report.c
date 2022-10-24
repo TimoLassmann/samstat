@@ -12,15 +12,15 @@
 
 static int samstat_title(tld_strbuf *o, struct samstat_param *p, int id);
 static int samstat_file_stat_section(tld_strbuf *o, char *filename);
-
 static int samstat_version_section(tld_strbuf *o);
-static int samstat_partial_warning_section(tld_strbuf *o,
-                                           struct stat_collection *s);
+static int samstat_partial_warning_section(tld_strbuf *o, struct stat_collection *s);
 static int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collection *s);
-
 static int samstat_footer(tld_strbuf *out_buffer);
 
+static int samstat_add_large_number(tld_strbuf *o, uint64_t n);
+
 static int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id);
+
 int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
 {
 
@@ -38,19 +38,19 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
         RUN(samstat_file_stat_section(out, p->infile[id]));
         RUN(samstat_version_section(out));
 
-        LOG_MSG("add mapping stat");
+        /* LOG_MSG("add mapping stat"); */
         RUN(samstat_mapping_quality_overview_section(out, s));
 
         if(s->is_partial_report){
                 RUN(samstat_partial_warning_section(out, s));
         }
 
-        for(int i = 0 ; i < 2;i++){
-                for(int j = 0; j < s->mapq_map->n_bin;j++){
-                        fprintf(stderr,"%"PRId64"\t", s->basic_nums[i][j]);
-                }
-                fprintf(stderr," - READ %d\n",i+1);
-        }
+        /* for(int i = 0 ; i < 2;i++){ */
+        /*         for(int j = 0; j < s->mapq_map->n_bin;j++){ */
+        /*                 fprintf(stderr,"%"PRId64"\t", s->basic_nums[i][j]); */
+        /*         } */
+        /*         fprintf(stderr," - READ %d\n",i+1); */
+        /* } */
 
         /* LENGTH Distribution  */
         if(!s->n_paired){
@@ -177,44 +177,6 @@ ERROR:
         return FAIL;
 }
 
-int samstat_footer(tld_strbuf *out_buffer)
-{
-        RUN(tld_append(out_buffer, "<footer>\n"));
-
-        RUN(tld_append(out_buffer, "<div>\n"));
-        RUN(tld_append(out_buffer, "<section id=\"about\">\n"));
-        RUN(tld_append(out_buffer, "<h3>About</h3>\n"));
-        RUN(tld_append(out_buffer, "<p>SAMStat is a basic quality control program for NGS data. It displays information about mapped and unmapped reads to diagnose mapping and other problems.</p> <p> The plots on this page were draw using <a href=\"https://plotly.com/graphing-libraries/\">Plotly</a>.</p>\n"));
-        RUN(tld_append(out_buffer, "</section>\n"));
-        RUN(tld_append(out_buffer, "<section id=\"contact\">\n"));
-
-        RUN(tld_append(out_buffer, "<h3>Contact</h3>\n"));
-
-        RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann.</p>\n"));
-        RUN(tld_append(out_buffer, "<h3>Please cite:</h3>\n"));
-
-        RUN(tld_append(out_buffer, "<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n"));
-        RUN(tld_append(out_buffer, "</section>\n"));
-        RUN(tld_append(out_buffer, "<section id=\"blogroll\">\n"));
-        RUN(tld_append(out_buffer, "<h3>Links</h3>\n"));
-        RUN(tld_append(out_buffer, "<ul>\n"));
-        /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
-        RUN(tld_append(out_buffer, "<li><a href=\"https://samtools.github.io/hts-specs/\">SAM/BAM specifications</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/SAMStat/\">samstat</a></li>\n"));
-        /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
-        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));
-        /* RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n")); */
-
-
-        RUN(tld_append(out_buffer, "</ul>\n"));
-        RUN(tld_append(out_buffer, "</section>\n"));
-
-        RUN(tld_append(out_buffer, "</div>\n"));
-        RUN(tld_append(out_buffer, "</footer>\n"));
-        return OK;
-ERROR:
-        return FAIL;
-}
 
 int samstat_title(tld_strbuf *o,struct samstat_param *p , int id)
 {
@@ -289,23 +251,61 @@ ERROR:
         return FAIL;
 }
 
+int samstat_add_large_number(tld_strbuf *o, uint64_t n)
+{
+        char buf[256];
+        if(n < 1000){
+                snprintf(buf, 256,"%"PRId64"", n);
+                RUN(tld_append(o, buf));
+        }else if(n >= 1000 && n < 1000000){
+                uint64_t tmp = (uint64_t) round((double)  n / 1000.0);
+                snprintf(buf, 256,"%"PRId64"", tmp);
+                RUN(tld_append(o, buf));
+                RUN(tld_append(o, "K"));
+        }else if(n >= 1000000 && n < 1000000000ull){
+                uint64_t tmp = (uint64_t) round((double)  n / 1000000.0);
+                snprintf(buf, 256,"%"PRId64"", tmp);
+                RUN(tld_append(o, buf));
+                RUN(tld_append(o, "M"));
+        }else if(n >= 1000000000ull){
+                uint64_t tmp = (uint64_t) round((double)  n / 1000000000.0);
+                snprintf(buf, 256,"%"PRId64"", tmp);
+                RUN(tld_append(o, buf));
+                RUN(tld_append(o, "G"));
+        }
+
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collection *s)
 {
         char buf[256];
         lst_node* n = NULL;
-        if(!s->is_aligned){
-                uint64_t total = 0;
-                for(int i = 0; i < 2;i++){
-                        for(int j = 0;j < s->mapq_map->n_bin;j++){
-                                total += s->basic_nums[i][j];
-                        }
-                }
 
+        uint64_t total = 0;
+        for(int i = 0; i < 2;i++){
+                for(int j = 0;j < s->mapq_map->n_bin;j++){
+                        total += s->basic_nums[i][j];
+                }
+        }
+
+
+        if(!s->is_aligned){
                 RUN(tld_append(o, "<h2>File statistics</h2>\n"));
-                snprintf(buf, 256,"%"PRId64"", total);
-                RUN(tld_append(o, buf));
-                RUN(tld_append(o, " - reads<br>"));
+                samstat_add_large_number(o, total);
+                RUN(tld_append(o, " - reads"));
+                if(total >= 1000){
+                        RUN(tld_append(o, " (exact: "));
+                        snprintf(buf, 256,"%"PRId64"", total);
+                        RUN(tld_append(o, buf));
+                        RUN(tld_append(o, ")"));
+                }
+                RUN(tld_append(o, "<br>"));
+
+
                 return OK;
         }
 
@@ -314,19 +314,30 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
 
         if(s->n_paired){
                 RUN(tld_append(o, "<p>"));
-                snprintf(buf, 256,"%"PRId64"", s->n_read1 + s->n_read2);
-                RUN(tld_append(o, buf));
-                RUN(tld_append(o, " - in total<br>"));
-                if(s->n_paired){
-                        snprintf(buf, 256,"%"PRId64"", s->n_paired);
+
+                samstat_add_large_number(o, total);
+                RUN(tld_append(o, " - reads "));
+                if(total  >= 1000){
+                        RUN(tld_append(o, " (exact: "));
+                        snprintf(buf, 256,"%"PRId64"", total);
                         RUN(tld_append(o, buf));
+                        RUN(tld_append(o, ")"));
+                }
+                RUN(tld_append(o, "<br>"));
+
+                /* RUN(tld_append(o, " - in total<br>")); */
+                if(s->n_paired){
+                        /* snprintf(buf, 256,"%"PRId64"", s->n_paired); */
+                        samstat_add_large_number(o, s->n_paired);
+                        /* RUN(tld_append(o, buf)); */
                         RUN(tld_append(o, " - paired in sequencing ("));
-                        snprintf(buf, 256,"%0.1f", (double)s->n_paired / (double) (s->n_read1 + s->n_read2) * 100.0);
+                        snprintf(buf, 256,"%0.1f", (double)s->n_paired / (double) (total ) * 100.0);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, "%)<br>"));
 
-                        snprintf(buf, 256,"%"PRId64"", s->n_proper_paired);
-                        RUN(tld_append(o, buf));
+                        /* snprintf(buf, 256,"%"PRId64"", s->n_proper_paired); */
+                        samstat_add_large_number(o, s->n_proper_paired);
+                        /* RUN(tld_append(o, buf)); */
                         RUN(tld_append(o, " - properly paired ("));
                         snprintf(buf, 256,"%0.1f", (double)s->n_proper_paired / (double) s->n_paired * 100.0);
                         RUN(tld_append(o, buf));
@@ -352,7 +363,7 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
         o->len--;
         RUN(tld_append(o, "],"));
 
-        uint64_t total = 0;
+        total = 0;
         RUN(tld_append(o, "["));
         for(int i = 0; i < s->mapq_map->n_bin;i++){
                 total += s->basic_nums[0][i];
@@ -469,6 +480,45 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
 
         RUN(tld_append(o, "</script>\n"));
 
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int samstat_footer(tld_strbuf *out_buffer)
+{
+        RUN(tld_append(out_buffer, "<footer>\n"));
+
+        RUN(tld_append(out_buffer, "<div>\n"));
+        RUN(tld_append(out_buffer, "<section id=\"about\">\n"));
+        RUN(tld_append(out_buffer, "<h3>About</h3>\n"));
+        RUN(tld_append(out_buffer, "<p>SAMStat is a basic quality control program for NGS data. It displays information about mapped and unmapped reads to diagnose mapping and other problems.</p> <p> The plots on this page were draw using <a href=\"https://plotly.com/graphing-libraries/\">Plotly</a>.</p>\n"));
+        RUN(tld_append(out_buffer, "</section>\n"));
+        RUN(tld_append(out_buffer, "<section id=\"contact\">\n"));
+
+        RUN(tld_append(out_buffer, "<h3>Contact</h3>\n"));
+
+        RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann.</p>\n"));
+        RUN(tld_append(out_buffer, "<h3>Please cite:</h3>\n"));
+
+        RUN(tld_append(out_buffer, "<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n"));
+        RUN(tld_append(out_buffer, "</section>\n"));
+        RUN(tld_append(out_buffer, "<section id=\"blogroll\">\n"));
+        RUN(tld_append(out_buffer, "<h3>Links</h3>\n"));
+        RUN(tld_append(out_buffer, "<ul>\n"));
+        /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
+        RUN(tld_append(out_buffer, "<li><a href=\"https://samtools.github.io/hts-specs/\">SAM/BAM specifications</a></li>\n"));
+        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/SAMStat/\">samstat</a></li>\n"));
+        /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
+        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));
+        /* RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n")); */
+
+
+        RUN(tld_append(out_buffer, "</ul>\n"));
+        RUN(tld_append(out_buffer, "</section>\n"));
+
+        RUN(tld_append(out_buffer, "</div>\n"));
+        RUN(tld_append(out_buffer, "</footer>\n"));
         return OK;
 ERROR:
         return FAIL;

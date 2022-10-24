@@ -24,7 +24,7 @@ add_subdirectory(plot)
 if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h)
 else()
    add_executable(converttablegen
-    metrics/convert_tables.c
+    convert_tables.c
     )  
   target_link_libraries(converttablegen PRIVATE tld-dev)
 
@@ -42,9 +42,9 @@ add_executable(samstat
   sambamparse/sam_bam_parse.c
   param/param.c
   collect/collect.c
-  metrics/metrics.c
+  # metrics/metrics.c
   report/stat_report.c
-  report/report.c
+  # report/report.c
   report/lst.c
   tools/tools.c
   ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h

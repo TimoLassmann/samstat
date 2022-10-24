@@ -3,9 +3,9 @@
 #include "htslib/sam.h"
 #include "htsinterface/htsglue.h"
 #include "param/param.h"
-#include "metrics/metrics.h"
+/* #include "metrics/metrics.h" */
 #include "collect/collect.h"
-#include "report/report.h"
+/* #include "report/report.h" */
 #include "report/stat_report.h"
 #include "tools/tools.h"
 /* #include "pst.h" */
@@ -77,6 +77,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         /* RUN(metrics_set_output_desc(metrics, p->infile[id])); */
         /* metrics->is_aligned = 1; */
+        s->is_aligned = 1;
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
                 RUN(read_bam_chunk(f_handle, sb));
@@ -108,18 +109,17 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 if(p->verbose){
                         LOG_MSG("Processed %"PRId64" sequences", n_read);
                 }
-                if(n_read > p->top_n){
+                if(n_read > p->top_n && sb->num_seq == sb->malloc_num){
                         if(p->verbose){
                                 LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
                         }
-                        /* metrics->is_partial_report = 1; */
+                        s->is_partial_report = 1;
                         break;
                 }
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
         }
         RUN(close_bam(f_handle));
-
 
         RUN(stat_report(s,p, id));
         stat_collection_free(s);
@@ -194,6 +194,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         if(p->verbose){
                                 LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
                         }
+                        s->is_partial_report = 1;
                         /* metrics->is_partial_report = 1; */
                         break;
                 }

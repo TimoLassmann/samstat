@@ -9,8 +9,17 @@
 #define EXTERN extern
 #endif
 struct tl_seq_buffer;
-struct mapqual_bins;
+
 struct plot_data;
+
+struct mapqual_bins {
+        uint8_t* map;
+        char** description;
+        int len;
+        int n_bin;
+};
+
+
 struct stat_collection {
         /* one struct per plot...  */
         struct plot_data* base_comp_R1;
@@ -33,11 +42,13 @@ struct stat_collection {
 
         struct mapqual_bins* mapq_map;
 
+        uint64_t** basic_nums;
         uint64_t n_read1;
         uint64_t n_read2;
         uint64_t n_paired;
         uint64_t n_proper_paired;
         uint8_t is_aligned;
+        uint8_t is_partial_report;
 };
 
 

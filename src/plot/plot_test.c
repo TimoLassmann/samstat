@@ -21,7 +21,8 @@ int main(void)
         plot_add(out,pd);
         pd->id->str[0] = 'B';
         pd->mod =  PLOT_MOD_NORMAL;
-        pd->viz = PLOT_VIZ_FIRSTGROUP;
+        pd->plot_empty_series = 1;
+        /* pd->viz = PLOT_VIZ_FIRSTGROUP; */
 
         plot_add(out,pd);
 
@@ -88,12 +89,12 @@ int random_plot_data(struct plot_data **p, struct rng_state *rng)
         double t = tl_random_double(rng);
         if(t < 0.5){
                 fprintf(stderr,"Viz group!\n");
-                pd->viz = PLOT_VIZ_FIRSTGROUP;
+                pd->plot_empty_series = 1;//PLOT_VIZ_FIRSTGROUP;
         }else{
                 fprintf(stderr,"Viz all!\n");
-                pd->viz = PLOT_VIZ_ALL;
+                pd->plot_empty_series = 0;//_VIZ_ALL;
         }
-        pd->viz = PLOT_VIZ_ALL;
+        /* pd->viz = PLOT_VIZ_ALL; */
         pd->group_size =group_size;
 
         *p = pd;

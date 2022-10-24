@@ -4,6 +4,9 @@
 #include "sam.h"
 #include "../htsinterface/htsglue.h"
 
+
+#include "convert_tables.h"
+
 /* #include "convert_tables.h" */
 /* #include "../metrics/metrics.h" */
 
@@ -12,12 +15,6 @@
 #define COLLECT_IMPORT
 #include "collect.h"
 
-struct mapqual_bins {
-        uint8_t* map;
-        char** description;
-        int len;
-        int n_bin;
-};
 
 #define MAPQUALBIN_gt30 0
 #define MAPQUALBIN_lt30 1
@@ -35,7 +32,8 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
         int32_t q_idx;
         int32_t idx;
         /* LEt's see if we have to re-allocate stuff  */
-#include "convert_tables.h"
+
+
 
         RUN(plot_data_resize_len(s->base_comp_R1, sb->max_len+1));
         RUN(plot_data_resize_len(s->base_comp_R2, sb->max_len+1));
@@ -102,8 +100,10 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
                 }
                 if(read == 1){
                         t = s->len_dist_R1->data;// + q_idx;
+                        s->basic_nums[0][q_idx]++;
                 }else{
                         t = s->len_dist_R2->data;// +  q_idx;
+                        s->basic_nums[1][q_idx]++;
                 }
                 /* LOG_MSG("Adding : %d %d %d  ", itm->len - (clip_start + clip_end),  s->len_dist_R1->len,s->len_dist_R2->len ); */
                 t[q_idx][itm->len - (clip_start + clip_end)]++;
@@ -154,14 +154,13 @@ ERROR:
 
 inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read,int q_idx)
 {
-
-#include "convert_tables.h"
         uint8_t* g = NULL;
         uint8_t* r = NULL;
         int aln_len;
         uint64_t** ins = NULL;
         uint64_t** del = NULL;
         uint64_t** mis  = NULL;
+
 
         ins = s->ins_R1->data;// + s->ins_R1->group_size * q_idx;
         del = s->del_R1->data;// + s->del_R1->group_size * q_idx;
@@ -208,8 +207,8 @@ inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read
                 }
         }
         return OK;
-ERROR:
-        return FAIL;
+/* ERROR: */
+/*         return FAIL; */
 }
 
 int stat_collection_finalise(struct stat_collection *s)
@@ -269,6 +268,8 @@ int stat_collection_alloc(struct stat_collection **stats)
 
         s->mapq_map = NULL;
 
+        s->basic_nums = NULL;
+
         s->n_paired = 0;
         s->n_proper_paired = 0;
 
@@ -276,8 +277,16 @@ int stat_collection_alloc(struct stat_collection **stats)
         s->n_read2 = 0;
 
         s->is_aligned = 0;
-
+        s->is_partial_report = 0;
         RUN(get_mapqual_bins(&s->mapq_map));
+
+
+        galloc(&s->basic_nums, 2, s->mapq_map->n_bin);
+        for(int i = 0; i < 2;i++){
+                for(int j = 0; j < s->mapq_map->n_bin;j++){
+                        s->basic_nums[i][j] = 0;
+                }
+        }
 
         /* Alloc 250 len and 5 slots (ACTGN) for every mapq bin  */
         RUN(plot_data_alloc(&s->base_comp_R1, 250,  5* s->mapq_map->n_bin));
@@ -322,7 +331,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_BAR,
                              PLOT_MOD_NORMAL,
                              5,
-                             PLOT_VIZ_FIRSTGROUP,
+                             PLOT_EMPTY_SERIES, /* plot empty series - yes please  */
                              "bc_R1",
                              "Base Composition",
                              "Length",
@@ -336,7 +345,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_BAR,
                              PLOT_MOD_NORMAL,
                              5,
-                             PLOT_VIZ_FIRSTGROUP,
+                             PLOT_EMPTY_SERIES, /* plot empty series - yes please  */
                              "bc_R2",
                              "Base Composition",
                              "Length",
@@ -347,13 +356,14 @@ int stat_collection_alloc(struct stat_collection **stats)
                     ));
 
 
+
         /* qual composition */
 
         RUN(plot_data_config(s->qual_comp_R1,
                              PLOT_TYPE_LINES,
                              PLOT_MOD_ERROR_BAR,
                              42,
-                             PLOT_VIZ_ALL,
+                             0,
                              "bq_R1",
                              "Base quality distribution",
                              "Length",
@@ -367,7 +377,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_LINES,
                              PLOT_MOD_ERROR_BAR,
                              42,
-                             PLOT_VIZ_ALL,
+                             0,
                              "bq_R2",
                              "Base quality distribution",
                              "Length",
@@ -384,7 +394,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_BAR,
                              PLOT_MOD_NORMAL,
                              5,
-                             PLOT_VIZ_FIRSTGROUP,
+                             PLOT_EMPTY_SERIES,
                              "mis_R1",
                              "Distribution of Mismatches",
                              "Length",
@@ -394,11 +404,12 @@ int stat_collection_alloc(struct stat_collection **stats)
                              s->mapq_map->description
                     ));
 
+
         RUN(plot_data_config(s->mis_R2,
                              PLOT_TYPE_BAR,
                              PLOT_MOD_NORMAL,
                              5,
-                             PLOT_VIZ_FIRSTGROUP,
+                             PLOT_EMPTY_SERIES,
                              "mis_R2",
                              "Distribution of Mismatches",
                              "Length",
@@ -408,13 +419,16 @@ int stat_collection_alloc(struct stat_collection **stats)
                              s->mapq_map->description
                     ));
 
+
+
+
         /* ins composition */
         /* LOG_MSG("Ins comp"); */
         RUN(plot_data_config(s->ins_R1,
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
                              0,//s->mapq_map->n_bin,
-                             PLOT_VIZ_ALL,
+                             0,
                              "ins_R1",
                              "Distribution of Insertions",
                              "Length",
@@ -428,7 +442,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
                              0,//s->mapq_map->n_bin,
-                             PLOT_VIZ_ALL,
+                             0,
                              "ins_R2",
                              "Distribution of Insertions",
                              "Length",
@@ -444,7 +458,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
                              0,//s->mapq_map->n_bin,
-                             PLOT_VIZ_ALL,
+                             0,
                              "del_R1",
                              "Distribution of Deletions",
                              "Length",
@@ -458,7 +472,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_LINES,
                              PLOT_MOD_NORMAL,
                              0,//s->mapq_map->n_bin,
-                             PLOT_VIZ_ALL,
+                             0,
                              "del_R2",
                              "Distribution of Deletions",
                              "Length",
@@ -474,7 +488,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_LINES,
                              PLOT_MOD_DENSITY,
                              0,//s->mapq_map->n_bin,
-                             PLOT_VIZ_ALL,
+                             0,
                              "len_R1",
                              "Length Distribution",
                              "Length",
@@ -489,7 +503,7 @@ int stat_collection_alloc(struct stat_collection **stats)
                              PLOT_TYPE_LINES,
                              PLOT_MOD_DENSITY,
                              0,//s->mapq_map->n_bin,
-                             PLOT_VIZ_ALL,
+                             0,
                              "len_R2",
                              "Length Distribution",
                              "Length",
@@ -499,12 +513,12 @@ int stat_collection_alloc(struct stat_collection **stats)
                              NULL
                     ));
 
-        fprintf(stderr,"%s -> %d\n", TLD_STR(s->len_dist_R1->title), s->len_dist_R1->group_size);
-        fprintf(stderr,"%s -> %d\n", TLD_STR(s->base_comp_R1->title), s->base_comp_R1->group_size);
-        fprintf(stderr,"%s -> %d\n", TLD_STR(s->qual_comp_R1->title), s->qual_comp_R1->group_size);
-        fprintf(stderr,"%s -> %d\n", TLD_STR(s->mis_R1->title), s->mis_R1->group_size);
-        fprintf(stderr,"%s -> %d\n", TLD_STR(s->ins_R1->title), s->ins_R1->group_size);
-        fprintf(stderr,"%s -> %d\n", TLD_STR(s->del_R1->title), s->del_R1->group_size);
+        /* fprintf(stderr,"%s -> %d\n", TLD_STR(s->len_dist_R1->title), s->len_dist_R1->group_size); */
+        /* fprintf(stderr,"%s -> %d\n", TLD_STR(s->base_comp_R1->title), s->base_comp_R1->group_size); */
+        /* fprintf(stderr,"%s -> %d\n", TLD_STR(s->qual_comp_R1->title), s->qual_comp_R1->group_size); */
+        /* fprintf(stderr,"%s -> %d\n", TLD_STR(s->mis_R1->title), s->mis_R1->group_size); */
+        /* fprintf(stderr,"%s -> %d\n", TLD_STR(s->ins_R1->title), s->ins_R1->group_size); */
+        /* fprintf(stderr,"%s -> %d\n", TLD_STR(s->del_R1->title), s->del_R1->group_size); */
 
 
         /* exit(0); */
@@ -519,6 +533,9 @@ ERROR:
 void stat_collection_free(struct stat_collection *s)
 {
         if(s){
+                if(s->basic_nums){
+                        gfree(s->basic_nums);
+                }
                 if(s->base_comp_R1){
                         plot_data_free(s->base_comp_R1);
                 }

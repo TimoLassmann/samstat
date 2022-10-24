@@ -18,8 +18,8 @@ struct plot_data {
         char** series_label;
         char** group_label;
         char** x_axis_labels;
-        uint8_t** visible_tf;
-        int32_t n_group;
+        /* uint8_t** visible_tf; */
+        /* int32_t n_group; */
         int len;
         int clu_len;
         int L;
@@ -28,14 +28,16 @@ struct plot_data {
         tld_strbuf* ylabel;
         tld_strbuf* id;
         tld_strbuf* save_file_name;
-        uint8_t* is_plot;
-        uint8_t* is_visible;
+        /* uint8_t* is_plot; */
+        /* uint8_t* is_visible; */
         int32_t bin_start;
-        int32_t bin_size;
+        /* int32_t bin_size; */
         int8_t group_size;
-        int8_t viz;
+        /* int8_t viz; */
         int8_t type;
         int8_t mod;
+        uint8_t plot_empty_series;
+        int8_t is_empty;
         uint8_t x_is_categorical;
         uint32_t target_n_clu;
 };
@@ -48,8 +50,8 @@ struct plot_data {
 #define PLOT_MOD_ERROR_BAR 1
 #define PLOT_MOD_DENSITY 2
 
-#define PLOT_VIZ_ALL 0
-#define PLOT_VIZ_FIRSTGROUP 1
+
+#define PLOT_EMPTY_SERIES 1
 
 #define PLOT_TYPE_SHIFT 8
 #define PLOT_TYPE_MASK 0xFF

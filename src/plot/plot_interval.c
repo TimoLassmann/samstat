@@ -79,14 +79,27 @@ int summarise_data(struct plot_data *d, struct interval_clu *ic)
                         ic->n[i][j] = 0;
                 }
         }
+
         for(int i = 0; i < d->L ;i++){
                 for(int j = 0; j < d->len;j++){
                         int idx = ic->mapping[j];
-                        /* fprintf(stderr,"%d %d  %d\n",i,j,ic->clu_len); */
                         ic->data[i][idx] += d->data[i][j];
                         ic->n[i][idx] += 1.0;
                 }
         }
+
+        /* LOG_MSG("%s", TLD_STR(d->title)); */
+        /* for(int i = 0; i < ic->L;i++){ */
+        /*         fprintf(stderr,"i: %d\t",i); */
+        /*         for(int j = 0; j < ic->clu_len;j++){ */
+        /*                 fprintf(stderr,"%ld ",ic->data[i][j]); */
+
+        /*         } */
+        /*         fprintf(stderr,"\n"); */
+        /* } */
+        /*  fprintf(stderr,"\n"); */
+
+
         /* fprintf(stderr,"Summarise \n"); */
         for(int i = 0; i < d->L ;i++){
                 for(int j = 0; j < ic->clu_len;j++){
@@ -97,6 +110,16 @@ int summarise_data(struct plot_data *d, struct interval_clu *ic)
         }
         /* fprintf(stderr,"\n"); */
         /* gfree(d->data); */
+        /* LOG_MSG("%s", TLD_STR(d->title)); */
+        /* for(int i = 0; i < ic->L;i++){ */
+        /*         fprintf(stderr,"i: %d\t",i); */
+        /*         for(int j = 0; j < ic->clu_len;j++){ */
+        /*                 fprintf(stderr,"%ld ",ic->data[i][j]); */
+
+        /*         } */
+        /*         fprintf(stderr,"\n"); */
+        /* } */
+        /*  fprintf(stderr,"\n"); */
 
         d->clu_data = ic->data;
         ic->data = NULL;
@@ -201,8 +224,6 @@ int get_plot_interval_exp(struct plot_data* pd, struct interval_clu** interval_c
         int old_start = 0;
         int ival = 1;
         interval_clu_alloc(&ic, len);
-
-
 
         /* Vector<BaseGroup> groups = new Vector<BaseGroup>(); */
 

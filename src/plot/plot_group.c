@@ -9,7 +9,7 @@
 
 
 static int set_series_plot(struct plot_data *d,struct plot_group *g);
-static int debug_print_group_data(struct plot_group *g);
+int debug_print_group_data(struct plot_group *g);
 static int sanity_check_group_data(struct plot_group *g);
 static int set_visibility(struct plot_group *g);
 static int check_for_group_data(struct plot_data *d, struct plot_group* g);

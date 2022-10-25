@@ -19,7 +19,9 @@ struct samstat_param {
         uint8_t* file_type;
         int buffer_size;
         int n_infile;
+        int n_threads;
         int verbose;
+        uint8_t collect_end;
         uint64_t top_n;
         int32_t report_max_len;
         double subsample;

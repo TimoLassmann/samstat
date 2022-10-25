@@ -11,11 +11,18 @@
 /* #include "pst.h" */
 #include <stdint.h>
 #include <inttypes.h>
+
+#if HAVE_PTHREADS
+#include "thread/thread_data.h"
+#endif
     /* int detect_file_type(char *filename, int* type); */
 int process_sam_bam_file(struct samstat_param *p, int id);
 int process_fasta_fastq_file(struct samstat_param *p, int id);
 
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
+void *samstat_worker(void *data);
+
+
 
 int main(int argc, char *argv[])
 {
@@ -23,6 +30,29 @@ int main(int argc, char *argv[])
 
         RUN(parse_param(argc, argv, &param));
 
+#if HAVE_PTHREADS
+        struct thread_data* td = NULL;
+        RUN(thread_data_init(&td, param));
+
+        for(long t = 0; t < td->n_threads; t++){
+                int rc = pthread_create(&td->threads[t], NULL, samstat_worker, (void *)td);
+                if(rc){
+                        ERROR_MSG("ERROR; return code from pthread_create() is %d\n", rc);
+                }
+        }
+        for(long t = 0; t < td->n_threads; t++) {
+                void *status;
+                int rc = pthread_join(td->threads[t], &status);
+                if(rc){
+                        ERROR_MSG("ERROR; return code from pthread_join() is %d\n", rc);
+                }
+                if(status == PTHREAD_CANCELED){
+                        fprintf(stdout,"Main: completed join with thread %ld having a status of %ld (cancelled)\n",t,(long)status);
+                }
+        }
+
+        thread_data_free(td);
+#else
         for(int i = 0 ; i < param->n_infile;i++){
                 if(param->verbose){
                         LOG_MSG("Processing: %s", param->infile[i]);
@@ -36,6 +66,7 @@ int main(int argc, char *argv[])
                         RUN(process_sam_bam_file(param,i));
                 }
         }
+#endif
         param_free(param);
 
         return EXIT_SUCCESS;
@@ -43,6 +74,56 @@ ERROR:
         return EXIT_FAILURE;
 }
 
+#if HAVE_PTHREADS
+void *samstat_worker(void *data)
+{
+        struct thread_data* td= (struct thread_data*) data;
+
+        struct samstat_param* param = td->p;
+
+        int run = 1;
+
+        while(run){
+                int target_id = -1;
+                /* find work  */
+                 if(pthread_mutex_lock(&td->lock) != 0){
+                          ERROR_MSG("Can't get lock");
+                 }
+
+                 for(int i = 0; i < param->n_infile;i++){
+                         if(td->active[i] == 0){
+                                 td->active[i] = 1;
+                                 target_id = i ;
+                                 break;
+                         }
+                 }
+                 if(param->verbose && target_id != -1){
+                         LOG_MSG("Working on %s",param->infile[target_id]);
+                 }
+                 if(pthread_mutex_unlock(&td->lock) != 0){
+                         ERROR_MSG("Can't get lock");
+                 }
+                 if(target_id == -1){
+                         run = 0;
+                 }else{
+                         int t = -1;
+                         t = param->file_type[target_id];
+                         if(t == FILE_TYPE_FASTAQ){
+                                 RUN(process_fasta_fastq_file(param,target_id));
+                         }else if(t == FILE_TYPE_SAMBAM){
+                                 RUN(process_sam_bam_file(param,target_id));
+                         }
+                 }
+        }
+
+        pthread_exit(0);
+        return NULL;
+ERROR:
+        LOG_MSG("Thread %d done due to error.");
+        pthread_exit(0);
+        return NULL;
+}
+#endif
 
 int process_sam_bam_file(struct samstat_param* p, int id)
 {
@@ -53,6 +134,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
+        uint64_t old_n_read = 0;
         /* p->buffer_size = 1000; */
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
@@ -62,6 +144,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         /* LOG_MSG("File size: %"PRId64",",n_read); */
         /* exit(0); */
         RUN(stat_collection_alloc(&s));
+        RUN(stat_collection_config_additional_plot(s,p));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         add_aln_data(sb);
         RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
@@ -78,6 +161,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         /* RUN(metrics_set_output_desc(metrics, p->infile[id])); */
         /* metrics->is_aligned = 1; */
         s->is_aligned = 1;
+
         RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
                 RUN(read_bam_chunk(f_handle, sb));
@@ -107,7 +191,10 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 /* pst_model_create(&m, sb); */
                 n_read += sb->num_seq;
                 if(p->verbose){
-                        LOG_MSG("Processed %"PRId64" sequences", n_read);
+                        if(n_read >= old_n_read + 1000000){
+                                LOG_MSG("Processed %"PRId64" sequences", n_read);
+                                old_n_read = n_read;
+                        }
                 }
                 if(n_read > p->top_n && sb->num_seq == sb->malloc_num){
                         if(p->verbose){
@@ -154,6 +241,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         /* RUN(metrics_set_output_desc(metrics, p->infile[id])); */
         /* metrics->is_aligned = 0; */
         RUN(stat_collection_alloc(&s));
+        RUN(stat_collection_config_additional_plot(s,p));
         /* if(p->pst){ */
         /*         pst_model_alloc(&m); */
         /* } */

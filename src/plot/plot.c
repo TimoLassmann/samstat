@@ -709,11 +709,9 @@ int fill_and_write_err(tld_strbuf *o,struct plot_data *d, int start, int stop, i
                         ms[i][1] = 0.0;
                 }else{
                         ms[i][0] = total / n;
-
-
                         total = 0.0;
                         n = 0.0;
-                        for(int j = start; j < d->L;j++){
+                        for(int j = start; j < stop;j++){
                                 double s =  ms[i][0] - (double) (j-start) ;
                                 total += l_d[j][i] *  s * s;
                                 n += l_d[j][i];

@@ -178,6 +178,7 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
 
                         sb->num_seq++;
                         if(sb->num_seq ==  sb->malloc_num){
+                                gfree(buffer);
                                 /* exit(0); */
                                 return OK;
                         }

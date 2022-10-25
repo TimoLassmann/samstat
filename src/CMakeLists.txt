@@ -21,9 +21,24 @@ endif()
 add_subdirectory(tld)
 add_subdirectory(plot)
 
+option(USE_PTHREADS    "Use pthreads for parallelization" ON)
+
+if(USE_PTHREADS) 
+  find_package(Threads REQUIRED)
+  if(Threads_FOUND)
+    message(STATUS "pthreads is enabled.")
+    add_definitions (-DHAVE_PTHREADS)
+  else(Threads_FOUND)
+    message(STATUS "pthreads not enabled")
+  endif(Threads_FOUND)
+endif(USE_PTHREADS)
+
+
+# find_package(Threads REQUIRED)
+
 if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h)
 else()
-   add_executable(converttablegen
+  add_executable(converttablegen
     convert_tables.c
     )  
   target_link_libraries(converttablegen PRIVATE tld-dev)
@@ -35,13 +50,13 @@ else()
     )
 endif()
 
-
-add_executable(samstat
+set(source_files
   samstat.c
   htsinterface/htsglue.c
   sambamparse/sam_bam_parse.c
   param/param.c
   collect/collect.c
+  
   # metrics/metrics.c
   report/stat_report.c
   # report/report.c
@@ -49,6 +64,31 @@ add_executable(samstat
   tools/tools.c
   ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
   )
+
+if(Threads_FOUND)
+  list(APPEND source_files thread/thread_data.c)
+endif(Threads_FOUND)
+
+
+add_executable(samstat)
+
+target_sources(samstat
+  PRIVATE
+  ${source_files}
+  )
+# samstat.c
+# htsinterface/htsglue.c
+# sambamparse/sam_bam_parse.c
+# param/param.c
+# collect/collect.c
+# thread/thread_data.c
+# # metrics/metrics.c
+# report/stat_report.c
+# # report/report.c
+# report/lst.c
+# tools/tools.c
+# ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
+# )
 
 
 add_dependencies(samstat htslib)
@@ -71,4 +111,9 @@ endif()
 target_include_directories(samstat PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 #target_link_libraries(samstat PRIVATE hts)
-target_link_libraries(samstat PRIVATE tld-dev module_plot)
+
+if(Threads_FOUND)
+  target_link_libraries(samstat PRIVATE Threads::Threads)
+endif()
+
+target_link_libraries(samstat PRIVATE tld-dev  module_plot)

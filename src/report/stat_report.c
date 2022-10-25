@@ -93,6 +93,25 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
         }
 
 
+        /* end report if  */
+        if(s->collect_end){
+                if(!s->n_paired){
+                        RUN(tld_append(out, "<h2>Base composition</h2>"));
+                }else{
+                        RUN(tld_append(out, "<h2>Base composition Read 1 </h2>"));
+                }
+
+                plot_add(out,s->base_comp_R1_end);
+                RUN(tld_append(out,"<p>Base composition. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
+
+                if(s->n_paired){
+                        RUN(tld_append(out, "<h2>Base composition Read 2 </h2>"));
+                        plot_add(out,s->base_comp_R2_end);
+                        RUN(tld_append(out,"<p>Base composition. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
+
+                }
+        }
+
         /* Base quality  */
 
         if(!s->n_paired){
@@ -114,6 +133,23 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
                         RUN(tld_append(out,"<p>Base quality distribution split up by mapping quality.</p>"));
                 }else{
                         RUN(tld_append(out,"<p>Base quality distribution.</p>"));
+                }
+        }
+        if(s->collect_end){
+                plot_add(out,s->qual_comp_R1_end);
+                if(s->is_aligned){
+                        RUN(tld_append(out,"<p>Base quality distribution split up by mapping quality.</p>"));
+                }else{
+                        RUN(tld_append(out,"<p>Base quality distribution.</p>"));
+                }
+                if(s->n_paired){
+                        RUN(tld_append(out, "<h2>Base quality distribution Read 2</h2>\n"));
+                        plot_add(out,s->qual_comp_R2_end);
+                        if(s->is_aligned){
+                                RUN(tld_append(out,"<p>Base quality distribution split up by mapping quality.</p>"));
+                        }else{
+                                RUN(tld_append(out,"<p>Base quality distribution.</p>"));
+                        }
                 }
         }
 

@@ -3,7 +3,7 @@
 #include "plot.h"
 #include "sam.h"
 #include "../htsinterface/htsglue.h"
-
+#include "../param/param.h"
 
 #include "convert_tables.h"
 
@@ -37,7 +37,7 @@ static int collect_stats_seq(struct tl_seq_buffer *sb, struct stat_collection *s
 static int collect_stats_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s);
 static int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s);
 
-
+static int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s);
 
 
 int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
@@ -69,14 +69,31 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
         RUN(plot_data_resize_len(s->len_dist_R1, sb->max_len+1));
         RUN(plot_data_resize_len(s->len_dist_R2, sb->max_len+1));
 
+        if(s->collect_end){
+                RUN(plot_data_resize_len(s->base_comp_R1_end, sb->max_len+1));
+                RUN(plot_data_resize_len(s->base_comp_R2_end, sb->max_len+1));
+
+                RUN(plot_data_resize_len(s->qual_comp_R1_end, sb->max_len+1));
+                RUN(plot_data_resize_len(s->qual_comp_R2_end, sb->max_len+1));
+
+        }
+
+        
+        /* additional plots will not be resized...  */
         /* collect_stats_all(sb,s); */
 
         switch (s->collect_type) {
         case COLLECT_TYPE_ALL:
                 collect_stats_all(sb,s);
+                if(s->collect_end){
+                        collect_stats_end_seqqual(sb,s);
+                }
                 break;
         case COLLECT_TYPE_SEQQUAL:
                 collect_stats_seqqual(sb,s);
+                if(s->collect_end){
+                        collect_stats_end_seqqual(sb,s);
+                }
                 break;
         case COLLECT_TYPE_SEQ:
                 collect_stats_seq(sb,s);
@@ -383,6 +400,67 @@ int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s)
         return OK;
 }
 
+int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
+{
+        uint64_t** t= NULL;
+        uint64_t** t_q= NULL;
+        int32_t q_idx;
+
+        q_idx = MAPQUALBIN_UNMAP;
+        for(int i = 0; i < sb->num_seq;i++){
+                uint8_t* seq = NULL;
+                uint8_t* qual = NULL;
+                struct tl_seq *itm = sb->sequences[i];
+
+                q_idx = MAPQUALBIN_UNMAP;
+                int read = 1;
+                if(itm->data){
+                        struct aln_data* a = NULL;
+                        a = itm->data;
+                        q_idx = s->mapq_map->map[ a->map_q];
+                        if(a->flag  & BAM_FREAD1){
+                                read = 1;
+                        }else if(a->flag  & BAM_FREAD2){
+                                read = 2;
+                        }
+                        if(a->flag & BAM_FUNMAP){
+                                q_idx = MAPQUALBIN_UNMAP;
+                        }
+                }
+                seq = itm->seq->str;
+                qual = itm->qual->str;
+
+                /* start collecting...  */
+                if(read == 1){
+                        t = s->base_comp_R1_end->data  + s->base_comp_R1->group_size * q_idx;
+                        t_q = s->qual_comp_R1_end->data  + s->qual_comp_R1->group_size * q_idx;
+                }else{
+                        t = s->base_comp_R2_end->data  + s->base_comp_R2->group_size * q_idx;
+                        t_q = s->qual_comp_R2_end->data  + s->qual_comp_R2->group_size * q_idx;
+                }
+
+                ASSERT(s->base_comp_R1_end->len ==s->qual_comp_R1_end->len,"Lengths differ seq / qual");
+                int plot_len = s->base_comp_R1_end->len;
+                int len = itm->len-1;
+                int idx = 0;
+
+                while(len >= 0 && idx < plot_len){
+                        /* LOG_MSG("idx = %d", idx); */
+                        t[nuc_to_internal[seq[len]]][idx]++;
+                        int q = (int)qual[len] - sb->base_quality_offset;
+                        if(q > 41){
+                                q = 41;
+                        }
+                        t_q[q][idx]++;
+                        idx++;
+                        len--;
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 inline int get_aln_errors(struct stat_collection* s,struct aln_data* a, int read,int q_idx)
 {
@@ -472,7 +550,93 @@ ERROR:
         return FAIL;
 }
 
+int stat_collection_config_additional_plot(struct stat_collection *s,struct samstat_param *p)
+{
+        if(p->collect_end){
+                s->collect_end = 1;
+                RUN(plot_data_alloc(&s->base_comp_R1_end, 250,  5* s->mapq_map->n_bin));
+                RUN(plot_data_alloc(&s->base_comp_R2_end, 250,  5* s->mapq_map->n_bin));
 
+                /* Alloc 250 len and 42 slots (base qualities ) for every mapq bin  */
+                RUN(plot_data_alloc(&s->qual_comp_R1_end, 250,  42* s->mapq_map->n_bin));
+                RUN(plot_data_alloc(&s->qual_comp_R2_end, 250,  42* s->mapq_map->n_bin));
+
+                char** base_label = NULL;
+
+                galloc(&base_label, 5,2);
+                snprintf(base_label[0], 2, "%s","A");
+                snprintf(base_label[1], 2, "%s","C");
+                snprintf(base_label[2], 2, "%s","G");
+                snprintf(base_label[3], 2, "%s","T");
+                snprintf(base_label[4], 2, "%s","N");
+
+
+                /* s->mapq_map->description */
+                RUN(plot_data_config(s->base_comp_R1_end,
+                                     PLOT_TYPE_BAR,
+                                     PLOT_MOD_NORMAL,
+                                     5,
+                                     PLOT_EMPTY_SERIES, /* plot empty series - yes please  */
+                                     "bc_R1_end",
+                                     "Base Composition at read end",
+                                     "Position relative to read end",
+                                     "Counts",
+                                     "BaseCompositionend",
+                                     base_label,
+                                     s->mapq_map->description
+                            ));
+
+                RUN(plot_data_config(s->base_comp_R2_end,
+                                     PLOT_TYPE_BAR,
+                                     PLOT_MOD_NORMAL,
+                                     5,
+                                     PLOT_EMPTY_SERIES, /* plot empty series - yes please  */
+                                     "bc_R2_end",
+                                     "Base Composition at read end",
+                                     "Position relative to read end",
+                                     "Counts",
+                                     "BaseCompositionR2end",
+                                     base_label,
+                                     s->mapq_map->description
+                            ));
+
+
+
+                /* qual composition */
+
+                RUN(plot_data_config(s->qual_comp_R1_end,
+                                     PLOT_TYPE_LINES,
+                                     PLOT_MOD_ERROR_BAR,
+                                     42,
+                                     0,
+                                     "bq_R1_end",
+                                     "Base quality distribution at read end",
+                                     "Position relative to read end",
+                                     "Base Quality",
+                                     "QualCompositionend",
+                                     NULL,
+                                     s->mapq_map->description
+                            ));
+
+                RUN(plot_data_config(s->qual_comp_R2_end ,
+                                     PLOT_TYPE_LINES,
+                                     PLOT_MOD_ERROR_BAR,
+                                     42,
+                                     0,
+                                     "bq_R2_end",
+                                     "Base quality distribution at read end",
+                                     "Position relative to read end",
+                                     "Base Quality",
+                                     "QualCompositionR2end",
+                                     NULL,
+                                     s->mapq_map->description
+                            ));
+                gfree(base_label);
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
 
 int stat_collection_alloc(struct stat_collection **stats)
 {
@@ -498,6 +662,13 @@ int stat_collection_alloc(struct stat_collection **stats)
         s->len_dist_R1 = NULL;
         s->len_dist_R2 = NULL;
 
+        /* optional plots  */
+        s->base_comp_R1_end = NULL;
+        s->base_comp_R2_end = NULL;
+
+        s->qual_comp_R1_end = NULL;
+        s->qual_comp_R2_end = NULL;
+
         s->mapq_map = NULL;
 
         s->basic_nums = NULL;
@@ -512,6 +683,7 @@ int stat_collection_alloc(struct stat_collection **stats)
         s->is_partial_report = 0;
         s->config = 0;
         s->collect_type = 0;
+        s->collect_end = 0;
         RUN(get_mapqual_bins(&s->mapq_map));
 
 
@@ -810,6 +982,21 @@ void stat_collection_free(struct stat_collection *s)
                 }
                 if(s->len_dist_R2){
                         plot_data_free(s->len_dist_R2);
+                }
+                /* Additional plots */
+
+                if(s->base_comp_R1_end){
+                        plot_data_free(s->base_comp_R1_end);
+                }
+                if(s->base_comp_R2_end){
+                        plot_data_free(s->base_comp_R2_end);
+                }
+
+                if(s->qual_comp_R1_end){
+                        plot_data_free(s->qual_comp_R1_end);
+                }
+                if(s->qual_comp_R2_end){
+                        plot_data_free(s->qual_comp_R2_end);
                 }
 
                 if(s->mapq_map){

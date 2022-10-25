@@ -13,6 +13,9 @@
 #define OPT_VERBOSE 1
 #define OPT_SUBSAMPLE 2
 #define OPT_SEED 3
+#define OPT_PLOTEND 4
+
+
 
 int sanity_check_param(struct samstat_param *p);
 int detect_file_type(char *filename, int* type);
@@ -35,6 +38,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         {"dir",required_argument,0,'d'},
                         {"sub",required_argument,0,OPT_SUBSAMPLE},
                         {"seed",required_argument,0,OPT_SEED},
+                        {"plotend",0,0,OPT_PLOTEND},
+                        {"nthreads",required_argument,0,'t'},
                         {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
                         {"version",0,0,'v'},
@@ -42,7 +47,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 };
 
                 int option_index = 0;
-                c = getopt_long_only (argc, argv,"p:l:d:hv",long_options, &option_index);
+                c = getopt_long_only (argc, argv,"p:l:d:t:hv",long_options, &option_index);
 
                 if (c == -1){
                         break;
@@ -54,6 +59,12 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         break;
                 case OPT_SUBSAMPLE:
                         p->subsample = atof(optarg);
+                        break;
+                case OPT_PLOTEND:
+                        p->collect_end = 1;
+                        break;
+                case 't':
+                        p->n_threads = atoi(optarg);
                         break;
                 case 'd':
                         p->outdir = optarg;
@@ -98,8 +109,6 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 /* free_param(param); */
                 exit(EXIT_SUCCESS);
         }
-        /* LOG_MSG("%d %d", argc, optind); */
-
 
         MMALLOC(p->infile,sizeof(char*)* (argc-optind));
 
@@ -125,6 +134,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         return OK;
 ERROR:
         WARNING_MSG("Something went wrong with parsing the command line options.");
+
         /* WARNING_MSG("Something went wrong with parsing the command line options."); */
         /* print_help(argv); */
         param_free(p);
@@ -133,9 +143,15 @@ ERROR:
 
 int sanity_check_param(struct samstat_param *p)
 {
+
+        if(p->n_threads < 1){
+                ERROR_MSG("Option -t (num threads) : has to be > 0");
+        }
         if(p->top_n < 10){
                 ERROR_MSG("Option -p/-peek: has to be >= 10.");
         }
+
+
 
         if(p->outdir){
                 if(tld_dir_exists(p->outdir) == FAIL){
@@ -203,6 +219,16 @@ int sanity_check_param(struct samstat_param *p)
                         }
                 }
         }
+        /* check for identical files */
+        for(int i = 0; i < p->n_infile;i++){
+                for(int j = i+1; j < p->n_infile;j++){
+                        if(strncmp(p->infile[i], p->infile[j], 512) == 0){
+                                ERROR_MSG("Duplicated input files: %s %s",p->infile[i], p->infile[j]);
+                        }
+                }
+        }
+
+
         return OK;
 ERROR:
         return FAIL;
@@ -305,6 +331,11 @@ int print_help(char **argv )
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  );
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-t","Number of threads." ,"[4]"  );
+        fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","will only be used when multiple input files are present." ,""  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--plotend","Add base and quality plots relative to the read ends." ,"[]"  );
+
+
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--seed","Random number seed." ,"[0]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
 
@@ -354,9 +385,11 @@ int param_init(struct samstat_param **param)
         struct samstat_param* p = NULL;
 
         MMALLOC(p, sizeof(struct samstat_param));
-        p->buffer_size = 1000000;
+        p->buffer_size = 10000;
         p->verbose = 0;
         p->n_infile = 0;
+        p->n_threads = 4;
+        p->collect_end = 0;
         p->infile = NULL;
         p->outfile = NULL;
         p->outdir = NULL;

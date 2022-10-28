@@ -46,10 +46,29 @@ make install
 * Usage
 
 #+begin_src bash :eval never 
-samstat <file.sam>  <file.bam>  <file.fa>  <file.fq> .... 
+samstat <file.sam>  <file.bam>  <file.fa>  <file.fq> ...  <options> 
 #+end_src
 
 For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix.
+
+Available options:
+
+#+begin_src bash :eval never 
+   -d/-dir            : Output directory. []
+                        NOTE: by default SAMStat will place reports in the same directory as the input files. 
+   -p/-peek           : Report stats only on the first <n> sequences. [unlimited]
+   -t                 : Number of threads. [4]
+                        will only be used when multiple input files are present. 
+   --plotend          : Add base and quality plots relative to the read ends. []
+   --seed             : Random number seed. [0]
+   --verbose          : Enables verbose output. []
+
+   -h/-help           : Prints help message. []
+   -v/-version        : Prints version information. []
+#+end_src
+
+
+
 
 * Please cite:
 

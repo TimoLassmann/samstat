@@ -11,7 +11,7 @@
 #include "../config.h"
 
 #define OPT_VERBOSE 1
-#define OPT_SUBSAMPLE 2
+/* #define OPT_SUBSAMPLE 2 */
 #define OPT_SEED 3
 #define OPT_PLOTEND 4
 
@@ -36,7 +36,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         {"peek",required_argument,0,'p'},
                         {"len",required_argument,0,'l'},
                         {"dir",required_argument,0,'d'},
-                        {"sub",required_argument,0,OPT_SUBSAMPLE},
+                        /* {"sub",required_argument,0,OPT_SUBSAMPLE}, */
                         {"seed",required_argument,0,OPT_SEED},
                         {"plotend",0,0,OPT_PLOTEND},
                         {"nthreads",required_argument,0,'t'},
@@ -57,9 +57,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 case OPT_VERBOSE:
                         p->verbose = 1;
                         break;
-                case OPT_SUBSAMPLE:
-                        p->subsample = atof(optarg);
-                        break;
+                /* case OPT_SUBSAMPLE: */
+                /*         p->subsample = atof(optarg); */
+                /*         break; */
                 case OPT_PLOTEND:
                         p->collect_end = 1;
                         break;
@@ -281,30 +281,6 @@ ERROR:
         return FAIL;
 }
 
-/* int print_kalign_header(void) */
-/* { */
-/*         fprintf(stdout,"\n"); */
-/*         fprintf(stdout,"SAMStat (%s)\n", PACKAGE_VERSION); */
-/*         fprintf(stdout,"\n"); */
-/*         fprintf(stdout,"Copyright (C) 2022 Timo Lassmann\n"); */
-/*         fprintf(stdout,"\n"); */
-/*         fprintf(stdout,"Please cite:\n"); */
-
-/*         /\*        fprintf(stdout,"  Kalign 3: multiple sequence alignment of large data sets */
-/* Timo Lassmann */
-/* Bioinformatics, btz795, https://doi.org/10.1093/bioinformatics/btz795 */
-/*         *\/ */
-/*         fprintf(stdout,"  Lassmann, Timo.\n"); */
-/*         fprintf(stdout,"  \"Kalign 3: multiple sequence alignment of large data sets.\"\n"); */
-/*         fprintf(stdout,"  Bioinformatics (2019) \n"); */
-/*         fprintf(stdout,"  https://doi.org/10.1093/bioinformatics/btz795\n"); */
-/*         fprintf(stdout,"\n"); */
-
-
-/*         return OK; */
-/* } */
-
-
 int print_help(char **argv )
 {
         const char usage[] = " <file1> <file2> ....";
@@ -328,9 +304,9 @@ int print_help(char **argv )
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <n> sequences.","[unlimited]");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  );
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  );
-        fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  );
+        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  ); */
+        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  ); */
+        /* fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  ); */
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-t","Number of threads." ,"[4]"  );
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","will only be used when multiple input files are present." ,""  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--plotend","Add base and quality plots relative to the read ends." ,"[]"  );

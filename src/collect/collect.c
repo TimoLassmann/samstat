@@ -545,6 +545,21 @@ int stat_collection_finalise(struct stat_collection *s)
                 RUN(tld_append(s->len_dist_R2->title," Read 2"));
         }
 
+        s->n_total = 0;
+        s->n_read1 = 0;
+        s->n_read2 = 0;
+
+        for(int i = 0; i < 2;i++){
+                for(int j = 0;j < s->mapq_map->n_bin;j++){
+                        s->n_total += s->basic_nums[i][j];
+                        if(i == 0){
+                                s->n_read1 += s->basic_nums[i][j];
+                        }else{
+                                s->n_read2 += s->basic_nums[i][j];
+                        }
+                }
+        }
+
         return OK;
 ERROR:
         return FAIL;

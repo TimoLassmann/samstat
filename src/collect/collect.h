@@ -50,6 +50,7 @@ struct stat_collection {
         struct mapqual_bins* mapq_map;
 
         uint64_t** basic_nums;
+        uint64_t n_total;
         uint64_t n_read1;
         uint64_t n_read2;
         uint64_t n_paired;

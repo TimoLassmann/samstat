@@ -302,7 +302,6 @@ int print_help(char **argv )
         fprintf(stdout,"\n");
 
 
-
         fprintf(stdout,"Usage: %s [-options] %s\n\n",tmp,usage);
 
         fprintf(stdout,"Options:\n\n");

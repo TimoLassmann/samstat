@@ -296,7 +296,7 @@ int print_help(char **argv )
 
 
         fprintf(stdout,"\n");
-        fprintf(stdout,"%s (%s)\n", tmp, PACKAGE_VERSION);
+        fprintf(stdout,"%s (v%s)\n", tmp, PACKAGE_VERSION);
         fprintf(stdout,"\n");
         fprintf(stdout,"Copyright (C) 2011,2022 Timo Lassmann\n");
         fprintf(stdout,"\n");
@@ -400,9 +400,9 @@ void param_free(struct samstat_param *p)
                 if(p->infile){
                         MFREE(p->infile);
                 }
-                if(p->outdir){
-                        MFREE(p->outdir);
-                }
+                /* if(p->outdir){ */
+                        /* MFREE(p->outdir); */
+                /* } */
 
                 MFREE(p);
         }

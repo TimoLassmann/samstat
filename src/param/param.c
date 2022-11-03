@@ -316,7 +316,7 @@ int print_help(char **argv )
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-t","Number of threads." ,"[4]"  );
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","will only be used when multiple input files are present." ,""  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--plotend","Add base and quality plots relative to the read ends." ,"[]"  );
-
+         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--norm","Add plots summarising statistics in 1% read length intervals." ,"[]"  );
 
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--seed","Random number seed." ,"[0]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );

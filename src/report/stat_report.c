@@ -583,7 +583,7 @@ int samstat_footer(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<ul>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
         RUN(tld_append(out_buffer, "<li><a href=\"https://samtools.github.io/hts-specs/\">SAM/BAM specifications</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/SAMStat/\">samstat</a></li>\n"));
+        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/SAMStat/\">SAMStat</a></li>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
         RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));
         /* RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n")); */

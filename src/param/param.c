@@ -14,6 +14,7 @@
 /* #define OPT_SUBSAMPLE 2 */
 #define OPT_SEED 3
 #define OPT_PLOTEND 4
+#define OPT_PLOTNORM 5
 
 
 
@@ -29,7 +30,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         int help = 0;
         int version = 0;
 
-        param_init(&p);
+        RUN(param_init(&p));
 
         while (1){
                 static struct option long_options[] ={
@@ -39,6 +40,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         /* {"sub",required_argument,0,OPT_SUBSAMPLE}, */
                         {"seed",required_argument,0,OPT_SEED},
                         {"plotend",0,0,OPT_PLOTEND},
+                        {"norm",0,0,OPT_PLOTNORM},
                         {"nthreads",required_argument,0,'t'},
                         {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
@@ -62,6 +64,10 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 /*         break; */
                 case OPT_PLOTEND:
                         p->collect_end = 1;
+                        break;
+
+                case OPT_PLOTNORM:
+                        p->norm_len_plot = 1;
                         break;
                 case 't':
                         p->n_threads = atoi(optarg);
@@ -366,6 +372,7 @@ int param_init(struct samstat_param **param)
         p->n_infile = 0;
         p->n_threads = 4;
         p->collect_end = 0;
+        p->norm_len_plot = 0;
         p->infile = NULL;
         p->outfile = NULL;
         p->outdir = NULL;

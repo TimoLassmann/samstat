@@ -39,6 +39,7 @@ static int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s
 
 static int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s);
 
+static int collect_stats_norm_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s);
 
 int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
 {
@@ -75,9 +76,11 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
 
                 RUN(plot_data_resize_len(s->qual_comp_R1_end, sb->max_len+1));
                 RUN(plot_data_resize_len(s->qual_comp_R2_end, sb->max_len+1));
-
         }
 
+        /* if(s->norm_len_plot){ */
+                /* no resizing necessary...  */
+        /* } */
         
         /* additional plots will not be resized...  */
         /* collect_stats_all(sb,s); */
@@ -88,11 +91,17 @@ int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
                 if(s->collect_end){
                         collect_stats_end_seqqual(sb,s);
                 }
+                if(s->norm_len_plot){
+                        collect_stats_norm_seqqual(sb,s);
+                }
                 break;
         case COLLECT_TYPE_SEQQUAL:
                 collect_stats_seqqual(sb,s);
                 if(s->collect_end){
                         collect_stats_end_seqqual(sb,s);
+                }
+                if(s->norm_len_plot){
+                        collect_stats_norm_seqqual(sb,s);
                 }
                 break;
         case COLLECT_TYPE_SEQ:
@@ -400,6 +409,74 @@ int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s)
         return OK;
 }
 
+int collect_stats_norm_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
+{
+        uint64_t** t= NULL;
+        uint64_t** t_q= NULL;
+        int32_t q_idx;
+
+        q_idx = MAPQUALBIN_UNMAP;
+        for(int i = 0; i < sb->num_seq;i++){
+                uint8_t* seq = NULL;
+                uint8_t* qual = NULL;
+                struct tl_seq *itm = sb->sequences[i];
+                int clip_start = 0;
+                int clip_end = 0;
+                q_idx = MAPQUALBIN_UNMAP;
+                int read = 1;
+                if(itm->data){
+                        struct aln_data* a = NULL;
+
+                        a = itm->data;
+                        clip_start = a->n_clip5;
+                        clip_end = a->n_clip3;
+
+                        q_idx = s->mapq_map->map[ a->map_q];
+                        if(a->flag  & BAM_FREAD1){
+                                read = 1;
+                        }else if(a->flag  & BAM_FREAD2){
+                                read = 2;
+                        }
+                        if(a->flag & BAM_FUNMAP){
+                                q_idx = MAPQUALBIN_UNMAP;
+                        }
+                }
+                seq = itm->seq->str;
+                qual = itm->qual->str;
+
+                /* start collecting...  */
+                if(read == 1){
+                        t = s->base_comp_len_norm_R1->data  + s->base_comp_len_norm_R1->group_size * q_idx;
+                        t_q = s->qual_comp_len_norm_R1->data  + s->qual_comp_len_norm_R1->group_size * q_idx;
+                }else{
+                        t = s->base_comp_len_norm_R2->data  + s->base_comp_len_norm_R2->group_size * q_idx;
+                        t_q = s->qual_comp_len_norm_R2->data  + s->qual_comp_len_norm_R2->group_size * q_idx;
+                }
+
+                /* ASSERT(s->base_comp_R1_end->len ==s->qual_comp_R1_end->len,"Lengths differ seq / qual"); */
+                double plot_len = (double) s->base_comp_len_norm_R1->len;
+
+
+                int len = itm->len - clip_end;
+                int t_len = itm->len - (clip_start + clip_end);
+                int p = 0;
+                for(int j = clip_start;j < len;j++){
+                        int idx = (int) floor((double) p / (double) (t_len) * plot_len);
+                        /* LOG_MSG("%d %d -> idx: %d", j,p,idx); */
+                        t[nuc_to_internal[seq[j]]][idx]++;
+
+                        int q = (int)qual[j] - sb->base_quality_offset;
+                        if(q > 41){
+                                q = 41;
+                        }
+                        t_q[q][idx]++;
+                        p++;
+                }
+        }
+        return OK;
+}
+
+
 int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
 {
         uint64_t** t= NULL;
@@ -567,6 +644,86 @@ ERROR:
 
 int stat_collection_config_additional_plot(struct stat_collection *s,struct samstat_param *p)
 {
+        char** base_label = NULL;
+
+        galloc(&base_label, 5,2);
+        snprintf(base_label[0], 2, "%s","A");
+        snprintf(base_label[1], 2, "%s","C");
+        snprintf(base_label[2], 2, "%s","G");
+        snprintf(base_label[3], 2, "%s","T");
+        snprintf(base_label[4], 2, "%s","N");
+
+        if(p->norm_len_plot){
+                s->norm_len_plot = 1;
+                /* how should I determine the number + size of bins? */
+
+                /* I need base and base distripbution plot  */
+                RUN(plot_data_alloc(&s->base_comp_len_norm_R1, 100, 5* s->mapq_map->n_bin));
+                RUN(plot_data_alloc(&s->qual_comp_len_norm_R1, 100, 42* s->mapq_map->n_bin));
+
+                RUN(plot_data_alloc(&s->base_comp_len_norm_R2, 100, 5* s->mapq_map->n_bin));
+                RUN(plot_data_alloc(&s->qual_comp_len_norm_R2, 100, 42* s->mapq_map->n_bin));
+
+
+                /* Need to add config */
+                RUN(plot_data_config(s->base_comp_len_norm_R1,
+                                     PLOT_TYPE_BAR,
+                                     PLOT_MOD_NORMAL,
+                                     5,
+                                     PLOT_EMPTY_SERIES, /* plot empty series - yes please  */
+                                     "bc_R1_norm",
+                                     "Base composition",
+                                     "Base composition split into 1% bins along the read length.",
+                                     "Counts",
+                                     "BaseCompositionnorm",
+                                     base_label,
+                                     s->mapq_map->description
+                            ));
+
+                RUN(plot_data_config(s->base_comp_len_norm_R2,
+                                     PLOT_TYPE_BAR,
+                                     PLOT_MOD_NORMAL,
+                                     5,
+                                     PLOT_EMPTY_SERIES, /* plot empty series - yes please  */
+                                     "bc_R2_norm",
+                                     "Base composition",
+                                     "Base composition split into 1% bins along the read length.",
+                                     "Counts",
+                                     "BaseCompositionnorm",
+                                     base_label,
+                                     s->mapq_map->description
+                            ));
+
+                RUN(plot_data_config(s->qual_comp_len_norm_R1,
+                                     PLOT_TYPE_LINES,
+                                     PLOT_MOD_ERROR_BAR,
+                                     42,
+                                     0,
+                                     "bq_norm_R1",
+                                     "Base quality distribution",
+                                     "Base quality distribution split into 1% bins along the read length.",
+                                     "Base Quality",
+                                     "QualCompositionnorm",
+                                     NULL,
+                                     s->mapq_map->description
+                            ));
+
+                RUN(plot_data_config(s->qual_comp_len_norm_R2,
+                                     PLOT_TYPE_LINES,
+                                     PLOT_MOD_ERROR_BAR,
+                                     42,
+                                     0,
+                                     "bq_norm_R2",
+                                     "Base quality distribution",
+                                     "Base quality distribution split into 1% bins along the read length.",
+                                     "Base Quality",
+                                     "QualCompositionR2norm",
+                                     NULL,
+                                     s->mapq_map->description
+                            ));
+
+
+        }
         if(p->collect_end){
                 s->collect_end = 1;
                 RUN(plot_data_alloc(&s->base_comp_R1_end, 250,  5* s->mapq_map->n_bin));
@@ -576,14 +733,6 @@ int stat_collection_config_additional_plot(struct stat_collection *s,struct sams
                 RUN(plot_data_alloc(&s->qual_comp_R1_end, 250,  42* s->mapq_map->n_bin));
                 RUN(plot_data_alloc(&s->qual_comp_R2_end, 250,  42* s->mapq_map->n_bin));
 
-                char** base_label = NULL;
-
-                galloc(&base_label, 5,2);
-                snprintf(base_label[0], 2, "%s","A");
-                snprintf(base_label[1], 2, "%s","C");
-                snprintf(base_label[2], 2, "%s","G");
-                snprintf(base_label[3], 2, "%s","T");
-                snprintf(base_label[4], 2, "%s","N");
 
 
                 /* s->mapq_map->description */
@@ -646,10 +795,12 @@ int stat_collection_config_additional_plot(struct stat_collection *s,struct sams
                                      NULL,
                                      s->mapq_map->description
                             ));
-                gfree(base_label);
+
         }
+        gfree(base_label);
         return OK;
 ERROR:
+        gfree(base_label);
         return FAIL;
 }
 
@@ -683,6 +834,14 @@ int stat_collection_alloc(struct stat_collection **stats)
 
         s->qual_comp_R1_end = NULL;
         s->qual_comp_R2_end = NULL;
+        /* norm_len_plot */
+
+        s->base_comp_len_norm_R1 = NULL;
+        s->qual_comp_len_norm_R1 = NULL;
+
+        s->base_comp_len_norm_R2 = NULL;
+        s->qual_comp_len_norm_R2 = NULL;
+
 
         s->mapq_map = NULL;
 
@@ -954,6 +1113,21 @@ ERROR:
 void stat_collection_free(struct stat_collection *s)
 {
         if(s){
+
+                if(s->qual_comp_len_norm_R1){
+                        plot_data_free(s->qual_comp_len_norm_R1);
+                }
+                if(s->base_comp_len_norm_R1){
+                        plot_data_free(s->base_comp_len_norm_R1);
+                }
+                if(s->qual_comp_len_norm_R2){
+                        plot_data_free(s->qual_comp_len_norm_R2);
+                }
+                if(s->base_comp_len_norm_R2){
+                        plot_data_free(s->base_comp_len_norm_R2);
+                }
+
+
                 if(s->basic_nums){
                         gfree(s->basic_nums);
                 }

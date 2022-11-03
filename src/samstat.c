@@ -3,26 +3,22 @@
 #include "htslib/sam.h"
 #include "htsinterface/htsglue.h"
 #include "param/param.h"
-/* #include "metrics/metrics.h" */
 #include "collect/collect.h"
-/* #include "report/report.h" */
 #include "report/stat_report.h"
 #include "tools/tools.h"
-/* #include "pst.h" */
 #include <stdint.h>
 #include <inttypes.h>
 
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
 #endif
-    /* int detect_file_type(char *filename, int* type); */
+
+/* int detect_file_type(char *filename, int* type); */
 int process_sam_bam_file(struct samstat_param *p, int id);
 int process_fasta_fastq_file(struct samstat_param *p, int id);
 
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
-
-
 
 int main(int argc, char *argv[])
 {
@@ -58,7 +54,6 @@ int main(int argc, char *argv[])
                         LOG_MSG("Processing: %s", param->infile[i]);
                 }
                 int t = -1;
-                /* RUN(detect_file_type(param->infile[i], &t)); */
                 t = param->file_type[i];
                 if(t == FILE_TYPE_FASTAQ){
                         RUN(process_fasta_fastq_file(param,i));
@@ -97,12 +92,15 @@ void *samstat_worker(void *data)
                                  break;
                          }
                  }
+
                  if(param->verbose && target_id != -1){
                          LOG_MSG("Working on %s",param->infile[target_id]);
                  }
+
                  if(pthread_mutex_unlock(&td->lock) != 0){
                          ERROR_MSG("Can't get lock");
                  }
+
                  if(target_id == -1){
                          run = 0;
                  }else{
@@ -135,14 +133,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
         uint64_t old_n_read = 0;
-        /* p->buffer_size = 1000; */
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        /* get_file_size(p->infile[id], &n_read); */
-
-        /* LOG_MSG("File size: %"PRId64",",n_read); */
-        /* exit(0); */
         RUN(stat_collection_alloc(&s));
         RUN(stat_collection_config_additional_plot(s,p));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
@@ -151,15 +144,6 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         sb->data = a;
 
-        /* if(p->pst){ */
-        /*         pst_model_alloc(&m); */
-        /* } */
-
-
-        /* RUN(metrics_alloc(&metrics, p)); */
-
-        /* RUN(metrics_set_output_desc(metrics, p->infile[id])); */
-        /* metrics->is_aligned = 1; */
         s->is_aligned = 1;
 
         RUN(open_bam(&f_handle, p->infile[id]));
@@ -179,16 +163,6 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
                 RUN(collect_stats(sb, s));
 
-                /* RUN(get_metrics(sb,metrics)); */
-
-                /* if(p->pst && m->n_seq < 1000000){ */
-                /*         pst_model_add_seq(m, sb); */
-                /* } */
-                /* LOG_MSG("L: %d",sb->L); */
-                //debug_seq_buffier_print(sb);
-                /* break; */
-                /* struct pst_model* m = NULL; */
-                /* pst_model_create(&m, sb); */
                 n_read += sb->num_seq;
                 if(p->verbose){
                         if(n_read >= old_n_read + 1000000){
@@ -210,12 +184,12 @@ int process_sam_bam_file(struct samstat_param* p, int id)
 
         RUN(stat_report(s,p, id));
         stat_collection_free(s);
-        /* create_report(metrics, p,id); */
-        /* metrics_free(metrics); */
+
         if(sb->data){
                 a = sb->data;
                 free_alphabet(a);
         }
+
         free_aln_data(sb);
         free_tl_seq_buffer(sb);
         return OK;
@@ -228,7 +202,6 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-        /* struct metrics* metrics = NULL; */
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
 
@@ -236,22 +209,11 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
 
         RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
-
-        /* RUN(metrics_alloc(&metrics, p)); */
-        /* RUN(metrics_set_output_desc(metrics, p->infile[id])); */
-        /* metrics->is_aligned = 0; */
         RUN(stat_collection_alloc(&s));
         RUN(stat_collection_config_additional_plot(s,p));
-        /* if(p->pst){ */
-        /*         pst_model_alloc(&m); */
-        /* } */
 
         while(1){
-
                 RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
-
-                /* LOG_MSG("%d", sb->base_quality_offset); */
-                /* detect_format(sb); */
                 if(!sb->data){
                         LOG_MSG("Setting alphabet");
                         if(sb->L == TL_SEQ_BUFFER_DNA){
@@ -263,16 +225,12 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         }
                         sb->data = a;
                 }
-                /* LOG_MSG("%d BQ offset ", sb->base_quality_offset); */
-                //total_r+= sb->num_seq;
-                /* LOG_MSG("Finished reading chunk: found %d ",sb->num_seq); */
 
                 if(sb->num_seq == 0){
                         break;
                 }
 
                 RUN(collect_stats(sb, s));
-                /* RUN(get_metrics(sb,metrics)); */
 
                 n_read += sb->num_seq;
                 if(p->verbose){
@@ -283,19 +241,13 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                                 LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
                         }
                         s->is_partial_report = 1;
-                        /* metrics->is_partial_report = 1; */
                         break;
                 }
                 reset_tl_seq_buffer(sb);
         }
 
-
-
-
         RUN(stat_report(s,p, id));
         stat_collection_free(s);
-        /* create_report(metrics, p,id); */
-        /* metrics_free(metrics); */
         if(sb->data){
                 a = sb->data;
                 free_alphabet(a);
@@ -313,9 +265,6 @@ int debug_seq_buffer_print(struct tl_seq_buffer *sb)
                 struct aln_data* a = (struct aln_data*) sb->sequences[i]->data;
                 fprintf(stdout,"%s\n%s\n", TLD_STR( sb->sequences[i]->name),
                         TLD_STR(sb->sequences[i]->seq)
-                        /* TLD_STR(a->md), */
-                        /* a->error, */
-                        /* a->reverse */
                         );
                 if(a){
                         parse_alignment(sb->sequences[i]);
@@ -341,27 +290,3 @@ int debug_seq_buffer_print(struct tl_seq_buffer *sb)
         }
         return OK;
 }
-
-/*
-  # include <string.h>
-  # include <stdio.h>
-  int main(int argc, char *argv[]) {
-  int k;
-  if (argc == 1) return 1;
-  k = str2bwt(argv[1]);
-  printf("%.*s$%s\n", k, argv[1], &argv[1][k]);
-  return 0;
-  }
-  int str2bwt(char *s) {
-  int i,c=0,k=0,l=strlen(s);
-  for(i=l-1;i>=0;--i) {
-  int j,r=0,a=s[i];
-  memmove(&s[i],&s[i+1],k);
-  s[i+k]=a;
-  for(j=i;j<i+k;++j) r+=(s[j]<=a);
-  for(;j<l;++j) r+=(s[j]<a);
-  k=r+1,c=a;
-  }
-  return k; // sentinel
-  }
-*/

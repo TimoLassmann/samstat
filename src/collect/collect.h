@@ -47,6 +47,15 @@ struct stat_collection {
         struct plot_data* qual_comp_R1_end;
         struct plot_data* qual_comp_R2_end;
 
+        /* Norm Len plots  */
+        struct plot_data* base_comp_len_norm_R1;
+        struct plot_data* qual_comp_len_norm_R1;
+
+        struct plot_data* base_comp_len_norm_R2;
+        struct plot_data* qual_comp_len_norm_R2;
+
+
+
         struct mapqual_bins* mapq_map;
 
         uint64_t** basic_nums;
@@ -56,6 +65,7 @@ struct stat_collection {
         uint64_t n_paired;
         uint64_t n_proper_paired;
         uint8_t collect_end;
+        uint8_t norm_len_plot;
         uint8_t is_aligned;
         uint8_t is_partial_report;
         uint8_t config;

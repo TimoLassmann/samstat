@@ -71,6 +71,7 @@ Available options:
 
 
 * Please cite:
+Timo Lassmann (2023) "SAMStat 2: quality control for next generation sequencing data." Bioinformatics. (2023): btad019, https://doi.org/10.1093/bioinformatics/btad019
 
 Lassmann et al. (2010) "SAMStat: monitoring biases in next generation sequencing data." Bioinformatics 27.1 (2011): 130-131. [[https://doi.org/10.1093%2Fbioinformatics%2Fbtq614][doi:10.1093/bioinformatics/btq614]]
 

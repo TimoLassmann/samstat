@@ -15,7 +15,7 @@ ExternalProject_Add(htslib
 	    URL_MD5 ${htslib_URL_MD5}
         PREFIX ${htslib_PREFIX}
         UPDATE_COMMAND ""
-        CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_BINARY_DIR}/htslib --disable-bz2 --disable-lzma --disable-libcurl --disable-s3 
+        CONFIGURE_COMMAND autoreconf -i && ./configure --prefix=${CMAKE_BINARY_DIR}/htslib --disable-bz2 --disable-lzma --disable-libcurl --disable-s3 --without-libdeflate
         BUILD_COMMAND make CFLAGS=${CMAKE_C_FLAGS}
         INSTALL_COMMAND "")
 ExternalProject_Get_Property(htslib SOURCE_DIR)

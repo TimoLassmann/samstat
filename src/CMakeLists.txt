@@ -69,48 +69,18 @@ if(Threads_FOUND)
   list(APPEND source_files thread/thread_data.c)
 endif(Threads_FOUND)
 
-
 add_executable(samstat)
 
 target_sources(samstat
   PRIVATE
   ${source_files}
   )
-# samstat.c
-# htsinterface/htsglue.c
-# sambamparse/sam_bam_parse.c
-# param/param.c
-# collect/collect.c
-# thread/thread_data.c
-# # metrics/metrics.c
-# report/stat_report.c
-# # report/report.c
-# report/lst.c
-# tools/tools.c
-# ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
-# )
-
 
 add_dependencies(samstat htslib)
 
-target_link_directories(samstat PUBLIC ${HTSLIB_SRC_DIR})
-
-
-# target_link_libraries(samstat PRIVATE z)
-# target_link_libraries(samstat PRIVATE bz2)
-# target_link_libraries(samstat PRIVATE lzma)
-# target_link_libraries(samstat PRIVATE curl)
-
-if(APPLE)
-  target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR})
-  target_link_libraries(samstat PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
-else()
-  target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR})
-  target_link_libraries(samstat PRIVATE hts)
-endif()
-target_include_directories(samstat PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
-#target_link_libraries(samstat PRIVATE hts)
+target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+target_link_directories(samstat PRIVATE  ${HTSLIB_SRC_DIR})
+target_link_libraries(samstat PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
 
 if(Threads_FOUND)
   target_link_libraries(samstat PRIVATE Threads::Threads)

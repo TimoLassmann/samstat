@@ -26,7 +26,8 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
 
         char* n = NULL;
         tld_strbuf* out = NULL;
-        RUN(tlfilename(p->infile[id], &n));
+        RUN(tld_get_filename(p->infile[id], &n));/* char *path, char **out) */
+        /* RUN(tlfilename(p->infile[id], &n)); */
 
         RUN(stat_collection_finalise(s));
 
@@ -235,7 +236,8 @@ int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id)
         FILE* f_ptr = NULL;
         if(p->outdir){
                 char* filename = NULL;
-                tlfilename(p->infile[id], &filename);
+                /* tlfilename(p->infile[id], &filename); */
+                RUN(tld_get_filename(p->infile[id], &filename));
                 snprintf(buffer,1024,"%s/%s.samstat.html",p->outdir, filename);
                 MFREE(filename);
         }else{
@@ -256,7 +258,8 @@ ERROR:
 int samstat_title(tld_strbuf *o,struct samstat_param *p , int id)
 {
         char* n = NULL;
-        RUN(tlfilename(p->infile[id], &n));
+
+        RUN(tld_get_filename(p->infile[id], &n));
         RUN(tld_append(o,"<h1>"));
         RUN(tld_append(o,n));
         RUN(tld_append(o,"</h1>\n"));

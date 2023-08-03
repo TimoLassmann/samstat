@@ -291,8 +291,7 @@ int print_help(char **argv )
 {
         const char usage[] = " <file1> <file2> ....";
         char* tmp = NULL;
-
-        RUN(tlfilename(argv[0], &tmp));
+        RUN(tld_get_filename(argv[0], &tmp));
 
 
         fprintf(stdout,"\n");

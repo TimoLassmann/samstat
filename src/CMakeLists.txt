@@ -32,8 +32,6 @@ if(USE_PTHREADS)
     message(STATUS "pthreads not enabled")
   endif(Threads_FOUND)
 endif(USE_PTHREADS)
-
-
 # find_package(Threads REQUIRED)
 
 if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h)

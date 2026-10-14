@@ -64,6 +64,8 @@ EXTERN int plot_data_resize_len(struct plot_data* pd,int x);
 EXTERN void plot_data_free(struct plot_data *pd);
 
 EXTERN int html_header(tld_strbuf *out_buffer, char *filename);
+/* append text with &, <, >, " and ' escaped for use in HTML text and attributes */
+EXTERN int html_escape_append(tld_strbuf *out_buffer, const char *text);
 EXTERN int html_end(tld_strbuf *out_buffer);
 
 #undef PLOT_IMPORT

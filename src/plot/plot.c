@@ -1206,7 +1206,10 @@ int add_count_data(tld_strbuf *o,struct series_data* s_data , char**x, uint64_t*
                 /* snprintf(buf, 256,"name: %s,\n", label); */
                 /* RUN(tld_append(o,buf)); */
         }
-        if(s_data->type){
+        if(s_data->type && !strcmp(s_data->type, "lines")){
+                /* 'lines' is not a Plotly trace type; it is a scatter trace drawn with lines */
+                RUN(tld_append(o,"type: 'scatter',\nmode: 'lines',\n"));
+        }else if(s_data->type){
                 snprintf(buf, 256,"type: '%s',\n", s_data->type);
                 RUN(tld_append(o,buf));
         }else{
@@ -1265,7 +1268,10 @@ int add_real_data(tld_strbuf *o,struct series_data* s_data, char**x, double* y, 
                 /* snprintf(buf, 256,"name: %s,\n", label); */
                 /* RUN(tld_append(o,buf)); */
         }
-        if(s_data->type){
+        if(s_data->type && !strcmp(s_data->type, "lines")){
+                /* 'lines' is not a Plotly trace type; it is a scatter trace drawn with lines */
+                RUN(tld_append(o,"type: 'scatter',\nmode: 'lines',\n"));
+        }else if(s_data->type){
                 snprintf(buf, 256,"type: '%s',\n", s_data->type);
                 RUN(tld_append(o,buf));
         }else{
@@ -1340,7 +1346,10 @@ int add_data_series_error(tld_strbuf *o,struct series_data* s_data, char**x, dou
                 /* snprintf(buf, 256,"name: %s,\n", label); */
                 /* RUN(tld_append(o,buf)); */
         }
-        if(s_data->type){
+        if(s_data->type && !strcmp(s_data->type, "lines")){
+                /* 'lines' is not a Plotly trace type; it is a scatter trace drawn with lines */
+                RUN(tld_append(o,"type: 'scatter',\nmode: 'lines',\n"));
+        }else if(s_data->type){
                 snprintf(buf, 256,"type: '%s',\n", s_data->type);
                 RUN(tld_append(o,buf));
         }else{
@@ -1358,21 +1367,55 @@ ERROR:
         return FAIL;
 }
 
+int html_escape_append(tld_strbuf *out_buffer, const char *text)
+{
+        char c[2] = {0, 0};
+        ASSERT(text != NULL, "No text to escape");
+        for(const char *p = text; *p; p++){
+                switch (*p) {
+                case '&':
+                        RUN(tld_append(out_buffer, "&amp;"));
+                        break;
+                case '<':
+                        RUN(tld_append(out_buffer, "&lt;"));
+                        break;
+                case '>':
+                        RUN(tld_append(out_buffer, "&gt;"));
+                        break;
+                case '"':
+                        RUN(tld_append(out_buffer, "&quot;"));
+                        break;
+                case '\'':
+                        RUN(tld_append(out_buffer, "&#39;"));
+                        break;
+                default:
+                        c[0] = *p;
+                        RUN(tld_append(out_buffer, c));
+                        break;
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int html_header(tld_strbuf *out_buffer, char *filename)
 {
         RUN(tld_append(out_buffer, "<!DOCTYPE html>\n"));
-        RUN(tld_append(out_buffer, "<html>\n"));
+        RUN(tld_append(out_buffer, "<html lang=\"en\">\n"));
 
         RUN(tld_append(out_buffer, "<head>\n"));
 
-        RUN(tld_append(out_buffer, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"/>\n"))
-        RUN(tld_append(out_buffer, "<script src=\"https://d3js.org/d3.v4.js\"></script>\n"));
-        RUN(tld_append(out_buffer, "<script src=\"https://cdn.plot.ly/plotly-latest.min.js\"></script>\n"));
+        RUN(tld_append(out_buffer, "<meta charset=\"utf-8\">\n"));
+        RUN(tld_append(out_buffer, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"));
+        /* plotly-latest.min.js has been frozen at v1.58.5 since 2021; pin it explicitly.
+           d3 was loaded here but is not used by any generated script. */
+        RUN(tld_append(out_buffer, "<script src=\"https://cdn.plot.ly/plotly-1.58.5.min.js\"></script>\n"));
 
 
         if(filename){
                 RUN(tld_append(out_buffer, "<title>\n"));
-                RUN(tld_append(out_buffer, filename));
+                RUN(html_escape_append(out_buffer, filename));
                 RUN(tld_append(out_buffer, "</title>\n"));
         }
 
@@ -1469,7 +1512,7 @@ int html_header(tld_strbuf *out_buffer, char *filename)
         RUN(tld_append(out_buffer, "nav {\n"));
         //RUN(tld_append(out_buffer, "position: absolute;\n"));
         RUN(tld_append(out_buffer, "left: 0;\n"));
-        RUN(tld_append(out_buffer, "width: 100%%;\n"));
+        RUN(tld_append(out_buffer, "width: 100%;\n"));
         RUN(tld_append(out_buffer, "background: #75787B;\n"));
         RUN(tld_append(out_buffer, "color: #FFF;\n"));
         RUN(tld_append(out_buffer, "}\n"));

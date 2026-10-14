@@ -19,6 +19,7 @@ static int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_c
 static int samstat_footer(tld_strbuf *out_buffer);
 
 static int samstat_add_large_number(tld_strbuf *o, uint64_t n);
+static double samstat_ratio(uint64_t num, uint64_t den);
 
 static int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id);
 
@@ -245,25 +246,48 @@ ERROR:
 
 int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id)
 {
-        char buffer[1024];
+        char* buffer = NULL;
+        char* filename = NULL;
         FILE* f_ptr = NULL;
+        const char* str = TLD_STR(out_buffer);
+        size_t len = strlen(str);
+        int needed;
+
         if(p->outdir){
-                char* filename = NULL;
-                /* tlfilename(p->infile[id], &filename); */
                 RUN(tld_get_filename(p->infile[id], &filename));
-                snprintf(buffer,1024,"%s/%s.samstat.html",p->outdir, filename);
-                MFREE(filename);
+                needed = snprintf(NULL, 0, "%s/%s.samstat.html", p->outdir, filename);
         }else{
-                snprintf(buffer,1024,"%s.samstat.html", p->infile[id]);
+                needed = snprintf(NULL, 0, "%s.samstat.html", p->infile[id]);
+        }
+        ASSERT(needed > 0, "Could not build output file name");
+        MMALLOC(buffer, (size_t) needed + 1);
+        if(p->outdir){
+                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s/%s.samstat.html", p->outdir, filename) == needed, "Output file name was truncated");
+        }else{
+                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s.samstat.html", p->infile[id]) == needed, "Output file name was truncated");
         }
         LOG_MSG("Writing to: %s", buffer);
         f_ptr = fopen(buffer, "w");
-        ASSERT(f_ptr != NULL,"Failed to open output file");
+        ASSERT(f_ptr != NULL,"Failed to open output file: %s", buffer);
 
-        fprintf(f_ptr,"%s", TLD_STR(out_buffer));
-        fclose(f_ptr);
+        ASSERT(fwrite(str, 1, len, f_ptr) == len, "Failed to write output file: %s", buffer);
+        ASSERT(fclose(f_ptr) == 0, "Failed to close output file: %s", buffer);
+        f_ptr = NULL;
+        MFREE(buffer);
+        if(filename){
+                MFREE(filename);
+        }
         return OK;
 ERROR:
+        if(f_ptr){
+                fclose(f_ptr);
+        }
+        if(buffer){
+                MFREE(buffer);
+        }
+        if(filename){
+                MFREE(filename);
+        }
         return FAIL;
 }
 
@@ -274,7 +298,7 @@ int samstat_title(tld_strbuf *o,struct samstat_param *p , int id)
 
         RUN(tld_get_filename(p->infile[id], &n));
         RUN(tld_append(o,"<h1>"));
-        RUN(tld_append(o,n));
+        RUN(html_escape_append(o,n));
         RUN(tld_append(o,"</h1>\n"));
 
         MFREE(n);
@@ -340,6 +364,15 @@ int samstat_partial_warning_section(tld_strbuf *o , struct stat_collection*s)
         return OK;
 ERROR:
         return FAIL;
+}
+
+/* num / den, or 0 if den is 0 (empty input) so that no NaN/inf reaches the report */
+double samstat_ratio(uint64_t num, uint64_t den)
+{
+        if(!den){
+                return 0.0;
+        }
+        return (double) num / (double) den;
 }
 
 int samstat_add_large_number(tld_strbuf *o, uint64_t n)
@@ -440,6 +473,19 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
 
         /* LOG_MSG("%d %d -> %d  (paired: %d proper: %d )", m->n_R1_reads,m->n_R2_reads, m->n_R1_reads+m->n_R2_reads,m->n_paired, m->n_proper_paired); */
 
+
+        if(s->n_secondary || s->n_supplementary){
+                RUN(tld_append(o, "<p>"));
+                if(s->n_secondary){
+                        samstat_add_large_number(o, s->n_secondary);
+                        RUN(tld_append(o, " - secondary alignments (not counted)<br>"));
+                }
+                if(s->n_supplementary){
+                        samstat_add_large_number(o, s->n_supplementary);
+                        RUN(tld_append(o, " - supplementary alignments (not counted)<br>"));
+                }
+                RUN(tld_append(o, "</p>"));
+        }
 
         RUN(tld_append(o, "<div id=\"MappingStatsTable\" style=\"width:100%;max-width:900px;height:240px;\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
@@ -592,6 +638,7 @@ int samstat_footer(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann.</p>\n"));
         RUN(tld_append(out_buffer, "<h3>Please cite:</h3>\n"));
 
+        RUN(tld_append(out_buffer, "<p>Lassmann T. (2023) SAMStat 2. Bioinformatics doi:10.1093/bioinformatics/btad019</p>\n"));
         RUN(tld_append(out_buffer, "<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n"));
         RUN(tld_append(out_buffer, "</section>\n"));
         RUN(tld_append(out_buffer, "<section id=\"blogroll\">\n"));

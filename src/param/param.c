@@ -247,7 +247,7 @@ ERROR:
 
 int detect_file_type(char *filename, int* type)
 {
-        if(tld_file_exists(filename)== OK){
+        {
                 tld_str f = tld_char_to_str(filename);
                 tld_str sam_suffix = tld_char_to_str(".sam");
                 tld_str bam_suffix = tld_char_to_str(".bam");
@@ -282,14 +282,10 @@ int detect_file_type(char *filename, int* type)
                         *type = FILE_TYPE_UNKNOWN;
                 }
 
-        }else{
-                *type = FILE_TYPE_UNKNOWN;
-                ERROR_MSG("File %s not found!!!!", filename);
         }
 
+        /* a missing file is reported when the file is processed (exit code 1) */
         return OK;
-ERROR:
-        return FAIL;
 }
 
 int print_help(char **argv )

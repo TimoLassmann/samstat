@@ -20,53 +20,85 @@ int process_fasta_fastq_file(struct samstat_param *p, int id);
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
 
+/* Run the analysis for input file <id> depending on its type. */
+static int process_file(struct samstat_param *p, int id);
+
 int main(int argc, char *argv[])
 {
         struct samstat_param* param = NULL;
+        int n_failed = 0;
+        int ret = EXIT_SUCCESS;
 
-        RUN(parse_param(argc, argv, &param));
+        if(parse_param(argc, argv, &param) != OK){
+                return SAMSTAT_EXIT_USAGE;
+        }
 
 #if HAVE_PTHREADS
         struct thread_data* td = NULL;
         RUN(thread_data_init(&td, param));
 
+        int n_created = 0;
         for(long t = 0; t < td->n_threads; t++){
-                int rc = pthread_create(&td->threads[t], NULL, samstat_worker, (void *)td);
+                int rc = pthread_create(&td->threads[n_created], NULL, samstat_worker, (void *)td);
                 if(rc){
-                        ERROR_MSG("ERROR; return code from pthread_create() is %d\n", rc);
+                        WARNING_MSG("pthread_create() failed with return code %d.", rc);
+                }else{
+                        n_created++;
                 }
         }
-        for(long t = 0; t < td->n_threads; t++) {
+        if(n_created == 0){
+                /* no worker thread could be started - do the work here */
+                samstat_worker((void *) td);
+        }
+        for(int t = 0; t < n_created; t++) {
                 void *status;
                 int rc = pthread_join(td->threads[t], &status);
                 if(rc){
-                        ERROR_MSG("ERROR; return code from pthread_join() is %d\n", rc);
-                }
-                if(status == PTHREAD_CANCELED){
-                        fprintf(stdout,"Main: completed join with thread %ld having a status of %ld (cancelled)\n",t,(long)status);
+                        WARNING_MSG("pthread_join() failed with return code %d.", rc);
                 }
         }
-
+        for(int i = 0; i < param->n_infile; i++){
+                if(!td->ok[i]){
+                        n_failed++;
+                }
+        }
         thread_data_free(td);
 #else
         for(int i = 0 ; i < param->n_infile;i++){
                 if(param->verbose){
                         LOG_MSG("Processing: %s", param->infile[i]);
                 }
-                int t = -1;
-                t = param->file_type[i];
-                if(t == FILE_TYPE_FASTAQ){
-                        RUN(process_fasta_fastq_file(param,i));
-                }else if(t == FILE_TYPE_SAMBAM){
-                        RUN(process_sam_bam_file(param,i));
+                if(process_file(param, i) != OK){
+                        WARNING_MSG("Failed to process file: %s", param->infile[i]);
+                        n_failed++;
                 }
         }
 #endif
         param_free(param);
-
-        return EXIT_SUCCESS;
+        if(n_failed){
+                WARNING_MSG("%d of the input files could not be processed.", n_failed);
+                ret = SAMSTAT_EXIT_FAILED;
+        }
+        return ret;
+#if HAVE_PTHREADS
 ERROR:
-        return EXIT_FAILURE;
+        param_free(param);
+        return SAMSTAT_EXIT_FAILED;
+#endif
+}
+
+static int process_file(struct samstat_param *p, int id)
+{
+        if(p->file_type[id] == FILE_TYPE_FASTAQ){
+                RUN(process_fasta_fastq_file(p, id));
+        }else if(p->file_type[id] == FILE_TYPE_SAMBAM){
+                RUN(process_sam_bam_file(p, id));
+        }else{
+                ERROR_MSG("File type of %s not recognized.", p->infile[id]);
+        }
+        return OK;
+ERROR:
+        return FAIL;
 }
 
 #if HAVE_PTHREADS
@@ -103,22 +135,16 @@ void *samstat_worker(void *data)
 
                  if(target_id == -1){
                          run = 0;
+                 }else if(process_file(param, target_id) == OK){
+                         td->ok[target_id] = 1;
                  }else{
-                         int t = -1;
-                         t = param->file_type[target_id];
-                         if(t == FILE_TYPE_FASTAQ){
-                                 RUN(process_fasta_fastq_file(param,target_id));
-                         }else if(t == FILE_TYPE_SAMBAM){
-                                 RUN(process_sam_bam_file(param,target_id));
-                         }
+                         /* an error in one file must not stop the remaining files */
+                         WARNING_MSG("Failed to process file: %s", param->infile[target_id]);
                  }
         }
-
-        pthread_exit(0);
         return NULL;
 ERROR:
         LOG_MSG("Worker thread done due to error.");
-        pthread_exit(0);
         return NULL;
 }
 #endif

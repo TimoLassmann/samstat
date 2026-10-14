@@ -12,6 +12,7 @@
 
 struct thread_data {
         uint8_t* active;
+        uint8_t* ok;            /* per input file: 1 if processed successfully */
         pthread_mutex_t lock;
         int n_threads;
         struct samstat_param* p;

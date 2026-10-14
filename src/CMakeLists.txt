@@ -32,6 +32,7 @@ set(source_files
   sambamparse/sam_bam_parse.c
   param/param.c
   collect/collect.c
+  report/report_help.c
   report/stat_report.c
   report/json_report.c
   report/mqc_report.c

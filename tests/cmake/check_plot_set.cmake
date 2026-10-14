@@ -1,0 +1,98 @@
+# Check which plots a report contains and in which order (standard-plots.md sections 1 and 5).
+# Required: -DSAMSTAT=<binary> -DINPUT=<file> -DOUTDIR=<dir>
+# Optional (lists are separated with '|' because ';' does not survive add_test):
+#   -DTITLES=a|b|c         plot titles (and the MAPQ table title) that must occur, in this order
+#   -DNOT_TITLES=a|b       titles that must not occur at all
+#   -DCONTAINS=a|b         literal strings that must occur
+#   -DNOT_CONTAINS=a|b     literal strings that must not occur
+#   -DMATCHES=re@@re       regular expressions that must match (separated by '@@': they may contain '|')
+#   -DNOT_MATCHES=re@@re   regular expressions that must not match
+# Always: no 'NaN', 'Infinity' or 'undefined' anywhere in the report.
+
+cmake_minimum_required(VERSION 3.19)
+
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+
+execute_process(
+  COMMAND ${SAMSTAT} -d ${OUTDIR} ${INPUT}
+  RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "samstat exited with ${rc} on ${INPUT}\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+get_filename_component(name ${INPUT} NAME)
+set(report ${OUTDIR}/${name}.samstat.html)
+if(NOT EXISTS ${report})
+  message(FATAL_ERROR "No report written: ${report}\nstderr:\n${err}")
+endif()
+file(READ ${report} html)
+
+set(failed "")
+
+if(html MATCHES "NaN|Infinity|undefined")
+  string(APPEND failed "  report contains '${CMAKE_MATCH_0}'\n")
+endif()
+
+if(TITLES)
+  string(REPLACE "|" ";" titles "${TITLES}")
+  set(last -1)
+  set(last_title "(start)")
+  foreach(t IN LISTS titles)
+    string(FIND "${html}" "${t}" pos)
+    if(pos EQUAL -1)
+      string(APPEND failed "  title missing: ${t}\n")
+    elseif(pos LESS last)
+      string(APPEND failed "  title out of order: '${t}' comes before '${last_title}'\n")
+    else()
+      set(last ${pos})
+      set(last_title "${t}")
+    endif()
+  endforeach()
+endif()
+if(NOT_TITLES)
+  string(REPLACE "|" ";" titles "${NOT_TITLES}")
+  foreach(t IN LISTS titles)
+    string(FIND "${html}" "${t}" pos)
+    if(NOT pos EQUAL -1)
+      string(APPEND failed "  title must not occur: ${t}\n")
+    endif()
+  endforeach()
+endif()
+if(CONTAINS)
+  string(REPLACE "|" ";" items "${CONTAINS}")
+  foreach(item IN LISTS items)
+    string(FIND "${html}" "${item}" pos)
+    if(pos EQUAL -1)
+      string(APPEND failed "  missing: ${item}\n")
+    endif()
+  endforeach()
+endif()
+if(NOT_CONTAINS)
+  string(REPLACE "|" ";" items "${NOT_CONTAINS}")
+  foreach(item IN LISTS items)
+    string(FIND "${html}" "${item}" pos)
+    if(NOT pos EQUAL -1)
+      string(APPEND failed "  unexpected: ${item}\n")
+    endif()
+  endforeach()
+endif()
+if(MATCHES)
+  string(REPLACE "@@" ";" items "${MATCHES}")
+  foreach(item IN LISTS items)
+    if(NOT "${html}" MATCHES "${item}")
+      string(APPEND failed "  no match for regex: ${item}\n")
+    endif()
+  endforeach()
+endif()
+if(NOT_MATCHES)
+  string(REPLACE "@@" ";" items "${NOT_MATCHES}")
+  foreach(item IN LISTS items)
+    if("${html}" MATCHES "${item}")
+      string(APPEND failed "  unexpected regex match: ${item} (${CMAKE_MATCH_0})\n")
+    endif()
+  endforeach()
+endif()
+
+if(failed)
+  message(FATAL_ERROR "Plot set check failed for ${report}:\n${failed}")
+endif()

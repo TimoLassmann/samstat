@@ -146,3 +146,58 @@ reader_json_test(long_after_short long_after_short.sam
   "read1.base_quality.mapq_ge30.40.19=4"
   "read1.base_quality.mapq_ge30.40.4999=1"
   "read1.base_quality.mapq_ge30.40#len=5000")
+
+# --- reader:truncation_loop (WP2.1) --------------------------------------------------------
+# A BAM cut off at arbitrary offsets must be rejected cleanly: exit code 1 or 2 (never 0,
+# never a signal), a message, and no report left behind. The input is tests/data/longread/
+# ont_like.bam (47 kB, two BGZF blocks plus the EOF marker). The cut offsets are chosen
+# inside blocks; a cut exactly on a block boundary would be a valid shorter file.
+# The cut copies are made with head(1) and deleted again. The script is generated into
+# the build tree.
+set(READER_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
+file(MAKE_DIRECTORY ${READER_GEN})
+file(WRITE ${READER_GEN}/run_truncation.cmake [=[
+# -DSAMSTAT -DINPUT=<bam> -DOUTDIR -DCUTS=<offsets, '|' separated; negative = bytes before the end>
+cmake_minimum_required(VERSION 3.19)
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+file(SIZE ${INPUT} total)
+string(REPLACE "|" ";" cuts "${CUTS}")
+set(failed "")
+foreach(cut IN LISTS cuts)
+  if(cut LESS 0)
+    math(EXPR len "${total}${cut}")
+  else()
+    set(len ${cut})
+  endif()
+  set(dir ${OUTDIR}/cut${len})
+  file(MAKE_DIRECTORY ${dir})
+  set(bam ${dir}/cut.bam)
+  execute_process(COMMAND head -c ${len} ${INPUT} OUTPUT_FILE ${bam} RESULT_VARIABLE hrc)
+  if(NOT hrc EQUAL 0)
+    message(FATAL_ERROR "head -c ${len} failed (${hrc})")
+  endif()
+  execute_process(COMMAND ${SAMSTAT} --json -d ${dir} ${bam}
+    RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+  if(NOT rc MATCHES "^[0-9]+$")
+    string(APPEND failed "  cut at ${len}: crashed (${rc})\n")
+  elseif(NOT (rc EQUAL 1 OR rc EQUAL 2))
+    string(APPEND failed "  cut at ${len}: exit ${rc}, expected 1 or 2\n${out}${err}\n")
+  elseif("${out}${err}" STREQUAL "")
+    string(APPEND failed "  cut at ${len}: no message\n")
+  endif()
+  file(GLOB reports ${dir}/*.html ${dir}/*.json)
+  if(reports)
+    string(APPEND failed "  cut at ${len}: report left behind: ${reports}\n")
+  endif()
+  file(REMOVE ${bam})
+endforeach()
+if(failed)
+  message(FATAL_ERROR "truncation check failed:\n${failed}")
+endif()
+]=])
+add_test(NAME reader:truncation_loop
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DINPUT=${SAMSTAT_FIXTURE_DIR}/longread/ont_like.bam -DOUTDIR=${READER_OUT}/truncation_loop
+    "-DCUTS=10|100|5000|20000|-100" -P ${READER_GEN}/run_truncation.cmake)
+set_tests_properties(reader:truncation_loop PROPERTIES LABELS reader)

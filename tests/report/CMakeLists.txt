@@ -70,3 +70,60 @@ report_html_test(secondary_supplementary_lines "${SAMSTAT_FIXTURE_DIR}/secondary
   "-DCONTAINS=secondary alignments (not counted)|supplementary alignments (not counted)")
 report_html_test(no_secondary_lines_when_zero "${REPORT_SAM}"
   "-DNOT_CONTAINS=secondary alignments (not counted)|supplementary alignments (not counted)")
+
+# =============================================================================
+# WP2.1: pending report tests of the 2.4 standard report. All DISABLED until WP4.2a
+# (report page) enables them. Specification: docs/plan-v2.4/standard-plots.md sections 1, 2
+# and 5.
+# =============================================================================
+
+set(PLOT_T1 "How long are the reads?")
+set(PLOT_T2 "How good is each read?")
+set(PLOT_T3 "Where along the read does quality drop?")
+set(PLOT_T4 "Is base composition even along the read?")
+set(PLOT_T5 "Where along the read do errors occur?")
+set(PLOT_T6 "How accurate are the aligned reads?")
+set(PLOT_MAPQ_T "How well did reads map?")
+# aligned input: MAPQ table, then plots 1-6; unaligned input: plots 1-4 and nothing after
+set(TITLES_ALIGNED "${PLOT_MAPQ_T}|${PLOT_T1}|${PLOT_T2}|${PLOT_T3}|${PLOT_T4}|${PLOT_T5}|${PLOT_T6}")
+set(TITLES_UNALIGNED "${PLOT_T1}|${PLOT_T2}|${PLOT_T3}|${PLOT_T4}")
+set(TITLES_ABSENT_UNALIGNED "${PLOT_MAPQ_T}|${PLOT_T5}|${PLOT_T6}")
+
+# plot_set_test(<name> <input> <check args...>): check_plot_set.cmake (titles, no NaN)
+function(plot_set_test name input)
+  add_test(NAME report:${name}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> "-DINPUT=${input}"
+      -DOUTDIR=${REPORT_OUT}/${name} ${ARGN}
+      -P ${REPORT_HELPERS}/check_plot_set.cmake)
+  set_tests_properties(report:${name} PROPERTIES LABELS report DISABLED TRUE)   # enabled by WP4.2a
+endfunction()
+
+# report:plot_set (T5): the titles in order, nothing else; no NaN|Infinity|undefined
+plot_set_test(plot_set:short_bam "${SAMSTAT_FIXTURE_DIR}/small.bam" "-DTITLES=${TITLES_ALIGNED}")
+plot_set_test(plot_set:ont_like_bam "${SAMSTAT_FIXTURE_DIR}/longread/ont_like.bam" "-DTITLES=${TITLES_ALIGNED}")
+plot_set_test(plot_set:long_fq "${SAMSTAT_FIXTURE_DIR}/longread/long.fq"
+  "-DTITLES=${TITLES_UNALIGNED}" "-DNOT_TITLES=${TITLES_ABSENT_UNALIGNED}")
+# the short layout x axis ends at the longest read (150 bp for single_len.sam), not at 1000.
+# The exact tick markup is WP4.2a's: adjust the pattern there if the axis labels differ.
+plot_set_test(plot_set:single_len_axis "${SAMSTAT_FIXTURE_DIR}/longread/single_len.sam"
+  "-DTITLES=${TITLES_ALIGNED}" "-DCONTAINS=>150<")
+
+# report:offline: no network access, no external resource (zero requests)
+foreach(input small.bam longread/ont_like.bam longread/long.fq)
+  string(MAKE_C_IDENTIFIER "${input}" id)
+  plot_set_test(offline:${id} "${SAMSTAT_FIXTURE_DIR}/${input}"
+    "-DNOT_MATCHES=(src|href)=[\"']?(https?:)?//@@url\\([\"']?https?:")
+endforeach()
+
+# report:ultralong_html, report:short_html_size: HTML < 1 MB in both layouts
+add_test(NAME report:ultralong_html
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${REPORT_OUT}/ultralong_html -DMODE=ultralong
+    -P ${REPORT_HELPERS}/run_html_size.cmake)
+add_test(NAME report:short_html_size
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${REPORT_OUT}/short_html_size -DMODE=short
+    -P ${REPORT_HELPERS}/run_html_size.cmake)
+set_tests_properties(report:ultralong_html report:short_html_size
+  PROPERTIES LABELS report DISABLED TRUE)   # enabled by WP4.2a

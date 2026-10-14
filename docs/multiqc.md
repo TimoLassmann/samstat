@@ -83,7 +83,7 @@ out, as is the bin of length 0 (the axis is logarithmic).
 ## Details
 
 * Sample name = file name without directory, a trailing `.gz` and one of
-  `.sam .bam .fq .fastq .fa .fasta .fna`. It is the key in `data`.
+  `.sam .bam .cram .fq .fastq .fa .fasta .fna`, matched without regard to case. It is the key in `data`.
 * Percentages are of all counted reads (read 1 + read 2), written with two decimals;
   median identity has one decimal, mean Q two, mean Q along the read three, error rates four.
   All of them come from the integer counts of the JSON report.

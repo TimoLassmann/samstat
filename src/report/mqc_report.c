@@ -58,7 +58,7 @@ ERROR:
    .gz and one known sequence / alignment extension. */
 int mqc_sample_name(const char *filename, char **sample)
 {
-        static const char* const ext[] = {".sam", ".bam", ".fq", ".fastq", ".fa", ".fasta", ".fna"};
+        static const char* const ext[] = {".sam", ".bam", ".cram", ".fq", ".fastq", ".fa", ".fasta", ".fna"};
         char *name = NULL;
         size_t len = strlen(filename);
 
@@ -93,7 +93,9 @@ int mqc_open(struct samstat_param *p, int id, const char *filename, const char *
                 n = snprintf(path, 1024, "%s.samstat_%s_mqc.json", samstat_output_stem(p, id), section);
         }
         ASSERT(n > 0 && n < 1024, "Output path too long");
-        LOG_MSG("Writing to: %s", path);
+        if(p->verbose){
+                LOG_MSG("Writing to: %s", path);
+        }
         *f = fopen(path, "w");
         ASSERT(*f != NULL, "Failed to open output file: %s", path);
         return OK;

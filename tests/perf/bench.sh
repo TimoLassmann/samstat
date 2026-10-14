@@ -170,7 +170,7 @@ if [ "$HTS_VER" = unknown ] && command -v pkg-config >/dev/null 2>&1; then
 fi
 echo "htslib:     $HTS_VER (libdeflate: $DEFL)"
 echo "generation: $((gen_t1 - gen_t0)) s (not part of the timed runs; 0 when inputs were reused)"
-echo "threads:    $BENCH_THREADS (2.3 uses one thread per input file, so one file does not scale before WP4.1)"
+echo "threads:    $BENCH_THREADS"
 echo
 
 for spec in "short:$SHORT:sam" "ont:$ONT:sam" "huge:$HUGE:sam" "fastqgz:$FQGZ:fq"; do

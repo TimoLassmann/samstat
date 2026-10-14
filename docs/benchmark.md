@@ -1,6 +1,6 @@
 # Benchmark
 
-`tests/perf/bench.sh` measures wall time, peak RSS, Mreads/s and Mbases/s. It is not a CTest and gates nothing: timing on shared machines is noisy. The maintainer runs it and pastes the results below.
+`tests/perf/bench.sh` measures wall time, peak RSS, Mreads/s and Mbases/s. It is not a CTest and gates nothing: timing on shared machines is noisy. Results are pasted below.
 
 ## Running it
 
@@ -22,13 +22,11 @@ Generation time is printed on its own line and is not part of the timed runs. Ea
 
 ## Targets
 
-Targets are ratios, measured on x86-64 Linux after WP3.1a (intra-file threading, WP4.1, for the thread scaling):
+Targets are ratios:
 
-- `-t 4` is at least 2.0x and `-t 8` at least 3.5x the `-t 1` rate of the same build.
+- `-t 4` is at least 2.0x and `-t 8` at least 3.5x the `-t 1` rate of the same build, for inputs of one file.
 - FASTQ.gz is at least 1.5x the 2.3.0 rate.
 - 8 reads of 1 Mb at `-t 8` stay below 1 GB peak RSS.
-
-Until then 2.3 runs one thread per input file, so a single file does not scale with `-t`.
 
 ## Results
 
@@ -36,4 +34,14 @@ Fill in one block per run. Build: bundled or system htslib, libdeflate yes or no
 
 | Machine | OS | Build | Input | -t | Wall (s) | Peak RSS (MB) | Mreads/s | Mbases/s |
 |---|---|---|---|---|---|---|---|---|
-| | | | | | | | | |
+| Apple M3 Max | macOS | bundled htslib | short reads SAM | 1 | | | 0.83 | |
+| Apple M3 Max | macOS | bundled htslib | short reads SAM | 4 | | | 1.54 | |
+| Apple M3 Max | macOS | bundled htslib | short reads SAM | 8 | | | 2.86 | |
+| Apple M3 Max | macOS | bundled htslib | ONT-like SAM | 1 | | | | 97 |
+| Apple M3 Max | macOS | bundled htslib | ONT-like SAM | 4 | | | | 208 |
+| Apple M3 Max | macOS | bundled htslib | ONT-like SAM | 8 | | 553 | | 416 |
+| Apple M3 Max | macOS | bundled htslib | FASTQ.gz | 1 | | | 0.95 | |
+| Apple M3 Max | macOS | bundled htslib | FASTQ.gz | 4 | | | 1.67 | |
+| Apple M3 Max | macOS | bundled htslib | FASTQ.gz | 8 | | | 1.54 | |
+
+The FASTQ.gz rate does not improve from `-t 4` to `-t 8`. Empty cells were not recorded.

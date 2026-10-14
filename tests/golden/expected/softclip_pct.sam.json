@@ -29,9 +29,9 @@
 "mapq_counts": {"read1": {"mapq_ge30": 4, "mapq_10_29": 0, "mapq_lt10": 0, "unmapped": 1}}
 },
 "mapq_bins": [
-{"id": "mapq_ge30", "label": "MAPQ gt 30"},
-{"id": "mapq_10_29", "label": "MAPQ lt 30"},
-{"id": "mapq_lt10", "label": "MAPQ lt 10"},
+{"id": "mapq_ge30", "label": "MAPQ >= 30"},
+{"id": "mapq_10_29", "label": "MAPQ 10-29"},
+{"id": "mapq_lt10", "label": "MAPQ < 10"},
 {"id": "unmapped", "label": "Unmapped"}
 ],
 "axes": {

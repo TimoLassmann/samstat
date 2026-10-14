@@ -61,7 +61,9 @@ int json_report_write(struct stat_collection *s, struct samstat_param *p, int id
                 n = snprintf(path, 1024, "%s.samstat.json", samstat_output_stem(p, id));
         }
         ASSERT(n > 0 && n < 1024, "Output path too long");
-        LOG_MSG("Writing to: %s", path);
+        if(p->verbose){
+                LOG_MSG("Writing to: %s", path);
+        }
         out.f = fopen(path, "w");
         ASSERT(out.f != NULL, "Failed to open output file: %s", path);
         RUN(tld_strbuf_alloc(&out.b, JSON_BUF_BYTES));

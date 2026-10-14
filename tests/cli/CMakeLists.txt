@@ -361,12 +361,29 @@ foreach(o IN LISTS opts)
     message(FATAL_ERROR "${o} is in -h but not in Readme.org")
   endif()
 endforeach()
+# the usage line and the option lines are the same text in both, in the same order
+string(REGEX MATCH "Usage: [a-z]+ ([^\n]*)" usage "${help}")
+string(FIND "${readme}" "samstat ${CMAKE_MATCH_1}\n" at)
+if(at EQUAL -1)
+  message(FATAL_ERROR "the usage line '${usage}' of -h is not in Readme.org")
+endif()
+string(REGEX MATCHALL "\n +-[^\n]*" lines "${help}")
+set(from 0)
+foreach(l IN LISTS lines)
+  string(SUBSTRING "${l}" 1 -1 l)
+  string(FIND "${readme}" "${l}\n" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "the -h line '${l}' is not in Readme.org")
+  endif()
+  if(at LESS from)
+    message(FATAL_ERROR "the -h line '${l}' is in a different order in Readme.org")
+  endif()
+  set(from ${at})
+endforeach()
 ]=])
 
 # =============================================================================
-# WP2.1: pending feature tests. Every test below is DISABLED until the package named
-# in its comment enables it (removes the DISABLED property); a disabled test shows as
-# "Not Run (Disabled)" and keeps ctest green.
+# Threading, -p and standard input tests.
 # =============================================================================
 
 # --- WP4.1 (intra-file threading): one file, -t 1/2/3/4/8 give identical output ------------
@@ -410,14 +427,17 @@ add_test(NAME reader:p_cutoff_counts_t8
 set_tests_properties(reader:p_cutoff_counts_t8 PROPERTIES LABELS reader)
 
 # --- WP3.2 (htslib reader, content detection, stdin) -----------------------------------
-# stdin: the input is fed through standard input with `-` as the file name. Report file
-# names switch to the 'stdin' stem only in wave 4, so the tests glob for the one JSON
-# report in -d DIR and assert on its content (summary.* paths exist in format 1 and 2).
+# stdin: the input is fed through standard input with `-` as the file name. The reports are
+# named stdin.samstat.*; most tests glob for the one JSON report in -d DIR and assert on its
+# content, cli:stdin_report_names pins the names.
 file(WRITE ${CLI_GEN}/run_stdin.cmake [=[
 # -DSAMSTAT -DOUTDIR -DSTDIN_FILE=<file fed to stdin> -DCHECKS=<check_json list>
 # -DCHECK_JSON=<path of check_json.cmake>
 # optional: -DEXPECT_RC=<n> (default 0); with a nonzero code only the exit code is checked
 #           -DEXTRA_ARGS=<more arguments after the first "-">
+#           -DEXPECT_FILES=<list of files in OUTDIR that must exist>
+#           -DEXPECT_ERR_REGEX=<regex the log output (stdout and stderr) must match>
+#           -DHTML_TEXT=<text stdin.samstat.html must contain>
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 if(NOT DEFINED EXPECT_RC)
@@ -431,6 +451,22 @@ if(NOT "${rc}" STREQUAL "${EXPECT_RC}")
 endif()
 if(NOT EXPECT_RC EQUAL 0)
   return()
+endif()
+string(REPLACE "\\;" ";" EXPECT_FILES "${EXPECT_FILES}")
+foreach(f IN LISTS EXPECT_FILES)
+  if(NOT EXISTS ${OUTDIR}/${f})
+    message(FATAL_ERROR "expected file ${f} was not written to ${OUTDIR}\nstdout:\n${out}\nstderr:\n${err}")
+  endif()
+endforeach()
+if(EXPECT_ERR_REGEX AND NOT "${out}\n${err}" MATCHES "${EXPECT_ERR_REGEX}")
+  message(FATAL_ERROR "log output does not match '${EXPECT_ERR_REGEX}'\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+if(HTML_TEXT)
+  file(READ ${OUTDIR}/stdin.samstat.html html)
+  string(FIND "${html}" "${HTML_TEXT}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "stdin.samstat.html does not contain '${HTML_TEXT}'")
+  endif()
 endif()
 file(GLOB reports ${OUTDIR}/*.json)
 list(LENGTH reports n)
@@ -460,6 +496,16 @@ stdin_test(fastq ${FX}/READS.FQ "summary.total_reads=3" "summary.is_aligned=fals
 stdin_test(fastq_gz ${FX}/reads.fq.gz "summary.is_aligned=false" "summary.total_reads=3")
 stdin_test(paired_sam ${FX}/paired_small.sam
   "summary.total_reads=4" "summary.read1_reads=2" "summary.read2_reads=2")
+
+# the report names for standard input (decision C1), the stderr summary line, and the format
+# in the page header: stdin is a stream, the format comes from the reader's own detection
+add_test(NAME cli:stdin_report_names
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${CLI_OUT}/stdin_report_names -DSTDIN_FILE=${FX}/small.bam -DCHECK_JSON=${CLI_HELPERS}/check_json.cmake
+    "-DCHECKS=summary.total_reads=20" "-DEXPECT_FILES=stdin.samstat.html\;stdin.samstat.json"
+    "-DEXPECT_ERR_REGEX=samstat: stdin -> [^\n]*stdin\\.samstat\\.html \\(BAM, 20 reads"
+    "-DHTML_TEXT=>BAM &middot; " -P ${CLI_GEN}/run_stdin.cmake)
+set_tests_properties(cli:stdin_report_names PROPERTIES LABELS cli)
 
 # empty standard input is a valid empty input (3.0): exit 0, total_reads 0
 add_test(NAME cli:stdin_empty
@@ -511,3 +557,48 @@ cli_test(no_progress_without_tty
   GEN_FASTQ 1100000 ARGS -d ${D} @GENFQ@
   REGEX "FASTQ, 1\\.1M reads"
   NO_REGEX "reads processed|Processed")
+
+# --- final review fixes ------------------------------------------------------------------
+
+# Output files are not announced on stdout unless --verbose is given (standard-plots.md section 6)
+cli_test(no_writing_to_log
+  ARGS --json --multiqc -d ${D} ${FX}/small.sam
+  FILES small.sam.samstat.html small.sam.samstat.json small.sam.samstat_general_mqc.json
+  NO_REGEX "Writing to")
+cli_test(verbose_writing_to_log
+  ARGS --verbose --json --multiqc -d ${D} ${FX}/small.sam
+  REGEX "Writing to: [^\n]*small\\.sam\\.samstat\\.html.*Writing to: [^\n]*small\\.sam\\.samstat\\.json.*Writing to: [^\n]*samstat_general_mqc\\.json")
+
+# JSON mapq_bins labels read as the key of the MAPQ table does
+cli_test(json_mapq_bin_labels
+  ARGS --json -d ${D} ${FX}/small.sam
+  JSON small.sam.samstat.json
+  CHECKS "mapq_bins.0.label=MAPQ >= 30" "mapq_bins.1.label=MAPQ 10-29" "mapq_bins.2.label=MAPQ < 10" "mapq_bins.3.label=Unmapped")
+
+# A mapped record with SEQ '*' has no bases: its soft clips must not enter the clipped-bases
+# percentage (it was 1000 % for 100 clipped bases over 10 mapped ones)
+file(WRITE ${CLI_GEN}/clip_seq_star.sam
+  "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:2000\n"
+  "normal\t0\tchr1\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n"
+  "star\t0\tchr1\t20\t60\t100S10M\t*\t0\t0\t*\t*\n")
+cli_test(pct_clipped_seq_star
+  ARGS --json -d ${D} ${CLI_GEN}/clip_seq_star.sam
+  JSON clip_seq_star.sam.samstat.json CHECKS "summary.pct_clipped<=100" "summary.pct_clipped>=0")
+
+# -p: empty-sequence FASTQ records are not reads, so they do not make the report partial
+file(WRITE ${CLI_GEN}/empty_seq_last.fq "@a\nACGT\n+\nIIII\n@b\nACGT\n+\nIIII\n@c\n\n+\n\n")
+cli_test(peek_empty_seq_not_partial
+  ARGS --json -p 2 -d ${D} ${CLI_GEN}/empty_seq_last.fq
+  NO_REGEX "partial: |partial report"
+  JSON empty_seq_last.fq.samstat.json CHECKS "summary.total_reads=2" "summary.is_partial_report=false")
+cli_test(peek_real_record_is_partial
+  ARGS --json -p 1 -d ${D} ${CLI_GEN}/empty_seq_last.fq
+  REGEX "partial: first 1 reads"
+  JSON empty_seq_last.fq.samstat.json CHECKS "summary.total_reads=1" "summary.is_partial_report=true")
+
+# Several inputs processed at once (-t 3, 4 inputs): the HTML is byte-identical to -t 1. The axis
+# labels of plots 3-5 were once shared between threads.
+add_test(NAME cli:threads_many_inputs_html
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${CLI_OUT}/threads_many_inputs_html
+    -P ${CLI_HELPERS}/run_many_inputs.cmake)
+set_tests_properties(cli:threads_many_inputs_html PROPERTIES LABELS cli)

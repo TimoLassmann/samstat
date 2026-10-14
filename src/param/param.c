@@ -436,7 +436,7 @@ int print_help(char **argv )
         char* tmp = NULL;
         RUN(tld_get_filename(argv[0], &tmp));
 
-        fprintf(stdout,"%s %s - quality control for SAM/BAM and FASTA/FASTQ files\n", PACKAGE_NAME, PACKAGE_VERSION);
+        fprintf(stdout,"%s %s - quality control for SAM/BAM/CRAM and FASTA/FASTQ files\n", PACKAGE_NAME, PACKAGE_VERSION);
         fprintf(stdout,"\n");
         fprintf(stdout,"Usage: %s [options] <file|-> [file ...]\n\n", tmp);
         fprintf(stdout,"  -d, --dir DIR      write reports to DIR (created if missing) [next to input]\n");
@@ -447,8 +447,9 @@ int print_help(char **argv )
         fprintf(stdout,"      --verbose      debug output\n");
         fprintf(stdout,"  -h, --help / -v, --version\n");
         fprintf(stdout,"\n");
-        fprintf(stdout,"Input type (SAM, BAM, FASTA or FASTQ, plain or gzip) is detected from the\n");
-        fprintf(stdout,"content. A file name of - reads standard input (once); its reports are\n");
+        fprintf(stdout,"Input type (SAM, BAM, CRAM, FASTA or FASTQ, plain or gzip) is detected from the\n");
+        fprintf(stdout,"content. CRAM needs its reference, found through REF_PATH or REF_CACHE (no\n");
+        fprintf(stdout,"network). A file name of - reads standard input (once); its reports are\n");
         fprintf(stdout,"named stdin.samstat.*.\n");
         fprintf(stdout,"Exit codes: 0 ok, 1 one or more inputs failed, 2 usage error.\n");
         fprintf(stdout,"\n");

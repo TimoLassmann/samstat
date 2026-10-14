@@ -124,7 +124,8 @@ double collect_mean_q(collect_u128 error_sum, uint64_t bases)
         if(mean_error <= 0.0){
                 return (double) (COLLECT_N_Q - 1);
         }
-        return -10.0 * log10(mean_error);
+        /* 0.0 - x: a mean error of exactly 1 gives log10 = +0, and -10 * 0 would print as "-0.0" */
+        return 0.0 - 10.0 * log10(mean_error);
 }
 
 /* ------------------------------------------------------------------------------------
@@ -396,7 +397,11 @@ static void collect_record(struct stat_collection *s, struct tl_seq *itm, int q_
         acc->len_bases[r][m][bin] += (uint64_t) len;
         if(mapped){
                 s->mapped_bases += (uint64_t) len;
-                s->clipped_bases += a->s_bases;
+                if(len > 0){
+                        /* a record without a stored sequence (SEQ '*') adds no bases to the
+                         * denominator, so its clipped bases must not enter the numerator */
+                        s->clipped_bases += a->s_bases;
+                }
         }
 
         /* bases: clipped bases only feed the read mean Q, the aligned part feeds everything */
@@ -761,9 +766,9 @@ int get_mapqual_bins(struct mapqual_bins **map)
                 }
         }
 
-        snprintf(m->description[MAPQUALBIN_gt30], 256, "MAPQ gt 30");
-        snprintf(m->description[MAPQUALBIN_lt30], 256, "MAPQ lt 30");
-        snprintf(m->description[MAPQUALBIN_lt10], 256, "MAPQ lt 10");
+        snprintf(m->description[MAPQUALBIN_gt30], 256, "MAPQ >= 30");
+        snprintf(m->description[MAPQUALBIN_lt30], 256, "MAPQ 10-29");
+        snprintf(m->description[MAPQUALBIN_lt10], 256, "MAPQ < 10");
         snprintf(m->description[MAPQUALBIN_UNMAP], 256, "Unmapped");
 
 

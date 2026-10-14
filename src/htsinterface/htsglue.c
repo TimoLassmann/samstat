@@ -73,7 +73,12 @@ static int more_primary_follow(struct sam_bam_file *f)
         int r;
 
         while((r = sam_read1(f->in, f->header, f->b)) >= 0){
-                if(!(f->b->core.flag & (BAM_FSECONDARY | BAM_FSUPPLEMENTARY))){
+                if(f->is_fastx){
+                        /* same rule as read_batch: a FASTA/FASTQ record without sequence is not a read */
+                        if(f->b->core.l_qseq != 0){
+                                return 1;
+                        }
+                }else if(!(f->b->core.flag & (BAM_FSECONDARY | BAM_FSUPPLEMENTARY))){
                         return 1;
                 }
         }

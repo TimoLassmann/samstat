@@ -370,15 +370,6 @@ ERROR:
         return FAIL;
 }
 
-/* num / den, or 0 if den is 0 (empty input) so that no NaN/inf reaches the report */
-double samstat_ratio(uint64_t num, uint64_t den)
-{
-        if(!den){
-                return 0.0;
-        }
-        return (double) num / (double) den;
-}
-
 int samstat_add_large_number(tld_strbuf *o, uint64_t n)
 {
         char buf[256];

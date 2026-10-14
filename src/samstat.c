@@ -8,6 +8,7 @@
 #include "tools/tools.h"
 #include <stdint.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
@@ -214,6 +215,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         }
         RUN(close_bam(f_handle));
 
+        if(n_read == 0){
+                WARNING_MSG("%s: the input is empty (no reads), the report will be empty.", p->infile[id]);
+        }
         if(s->is_partial_report){
                 WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
         }
@@ -242,12 +246,18 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
+        /* the parser rejects a zero byte file - treat it as an input without reads */
+        struct stat st;
+        int is_empty = (stat(p->infile[id], &st) == 0 && st.st_size == 0);
+
+        if(!is_empty){
+                RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
+        }
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         RUN(stat_collection_alloc(&s));
         RUN(stat_collection_config_additional_plot(s,p));
 
-        while(1){
+        while(!is_empty){
                 RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
                 if(!sb->data){
                         LOG_MSG("Setting alphabet");
@@ -287,6 +297,9 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 reset_tl_seq_buffer(sb);
         }
 
+        if(n_read == 0){
+                WARNING_MSG("%s: the input is empty (no reads), the report will be empty.", p->infile[id]);
+        }
         if(s->is_partial_report){
                 WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
         }

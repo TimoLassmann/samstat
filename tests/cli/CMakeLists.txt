@@ -170,3 +170,20 @@ peek_test(fq_all         fq 30 30 30 false)
 peek_test(fq_chunk_edge  fq 10050 10000 10000 true)
 peek_test(fq_chunk_plus  fq 10050 10010 10010 true)
 peek_test(fq_exact_two_chunks fq 10050 10050 10050 false)
+
+# --- empty inputs: report written, warning, exit 0, no nan/inf in the output ----------
+foreach(f empty.sam)
+  cli_test(empty_sam
+    ARGS --json -d ${D} ${FX}/${f}
+    REGEX "[Ee]mpty|no reads|0 reads" NO_NAN
+    FILES empty.sam.samstat.html empty.sam.samstat.json
+    JSON empty.sam.samstat.json CHECKS summary.total_reads=0)
+endforeach()
+cli_test(empty_fq
+  ARGS --json -d ${D} ${FX}/empty.fq
+  REGEX "[Ee]mpty|no reads|0 reads" NO_NAN
+  FILES empty.fq.samstat.html empty.fq.samstat.json
+  JSON empty.fq.samstat.json CHECKS summary.total_reads=0)
+cli_test(empty_with_good_t1
+  ARGS -t 1 -d ${D} ${FX}/empty.sam ${FX}/small.sam
+  FILES empty.sam.samstat.html small.sam.samstat.html)

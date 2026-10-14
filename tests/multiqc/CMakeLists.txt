@@ -216,3 +216,9 @@ mqc_run_test(path_too_long 1
   MKDIR ${MQC_LONG_REL}
   ARGS --multiqc -d @OUTDIR@${MQC_LONG} ${SAMSTAT_FIXTURE_DIR}/small.sam
   REGEX "Output path too long")
+# remove the deep directory again, pass or fail: paths this long break backup tools
+add_test(NAME multiqc:path_too_long_cleanup
+  COMMAND ${CMAKE_COMMAND} -E rm -rf ${MQC_OUT}/path_too_long)
+set_tests_properties(multiqc:path_too_long PROPERTIES FIXTURES_REQUIRED mqc_long_path)
+set_tests_properties(multiqc:path_too_long_cleanup PROPERTIES
+  LABELS multiqc FIXTURES_CLEANUP mqc_long_path)

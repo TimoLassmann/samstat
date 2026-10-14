@@ -41,12 +41,15 @@ enum report_mapq_id {
 struct report_plot_help {
         const char* title;          /* the question */
         const char* caption;        /* always visible */
-        const char* good;           /* "How to read this", line 1 */
-        const char* look;           /* line 2 */
-        const char* benign;         /* line 3 */
+        const char* caption_unaligned;  /* caption for input that is not aligned, or NULL for the same */
+        const char* good;           /* visible line under the figure */
+        const char* look;           /* "How to read plot N" (collapsed), line 1 */
+        const char* benign;         /* line 2 */
+        const char* note;           /* line 3, how a value is calculated, or NULL */
         const char* na_no_quality;  /* plots 2-3 without qualities, else NULL */
         const char* na_no_mapped;   /* plots 5-6 without mapped reads, else NULL */
         const char* na_no_data;     /* plot 6: no usable NM / =,X, else NULL */
+        const char* na_no_sequence; /* plots 1, 4, 5: reads exist but none has a sequence, else NULL */
 };
 
 struct report_mapq_help {
@@ -60,12 +63,16 @@ EXTERN const struct report_plot_help report_plot_help[REPORT_N_PLOTS];
 EXTERN const struct report_mapq_help report_mapq_help[REPORT_N_MAPQ];
 
 /* Labels. */
-EXTERN const char* const report_how_to_read_label;   /* "How to read this" */
+EXTERN const char* const report_how_to_read_label;   /* "How to read plot" (the page appends the number) */
+EXTERN const char* const report_note_label;          /* "How it is calculated:" */
 EXTERN const char* const report_good_label;          /* "Good:" */
 EXTERN const char* const report_look_label;          /* "Worth a look:" */
 EXTERN const char* const report_benign_label;        /* "Often benign:" */
 EXTERN const char* const report_mapq_title;          /* MAPQ table heading */
 EXTERN const char* const report_mapq_caption;        /* MAPQ table caption */
+
+/* Caption of a plot for aligned or unaligned input. */
+const char* report_plot_caption(int plot_id, int is_aligned);
 
 /* Plot 5 mismatch row text when no read has MD or X operations. */
 EXTERN const char* const report_mismatch_row_na;
@@ -77,6 +84,19 @@ EXTERN const char* const report_note_identity_na;    /* (const char* N, const ch
 EXTERN const char* const report_note_beyond_axis;    /* (const char* P) */
 /* Appended to the plot 5 mismatch row caption when some reads lack MD. */
 EXTERN const char* const report_note_mismatch_excludes; /* (const char* N, const char* M) */
+
+/* No sequence (SEQ is * in every read), few reads, and an empty file. */
+EXTERN const char* const report_note_no_sequence;
+EXTERN const char* const report_note_few_reads;      /* (const char* N) */
+EXTERN const char* const report_banner_no_reads;
+/* Sub-labels of two summary tiles. */
+EXTERN const char* const report_tile_n50_sub;
+EXTERN const char* const report_tile_clipped_sub;
+
+/* Reads below this count get the "few reads" note; positions backed by fewer than
+   REPORT_MIN_POS_BASES bases are gaps in plots 3-5. */
+#define REPORT_FEW_READS 100
+#define REPORT_MIN_POS_BASES 10
 
 /* Header line suffix under -p. */
 EXTERN const char* const report_header_partial;      /* (const char* N) */

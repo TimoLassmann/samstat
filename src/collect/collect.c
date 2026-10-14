@@ -531,6 +531,29 @@ ERROR:
  * Finalise (standard-plots.md 3.7)
  * ------------------------------------------------------------------------------------ */
 
+/* Display value of a length found in storage bin b (see struct stat_collection). */
+static void length_best(const struct stat_collection *s, int b, uint64_t reads_in_bin, uint64_t bases_in_bin, uint64_t *best, uint8_t *exact)
+{
+        uint64_t edge = collect_length_edge(b);
+
+        if(edge < COLLECT_LEN_EXACT){
+                *best = edge;
+                *exact = 1;
+        }else if(reads_in_bin == 1){
+                *best = bases_in_bin;
+                *exact = 1;
+        }else{
+                *best = edge;
+                if(*best < s->min_length){
+                        *best = s->min_length;
+                }
+                if(*best > s->max_length){
+                        *best = s->max_length;
+                }
+                *exact = (s->min_length == s->max_length) ? 1 : 0;
+        }
+}
+
 int stat_collection_finalise(struct stat_collection *s)
 {
         uint64_t n_unmapped;
@@ -582,11 +605,17 @@ int stat_collection_finalise(struct stat_collection *s)
                 }
                 s->median_length = 0;
                 s->n50 = 0;
+                s->median_best = 0;
+                s->n50_best = 0;
+                s->median_exact = 0;
+                s->n50_exact = 0;
                 if(s->n_total){
+                        cum = 0;
                         for(int b = 0; b < COLLECT_N_LEN_BINS; b++){
                                 cum += reads_at[b];
                                 if(2 * cum >= s->n_total){
                                         s->median_length = collect_length_edge(b);
+                                        length_best(s, b, reads_at[b], bases_at[b], &s->median_best, &s->median_exact);
                                         break;
                                 }
                         }
@@ -597,6 +626,7 @@ int stat_collection_finalise(struct stat_collection *s)
                                 cum += bases_at[b];
                                 if(2 * cum >= s->total_bases){
                                         s->n50 = collect_length_edge(b);
+                                        length_best(s, b, reads_at[b], bases_at[b], &s->n50_best, &s->n50_exact);
                                         break;
                                 }
                         }

@@ -10,7 +10,8 @@
 #define SVG_AXIS_COLOR "#595959"   /*  7:1 on white */
 #define SVG_GRID_COLOR "#e4e4e4"   /* decorative */
 #define SVG_FONT_STACK "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-#define SVG_LINE_WIDTH 1.75
+#define SVG_LINE_WIDTH 2.0
+#define SVG_MIN_BAR 2.0           /* an isolated histogram bin is drawn at least this wide (user units) */
 
 /*
  * Like tld's RUN, but silent: RUN prints the stringified expression through a
@@ -413,10 +414,10 @@ void svg_grid_init(svg_grid* g, int rows, int cols, double w, double h, double f
         g->has_titles = has_titles;
         g->ml = 5.5 * font;     /* y tick labels (up to 6 characters) and the rotated y title */
         g->mr = 1.5 * font;     /* half of the last x tick label */
-        g->mt = (has_titles ? 2.0 : 0.8) * font;
+        g->mt = (has_titles ? 2.3 : 0.8) * font;
         g->mb = 3.4 * font;     /* x tick labels and the x title */
         g->gap_x = 3.0 * font;
-        g->gap_y = g->rows > 1 ? 2.7 * font : 0.0;   /* room for the next panel title and this panel's last tick label */
+        g->gap_y = g->rows > 1 ? 3.5 * font : 0.0;   /* room for the next panel title and this panel's last tick label */
         g->pw = (w - g->ml - g->mr - (g->cols - 1) * g->gap_x) / g->cols;
         g->ph = (h - g->mt - g->mb - (g->rows - 1) * g->gap_y) / g->rows;
 }
@@ -484,7 +485,16 @@ int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char
         TRY(pf(o, "\"/>"));
 
         if (title && *title) {
-                TRY(pf(o, "<text x=\"%f\" y=\"%f\" font-weight=\"bold\">%e</text>", p->left, p->top - 0.55 * f, title));
+                /* a long title starts further left rather than running off the figure */
+                double tx = p->left;
+                double tw = 0.62 * f * (double)strlen(title);
+                if (tx + tw > g->width - 4.0) {
+                        tx = g->width - 4.0 - tw;
+                }
+                if (tx < 4.0) {
+                        tx = 4.0;
+                }
+                TRY(pf(o, "<text x=\"%f\" y=\"%f\" font-weight=\"bold\">%e</text>", tx, p->top - 0.85 * f, title));
         }
         if (r == g->rows - 1) {
                 for (int i = 0; i < nx; i++) {
@@ -495,8 +505,17 @@ int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char
                         }
                 }
                 if (p->x.label && *p->x.label) {
+                        /* centred under the plot area, moved left or right if it would leave the figure */
+                        double half = 0.29 * f * (double)strlen(p->x.label);
+                        double cx = p->left + p->w / 2.0;
+                        if (cx + half > g->width - 4.0) {
+                                cx = g->width - 4.0 - half;
+                        }
+                        if (cx - half < 4.0) {
+                                cx = 4.0 + half;
+                        }
                         TRY(pf(o, "<text x=\"%f\" y=\"%f\" text-anchor=\"middle\">%e</text>",
-                               p->left + p->w / 2.0, bottom + 7.0 + 2.3 * f, p->x.label));
+                               cx, bottom + 7.0 + 2.3 * f, p->x.label));
                 }
         }
         if (c == 0) {
@@ -585,6 +604,13 @@ ERROR:
         return FAIL;
 }
 
+/* Is bin i of a step series drawn? */
+static int step_drawn(const svg_panel* p, const svg_series* s, int i)
+{
+        return i >= 0 && i < s->n && isfinite(s->y[i]) && s->y[i] > p->y.lo &&
+               series_x(s, i + 1) > p->x.lo && series_x(s, i) < p->x.hi;
+}
+
 int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s)
 {
         int any = 0;
@@ -596,7 +622,7 @@ int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s)
                 ERROR_MSG("svg_plot: bad series");
         }
         for (int i = 0; i < s->n && !any; i++) {
-                any = s->y[i] > p->y.lo && series_x(s, i + 1) > p->x.lo && series_x(s, i) < p->x.hi;
+                any = step_drawn(p, s, i);
         }
         if (!any) {
                 return OK;
@@ -605,20 +631,37 @@ int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s)
         /*
          * One closed-to-the-baseline outline per run of non-empty bins:
          * up, across, up or down, across, ..., down. Empty bins are skipped.
+         * A non-empty bin is at least 1 unit high, and a bin with no drawn neighbour is at least
+         * SVG_MIN_BAR wide (centred on the bin), so a lone read on a log axis is still visible.
          */
         for (int i = 0; i < s->n; i++) {
-                double el = series_x(s, i);
-                double er = series_x(s, i + 1);
-                int draw = s->y[i] > p->y.lo && isfinite(s->y[i]) && er > p->x.lo && el < p->x.hi;
-                if (draw) {
+                if (step_drawn(p, s, i)) {
+                        double xl = px(p, series_x(s, i));
+                        double xr = px(p, series_x(s, i + 1));
                         double yy = py(p, s->y[i]);
+                        if (base - yy < 1.0) {
+                                yy = base - 1.0;
+                        }
+                        if (xr - xl < SVG_MIN_BAR && !step_drawn(p, s, i - 1) && !step_drawn(p, s, i + 1)) {
+                                double c = (xl + xr) / 2.0;
+                                xl = c - SVG_MIN_BAR / 2.0;
+                                xr = c + SVG_MIN_BAR / 2.0;
+                                if (xl < p->left) {
+                                        xr += p->left - xl;
+                                        xl = p->left;
+                                }
+                                if (xr > p->left + p->w) {
+                                        xl -= xr - (p->left + p->w);
+                                        xr = p->left + p->w;
+                                }
+                        }
                         if (!in_run) {
-                                TRY(pf(o, "M%f,%fV%fH%f", px(p, el), base, yy, px(p, er)));
+                                TRY(pf(o, "M%f,%fV%fH%f", xl, base, yy, xr));
                                 in_run = 1;
                         } else if (fabs(yy - last_y) > 0.049) {
-                                TRY(pf(o, "V%fH%f", yy, px(p, er)));
+                                TRY(pf(o, "V%fH%f", yy, xr));
                         } else {
-                                TRY(pf(o, "H%f", px(p, er)));
+                                TRY(pf(o, "H%f", xr));
                         }
                         last_y = yy;
                 } else if (in_run) {
@@ -676,8 +719,8 @@ ERROR:
 int svg_swatch(tld_strbuf* o, const char* id, const char* color, const char* dash,
                const char* title, const char* desc)
 {
-        TRY(begin_ex(o, id, 40.0, 14.0, SVG_DEFAULT_FONT, title, desc, "vertical-align:middle"));
-        TRY(sample(o, 2.0, 38.0, 7.0, color, dash));
+        TRY(begin_ex(o, id, 52.0, 14.0, SVG_DEFAULT_FONT, title, desc, "vertical-align:middle"));
+        TRY(sample(o, 2.0, 50.0, 7.0, color, dash));
         return svg_end(o);
 ERROR:
         return FAIL;
@@ -690,15 +733,15 @@ int svg_swatch_row(tld_strbuf* o, const char* id, const svg_swatch_item* items, 
         double x = 2.0;
 
         for (int i = 0; i < n; i++) {
-                x += 28.0 + 6.0 + 0.62 * font * (double)strlen(items[i].label ? items[i].label : "") + 14.0;
+                x += 36.0 + 6.0 + 0.62 * font * (double)strlen(items[i].label ? items[i].label : "") + 14.0;
         }
         TRY(begin_ex(o, id, x, h, font, title, desc, "max-width:100%;height:auto;vertical-align:top"));
         x = 2.0;
         for (int i = 0; i < n; i++) {
                 const char* label = items[i].label ? items[i].label : "";
-                TRY(sample(o, x, x + 28.0, h / 2.0, items[i].color, items[i].dash));
-                TRY(pf(o, "<text x=\"%f\" y=\"%f\">%e</text>", x + 34.0, h / 2.0 + 0.35 * font, label));
-                x += 34.0 + 0.62 * font * (double)strlen(label) + 14.0;
+                TRY(sample(o, x, x + 36.0, h / 2.0, items[i].color, items[i].dash));
+                TRY(pf(o, "<text x=\"%f\" y=\"%f\">%e</text>", x + 42.0, h / 2.0 + 0.35 * font, label));
+                x += 42.0 + 0.62 * font * (double)strlen(label) + 14.0;
         }
         return svg_end(o);
 ERROR:

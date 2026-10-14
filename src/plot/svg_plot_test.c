@@ -226,6 +226,28 @@ static void test_series_paths(void)
               strcmp(d, "M0,100V80H20V100M40,100V60H60H80V40H100V100") == 0, "%s", d);
         tld_strbuf_clear(o);
 
+        /* a lone, very narrow bin (0.1 px wide, 0.5 px high) is drawn at least 2 px wide and 1 px high,
+         * so a single read on a log axis is not a hairline; bins with neighbours keep their own edges */
+        {
+                static double lone[1000];
+                double xl = 0, xr = 0, top = 0, base = 0;
+                memset(lone, 0, sizeof(lone));
+                lone[500] = 0.05;
+                svg_series ln1 = {"lone", "#000000", NULL, NULL, 0, 0.005, lone, 1000};
+                CHECK(svg_step(o, &p, &ln1) == OK, "lone step");
+                CHECK(path_d_of(TLD_STR(o), "lone", d, sizeof(d)) &&
+                      sscanf(d, "M%lf,%lfV%lfH%lfV", &xl, &base, &top, &xr) == 4, "lone path: %s", d);
+                CHECK(xr - xl >= 1.99, "lone bin is %g px wide: %s", xr - xl, d);
+                CHECK(base - top >= 0.99, "lone bin is %g px high: %s", base - top, d);
+                CHECK((xl + xr) / 2.0 > 49.9 && (xl + xr) / 2.0 < 50.2, "lone bin stays centred: %s", d);
+                tld_strbuf_clear(o);
+                lone[501] = 0.05;       /* a neighbour: the bins form one run and keep their exact width */
+                CHECK(svg_step(o, &p, &ln1) == OK, "pair step");
+                CHECK(path_d_of(TLD_STR(o), "lone", d, sizeof(d)) &&
+                      sscanf(d, "M%lf,%lfV%lfH%lfV", &xl, &base, &top, &xr) == 4 && xr - xl < 0.5, "run keeps exact width: %s", d);
+                tld_strbuf_clear(o);
+        }
+
         /* log x axis (plot 1): edge 0 clamps to the axis start, decades are equally spaced */
         svg_panel lp = {0, 0, 300, 100, 12, {1, 1000, 1, NULL}, AX_Y10};
         double lx2[] = {1, 10, 100, 1000};
@@ -324,7 +346,7 @@ static void test_checker(void)
 /* specimen sheet: the figures the report needs, rendered with fake data */
 /* ------------------------------------------------------------------ */
 
-static const char* MAPQ_COLOR[4] = {"#0072B2", "#E69F00", "#D55E00", "#777777"};
+static const char* MAPQ_COLOR[4] = {"#0072B2", "#B86E00", "#D55E00", "#777777"};
 static const char* MAPQ_DASH[4] = {NULL, "6 3", "2 3", "8 3 2 3"};
 static const char* MAPQ_NAME[4] = {"MAPQ >= 30", "MAPQ 10-29", "MAPQ < 10", "Unmapped"};
 
@@ -400,7 +422,7 @@ static int fig_composition(tld_strbuf* o)
 {
         static const svg_swatch_item base[5] = {
             {"A", "#009E73", NULL}, {"C", "#CC79A7", NULL}, {"G", "#000000", NULL},
-            {"T", "#8C5A00", NULL}, {"N", "#56B4E9", "6 3"}};
+            {"T", "#8C5A00", NULL}, {"N", "#2E86C1", "1 2"}};
         static double y[2][5][NBIN];
         svg_grid g;
         svg_panel p;
@@ -555,7 +577,7 @@ static void test_tick_max(void)
 
         /* rows are far enough apart for the next panel title (1 row of titles + the last tick label) */
         svg_grid_init(&g, 3, 1, 420, 400, 14, 1);
-        CHECK(g.gap_y >= 2.5 * 14, "row gap %g", g.gap_y);
+        CHECK(g.gap_y >= 3.0 * 14, "row gap %g", g.gap_y);
         tld_strbuf_free(o);
 }
 
@@ -666,7 +688,7 @@ static void test_swatches(void)
         CHECK(svg_check(TLD_STR(o), err, sizeof(err)), "%s", err);
         CHECK(strstr(TLD_STR(o), "stroke-dasharray=\"2 3\"") != NULL && strstr(TLD_STR(o), "stroke=\"#D55E00\"") != NULL, "swatch colour and dash");
         tld_strbuf_clear(o);
-        svg_swatch_item it[2] = {{"A", "#009E73", NULL}, {"N", "#56B4E9", "6 3"}};
+        svg_swatch_item it[2] = {{"A", "#009E73", NULL}, {"N", "#2E86C1", "1 2"}};
         CHECK(svg_swatch_row(o, "r1", it, 2, 12, "Bases", "A and N") == OK, "row");
         CHECK(svg_check(TLD_STR(o), err, sizeof(err)), "%s", err);
         CHECK(count_of(TLD_STR(o), "<path") == 2 && count_of(TLD_STR(o), ">A</text>") == 1 && count_of(TLD_STR(o), ">N</text>") == 1, "row items");

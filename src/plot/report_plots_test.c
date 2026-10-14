@@ -19,6 +19,7 @@
 
 #include <ctype.h>
 #include <locale.h>
+#include <inttypes.h>
 #include <math.h>
 #include <string.h>
 
@@ -342,13 +343,19 @@ static void test_palettes(void)
         /* Contrast on white (WCAG 2.1: 3:1 for graphics, 4.5:1 for text). Lines are never text. */
         for (int m = 0; m < 4; m++) {
                 fprintf(stderr, "contrast on white: %-7s %s %.2f:1\n", report_mapq_help[m].label, report_mapq_colour[m], contrast_on_white(report_mapq_colour[m]));
-                CHECK(contrast_on_white(report_mapq_colour[m]) >= 2.0, "MAPQ colour %d is too faint", m);
+                CHECK(contrast_on_white(report_mapq_colour[m]) >= 3.0, "MAPQ colour %d is below 3:1 (WCAG 1.4.11)", m);
         }
         for (int b = 0; b < 5; b++) {
                 fprintf(stderr, "contrast on white: base %s  %s %.2f:1\n", b == 0 ? "A" : b == 1 ? "C" : b == 2 ? "G" : b == 3 ? "T" : "N", report_base_colour[b], contrast_on_white(report_base_colour[b]));
-                CHECK(contrast_on_white(report_base_colour[b]) >= 2.0, "base colour %d is too faint", b);
+                CHECK(contrast_on_white(report_base_colour[b]) >= 3.0, "base colour %d is below 3:1 (WCAG 1.4.11)", b);
         }
         CHECK(contrast_on_white("#777777") >= 4.4, "grey");
+        /* every base has its own dash pattern, so no line depends on colour alone (WCAG 1.4.1) */
+        for (int b = 0; b < 5; b++) {
+                for (int k = b + 1; k < 5; k++) {
+                        CHECK(strcmp(report_base_dash[b], report_base_dash[k]) != 0, "base dashes %d and %d differ", b, k);
+                }
+        }
         CHECK(contrast_on_white("#8C5A00") >= 4.5, "brown (the T line) has text-level contrast");
         CHECK(contrast_on_white("#0072B2") >= 4.5, "blue has text-level contrast");
 }
@@ -396,7 +403,7 @@ static void test_full_aligned_paired_short(void)
                 snprintf(needle, sizeof(needle), "stroke=\"%s\"", report_mapq_colour[m]);
                 CHECK(count_of(p[1], needle) == 2, "plot 1: one %s line per mate (%d)", report_mapq_colour[m], count_of(p[1], needle));
                 if (report_mapq_dash[m][0]) {
-                        snprintf(needle, sizeof(needle), "stroke=\"%s\" stroke-width=\"1.8\" stroke-linejoin=\"round\" stroke-dasharray=\"%s\"", report_mapq_colour[m], report_mapq_dash[m]);
+                        snprintf(needle, sizeof(needle), "stroke=\"%s\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"%s\"", report_mapq_colour[m], report_mapq_dash[m]);
                         CHECK(count_of(p[1], needle) == 2, "plot 1: the %s line has its dash pattern", report_mapq_colour[m]);
                 }
         }
@@ -631,6 +638,137 @@ static void test_single_length(void)
         stat_collection_free(s);
 }
 
+/* Clarity round 1: captions by input type, exact N50, masked thin positions, no-sequence input,
+ * key text of the base-composition lines. */
+static void test_clarity(void)
+{
+        /* the caption of plot 3 mentions MAPQ classes only when there are some */
+        CHECK(strstr(report_plot_caption(3, 1), "MAPQ") != NULL, "aligned caption of plot 3");
+        CHECK(strstr(report_plot_caption(3, 0), "MAPQ") == NULL && strstr(report_plot_caption(3, 0), "class") == NULL,
+              "unaligned caption of plot 3: %s", report_plot_caption(3, 0));
+        CHECK(strcmp(report_plot_caption(1, 0), report_plot_caption(1, 1)) == 0, "plot 1 has one caption");
+        for (int id = 1; id <= 6; id++) {
+                CHECK(strstr(report_plot_caption(id, 1), "error probabilities") == NULL, "error-probability note is not in caption %d", id);
+        }
+        CHECK(strstr(report_plot_help[REPORT_PLOT_READQ].note, "error probabilities") != NULL, "the note lives in plot 2");
+        CHECK(strstr(report_plot_help[REPORT_PLOT_READQ].caption, "Q20 = 1 error in 100 bases") != NULL, "plot 2 caption explains Q20");
+
+        /* positions backed by fewer than 10 reads are gaps, and the axis ends at the last backed position */
+        {
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 150, .nreads = 1000};
+                struct stat_collection* s = make(&sp);
+                for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                        for (int i = 100; i < 150; i++) {
+                                struct collect_pos_bin* b = &s->acc->pos_abs[0][m][i];
+                                memset(b, 0, sizeof(*b));
+                                if (m == 0) {
+                                        b->comp[0] = 3;
+                                        b->qual_bases = 3;
+                                        b->qual_error_sum = 3 * collect_qual_error(30);
+                                }
+                        }
+                }
+                char* p3 = render(s, 3);
+                CHECK(p3 && strstr(p3, "from position 1 to position 100") != NULL, "axis ends at position 100: %.200s", p3 ? p3 : "(null)");
+                CHECK(p3 && strstr(p3, "fewer than 10 reads") != NULL, "the description says why there are gaps");
+                free(p3);
+                stat_collection_free(s);
+        }
+        /* a tiny input keeps every position (nothing would be left otherwise) */
+        {
+                struct spec sp = {.paired = 0, .aligned = 0, .quals = 1, .readlen = 50, .nreads = 5};
+                struct stat_collection* s = make(&sp);
+                char* p3 = render(s, 3);
+                CHECK(p3 && strstr(p3, "from position 1 to position 50") != NULL && strstr(p3, "fewer than 10 reads") == NULL,
+                      "5 reads: no masking: %.200s", p3 ? p3 : "(null)");
+                free(p3);
+                stat_collection_free(s);
+        }
+
+        /* reads without sequence: plots 1, 4 and 5 say so instead of drawing a 0-10 bp axis */
+        {
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 0, .md = 0, .ident = 0, .readlen = 100, .nreads = 100};
+                struct stat_collection* s = make(&sp);
+                memset(s->acc->len_reads, 0, sizeof(s->acc->len_reads));
+                memset(s->acc->len_bases, 0, sizeof(s->acc->len_bases));
+                memset(s->acc->pos_abs, 0, sizeof(s->acc->pos_abs));
+                memset(s->acc->pos_rel, 0, sizeof(s->acc->pos_rel));
+                s->total_bases = 0;
+                s->min_length = 0;
+                s->max_length = 0;
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                const char* want = "<p class=\"plot-na\">Not available: the input has no sequence.</p>\n";
+                for (int id = 1; id <= 5; id += 3) {
+                        char* d = render(s, id);
+                        CHECK(d && strcmp(d, want) == 0, "no sequence, plot %d: %s", id, d ? d : "(null)");
+                        free(d);
+                }
+                char* d5 = render(s, 5);
+                CHECK(d5 && strstr(d5, "the input has no sequence.") != NULL, "no sequence, plot 5: %.120s", d5 ? d5 : "(null)");
+                free(d5);
+                stat_collection_free(s);
+        }
+
+        /* N50 and the median of one read of exactly 1,000,000 bp are that length, not a bin edge */
+        {
+                struct stat_collection* s = NULL;
+                CHECK(stat_collection_alloc(&s) == OK, "alloc");
+                s->basic_nums[0][COLLECT_MAPQ_GE30] = 1;
+                s->has_sq = 1;
+                int b = collect_length_bin(1000000);
+                s->acc->len_reads[0][COLLECT_MAPQ_GE30][b] = 1;
+                s->acc->len_bases[0][COLLECT_MAPQ_GE30][b] = 1000000;
+                s->total_bases = 1000000;
+                s->min_length = 1000000;
+                s->max_length = 1000000;
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                CHECK(s->n50 < 1000000, "the JSON value stays the bin edge (%" PRIu64 ")", s->n50);
+                CHECK(s->n50_best == 1000000 && s->n50_exact && s->median_best == 1000000 && s->median_exact,
+                      "exact display values: %" PRIu64 " %" PRIu64, s->n50_best, s->median_best);
+                char* p1 = render(s, 1);
+                CHECK(p1 && strstr(p1, "N50 1,000.0 kb") != NULL && strstr(p1, "N50 ~") == NULL, "plot 1 label is exact: %s", p1 ? p1 : "(null)");
+                CHECK(p1 && strstr(p1, "range from 1,000.0 kb to 1,000.0 kb") != NULL, "min and max length are exact");
+                free(p1);
+                stat_collection_free(s);
+        }
+
+        /* two reads in one bin: the display value is the bin edge clamped to the observed lengths, marked approximate */
+        {
+                struct stat_collection* s = NULL;
+                CHECK(stat_collection_alloc(&s) == OK, "alloc");
+                s->basic_nums[0][COLLECT_MAPQ_GE30] = 2;
+                s->has_sq = 1;
+                int b = collect_length_bin(100500);
+                CHECK(b == collect_length_bin(100502), "both lengths share a bin");
+                s->acc->len_reads[0][COLLECT_MAPQ_GE30][b] = 2;
+                s->acc->len_bases[0][COLLECT_MAPQ_GE30][b] = 201002;
+                s->total_bases = 201002;
+                s->min_length = 100500;
+                s->max_length = 100502;
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                CHECK(s->n50_best >= s->min_length && s->n50_best <= s->max_length && !s->n50_exact,
+                      "n50 %" PRIu64 " (edge %" PRIu64 ") is within [min, max] and approximate", s->n50_best, s->n50);
+                CHECK(s->median_best >= s->min_length && s->median_best <= s->max_length && !s->median_exact, "median is within [min, max]");
+                stat_collection_free(s);
+        }
+
+        /* plot 4: the key names the dash of every line */
+        {
+                struct spec sp = {.paired = 0, .aligned = 0, .quals = 1, .readlen = 100, .nreads = 20000};
+                struct stat_collection* s = make(&sp);
+                char* p4 = render(s, 4);
+                CHECK(p4 && strstr(p4, "A green, solid line; C reddish purple, dashed line; G black, dotted line; T brown, dash-dot line; N blue, fine dotted line") != NULL,
+                      "key text: %.600s", p4 ? p4 : "(null)");
+                for (int b = 1; b < 5; b++) {
+                        char needle[64];
+                        snprintf(needle, sizeof(needle), "stroke-dasharray=\"%s\"", report_base_dash[b]);
+                        CHECK(count_of(p4 ? p4 : "", needle) == 2, "plot 4: dash %s on the line and in the key", report_base_dash[b]);
+                }
+                free(p4);
+                stat_collection_free(s);
+        }
+}
+
 static void test_locale(void)
 {
         struct spec sp = {.paired = 1, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 150, .nreads = 5000};
@@ -671,8 +809,10 @@ static void test_swatch(void)
                 snprintf(needle, sizeof(needle), "<title id=\"samstat-mapq-%d-t\">%s</title>", m, report_mapq_help[m].label);
                 CHECK(strstr(TLD_STR(o), needle) == NULL || 1, "title");
         }
-        CHECK(strstr(TLD_STR(o), "MAPQ &gt;= 30</title>") != NULL && strstr(TLD_STR(o), "Line sample: vermillion, dotted.") != NULL, "swatch text");
-        CHECK(strstr(TLD_STR(o), "stroke-dasharray=\"8 3 2 3\"") != NULL, "dash-dot");
+        /* the class name is the row header next to the swatch: the figure names only its style */
+        CHECK(strstr(TLD_STR(o), "dotted vermillion line</title>") != NULL && strstr(TLD_STR(o), "Line sample: vermillion, dotted.") != NULL, "swatch text");
+        CHECK(strstr(TLD_STR(o), "MAPQ &gt;= 30") == NULL, "swatch titles do not repeat the class name");
+        CHECK(strstr(TLD_STR(o), "stroke-dasharray=\"12 4 2 4\"") != NULL, "dash-dot");
         tld_strbuf_free(o);
 }
 
@@ -774,6 +914,7 @@ int main(int argc, char** argv)
         test_unaligned();
         test_na_lines();
         test_single_length();
+        test_clarity();
         test_locale();
         test_swatch();
         test_size(argc > 1 ? argv[1] : NULL);

@@ -13,18 +13,17 @@
  *   - Every <svg> has role="img", <title> and <desc>. Ids are unique on the
  *     page: "samstat-p<plot>[-r1|-r2|-key]" and "samstat-mapq-<class>".
  *   - Every <svg> carries style="max-width:100%;height:auto;vertical-align:top"
- *     and its natural width in the width attribute. A paired input is drawn as
- *     two sibling <svg> elements (Read 1, Read 2) with identical axes. They sit
- *     in the normal inline flow: side by side when the container is wide enough
- *     and stacked on a narrow screen. The page needs no wrapper and no CSS for
- *     this; separating the figures with whitespace is enough.
+ *     and its natural width in the width attribute (400 units, text 15 units, so the text is
+ *     still >= 12 px on a 360 px screen). A paired input is drawn as two sibling <svg>
+ *     elements (Read 1, Read 2) with identical axes. Without page CSS they sit in the normal
+ *     inline flow; the report page sets width:100% on them inside a grid (stat_report.c).
  *   - A plot that has no usable data is replaced by one <p class="plot-na">
  *     line (the wording lives in report_help.c). A plot that does not apply to
  *     the input type (plots 5 and 6 on unaligned input) writes nothing.
  *   - <p class="plot-note"> carries the partial-MD note of plot 5.
  *   - The output depends only on the collection: deterministic bytes.
  *
- * The caption, the "How to read this" block and the plot title are the
+ * The caption, the "Good:" line, the "How to read plot N" block and the plot title are the
  * caller's (report_help.c); these functions draw the figure only.
  */
 
@@ -33,16 +32,17 @@
 struct stat_collection;
 
 /*
- * Palettes. The MAPQ palette is Okabe-Ito (blue, orange, vermillion) plus grey;
- * every class also has its own dash pattern, so the lines stay distinguishable
+ * Palettes. The MAPQ palette is Okabe-Ito (blue, vermillion) with the orange darkened to
+ * #B86E00 and a grey; every colour has at least 3:1 contrast on white (WCAG 1.4.11). Every
+ * class and every base also has its own dash pattern, so the lines stay distinguishable
  * in greyscale and for colour-blind readers. The base palette shares no hex
  * value with the MAPQ palette (standard-plots.md 2.8). A dash of "" is solid.
  * Index = MAPQ class (COLLECT_MAPQ_*) or base (A C G T N).
  */
-static const char* const report_mapq_colour[4] = {"#0072B2", "#E69F00", "#D55E00", "#777777"};
-static const char* const report_mapq_dash[4] = {"", "6 3", "2 3", "8 3 2 3"};
-static const char* const report_base_colour[5] = {"#009E73", "#CC79A7", "#000000", "#8C5A00", "#56B4E9"};
-static const char* const report_base_dash[5] = {"", "", "", "", "6 3"};
+static const char* const report_mapq_colour[4] = {"#0072B2", "#B86E00", "#D55E00", "#777777"};
+static const char* const report_mapq_dash[4] = {"", "8 4", "2 4", "12 4 2 4"};
+static const char* const report_base_colour[5] = {"#009E73", "#CC79A7", "#000000", "#8C5A00", "#2E86C1"};
+static const char* const report_base_dash[5] = {"", "6 3", "2 3", "8 3 2 3", "1 2"};
 
 /* Line of unaligned input (one line, "all reads"). */
 #define REPORT_ALL_READS_COLOUR "#000000"

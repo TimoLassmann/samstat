@@ -465,6 +465,19 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
         /* LOG_MSG("%d %d -> %d  (paired: %d proper: %d )", m->n_R1_reads,m->n_R2_reads, m->n_R1_reads+m->n_R2_reads,m->n_paired, m->n_proper_paired); */
 
 
+        if(s->n_secondary || s->n_supplementary){
+                RUN(tld_append(o, "<p>"));
+                if(s->n_secondary){
+                        samstat_add_large_number(o, s->n_secondary);
+                        RUN(tld_append(o, " - secondary alignments (not counted)<br>"));
+                }
+                if(s->n_supplementary){
+                        samstat_add_large_number(o, s->n_supplementary);
+                        RUN(tld_append(o, " - supplementary alignments (not counted)<br>"));
+                }
+                RUN(tld_append(o, "</p>"));
+        }
+
         RUN(tld_append(o, "<div id=\"MappingStatsTable\" style=\"width:100%;max-width:900px;height:240px;\"></div>\n"));
         RUN(tld_append(o,"<script>\n"));
         RUN(tld_append(o, "var mappingtableval = [\n"));

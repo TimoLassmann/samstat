@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <string.h>
@@ -21,6 +22,7 @@
 
 
 int sanity_check_param(struct samstat_param *p);
+static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out);
 int detect_file_type(char *filename, int* type);
 
 int print_help(char **argv);
@@ -31,6 +33,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         int c;
         int help = 0;
         int version = 0;
+        uint64_t v = 0;
 
         RUN(param_init(&p));
 
@@ -76,13 +79,15 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         p->json = 1;
                         break;
                 case 't':
-                        p->n_threads = atoi(optarg);
+                        RUN(parse_unsigned(optarg, "-t", INT32_MAX, &v));
+                        p->n_threads = (int) v;
                         break;
                 case 'd':
                         p->outdir = optarg;
                         break;
                 case 'p':
-                        p->top_n = atoi(optarg);
+                        RUN(parse_unsigned(optarg, "-p/-peek", UINT64_MAX, &v));
+                        p->top_n = v;
                         break;
                 case 'h':
                         help = 1;
@@ -91,7 +96,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         version = 1;
                         break;
                 case 'l':
-                        p->report_max_len = atoi(optarg);
+                        RUN(parse_unsigned(optarg, "-l/-len", INT32_MAX, &v));
+                        p->report_max_len = (int32_t) v;
                         /* param->local_out = 1; */
                         break;
                 case '?':
@@ -154,14 +160,33 @@ ERROR:
         return FAIL;
 }
 
+/* Strict unsigned integer parsing: digits only (no sign, no blanks, no
+ * trailing characters), no overflow, value <= max. */
+static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out)
+{
+        char *end = NULL;
+        unsigned long long v;
+
+        ASSERT(arg != NULL, "Option %s: missing value", opt);
+        ASSERT(arg[0] >= '0' && arg[0] <= '9', "Option %s: '%s' is not a non-negative integer", opt, arg);
+        errno = 0;
+        v = strtoull(arg, &end, 10);
+        ASSERT(*end == 0, "Option %s: '%s' is not a non-negative integer", opt, arg);
+        ASSERT(errno != ERANGE && v <= max, "Option %s: value '%s' is too large", opt, arg);
+        *out = (uint64_t) v;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int sanity_check_param(struct samstat_param *p)
 {
 
         if(p->n_threads < 1){
                 ERROR_MSG("Option -t (num threads) : has to be > 0");
         }
-        if(p->top_n < 10){
-                ERROR_MSG("Option -p/-peek: has to be >= 10.");
+        if(p->top_n < 1){
+                ERROR_MSG("Option -p/-peek: has to be >= 1.");
         }
 
 
@@ -194,10 +219,10 @@ int sanity_check_param(struct samstat_param *p)
         /* check report length */
         if(p->report_max_len <= 0){
                 ERROR_MSG("Option -l/-len: the report length has to be > 0");
-        }else if(p->report_max_len > 500){
-                WARNING_MSG("Option -l/-len: the report length is > 500. This will slow down samstat considerably.");
         }else if(p->report_max_len > 10000){
                 ERROR_MSG("Option -l/-len: the report length is > 10000, the maximum currently supported.");
+        }else if(p->report_max_len > 500){
+                WARNING_MSG("Option -l/-len: the report length is > 500. This will slow down samstat considerably.");
         }
         /* check input files  */
 
@@ -297,7 +322,7 @@ int print_help(char **argv )
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <n> sequences.","[unlimited]");
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats on exactly the first <n> sequences (n >= 1).","[unlimited]");
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  ); */
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  ); */
         /* fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  ); */

@@ -117,3 +117,19 @@ foreach(ext fa.gz fasta.gz fna.gz fq.gz fastq.gz FQ.GZ Fa.Gz)
   configure_file(${FX}/reads.fq.gz ${EXT_COPY_DIR}/gz.${ext} COPYONLY)
   cli_test(ext_gz_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/gz.${ext} FILES gz.${ext}.samstat.html)
 endforeach()
+
+# --- numeric options are validated strictly (exit 2) --------------------------------
+foreach(opt -t -p -l)
+  foreach(bad abc 12x -5 0x10 " 7" 1.5 99999999999999999999999)
+    string(MAKE_C_IDENTIFIER "${opt}_${bad}" id)
+    cli_test(badnum_${id}
+      ARGS ${opt} "${bad}" ${FX}/small.sam
+      RC 2 REGEX "Option" NO_FILES small.sam.samstat.html)
+  endforeach()
+endforeach()
+cli_test(badnum_t_zero ARGS -t 0 ${FX}/small.sam RC 2 REGEX "-t")
+cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
+cli_test(badnum_l_zero ARGS -l 0 ${FX}/small.sam RC 2 REGEX "-l")
+cli_test(badnum_l_too_long ARGS -l 10001 ${FX}/small.sam RC 2 REGEX "10000")
+cli_test(num_l_warn_long ARGS -d ${D} -l 600 ${FX}/small.sam REGEX "> 500" FILES small.sam.samstat.html)
+cli_test(num_ok ARGS -d ${D} -t 3 -p 100 -l 100 ${FX}/small.sam FILES small.sam.samstat.html)

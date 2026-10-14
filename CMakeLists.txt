@@ -47,8 +47,18 @@ endif()
 
 
 
+option(SAMSTAT_SANITIZE "Build samstat with AddressSanitizer and UBSan" OFF)
+option(SAMSTAT_USE_SYSTEM_HTSLIB "Use the system htslib (>=1.16) instead of the bundled one" OFF)
+
+# config.h is generated into the build tree, never into the source tree.
 configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/src/config.h.in"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/config.h" )
+            "${CMAKE_CURRENT_BINARY_DIR}/config.h" )
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/tld/CMakeLists.txt")
+  message(FATAL_ERROR "src/tld is missing. Run: git submodule update --init --recursive")
+endif()
+
 include(ExternalProject)
 include("thirdparty/htslib.cmake")
 

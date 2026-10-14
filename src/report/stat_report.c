@@ -6,7 +6,7 @@
 #include "../plot/plot.h"
 #include "../param/param.h"
 #include "../collect/collect.h"
-#include "../config.h"
+#include "config.h"
 #define  STAT_REPORT_IMPORT
 #include "stat_report.h"
 

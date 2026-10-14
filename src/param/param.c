@@ -8,7 +8,7 @@
 #define PARAM_IMPORT
 #include "param.h"
 
-#include "../config.h"
+#include "config.h"
 
 #define OPT_VERBOSE 1
 /* #define OPT_SUBSAMPLE 2 */

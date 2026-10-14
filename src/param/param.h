@@ -48,6 +48,13 @@ EXTERN void param_free(struct samstat_param *p);
 EXTERN const char *samstat_output_stem(const struct samstat_param *p, int id);
 /* Decompression threads for the file reader of one input (0: none). */
 EXTERN int samstat_pool_threads(const struct samstat_param *p);
+/* Worker threads that convert, parse and collect for one input file (0: everything runs
+ * in the calling thread). With -t T: 0 for T = 1 and when there are at least T inputs
+ * (one input per thread); 1 for T = 2; T - 1 - pool threads for T >= 3. */
+EXTERN int samstat_worker_threads(const struct samstat_param *p);
+/* Number of inputs processed at the same time: T if there are at least T inputs, else 1
+ * (the inputs then run one after another, each with the whole thread budget). */
+EXTERN int samstat_file_threads(const struct samstat_param *p);
 
 #undef PARAM_IMPORT
 #undef EXTERN

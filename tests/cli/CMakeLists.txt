@@ -363,10 +363,13 @@ endforeach()
 # "Not Run (Disabled)" and keeps ctest green.
 # =============================================================================
 
-# --- WP4.1 (intra-file threading): one file, -t 1/3/8 give identical JSON -------------
-# SAMSTAT_BATCH_RECORDS=8 and SAMSTAT_BATCH_BASES=20000 (test-only) cut the input into
-# at least 5 batches. paired_small.sam has only 4 records, so its records are repeated
-# 40 times (160 records, 20 batches). ont_like.bam: 25 reads, 89 kb, 5 or more batches.
+# --- WP4.1 (intra-file threading): one file, -t 1/2/3/4/8 give identical output ------------
+# JSON, HTML and the four MultiQC files must be byte-identical; --verbose reports the thread
+# budget ('workers: W, decompression threads: P'). SAMSTAT_BATCH_RECORDS=8 and
+# SAMSTAT_BATCH_BASES=20000 (test-only) cut the input into at least 5 batches.
+# paired_small.sam has only 4 records, so its records are repeated 40 times (160 records,
+# 20 batches). ont_like.bam: 25 reads, 89 kb, 5 or more batches (BAM, decompression pool).
+# long.fq: FASTQ (no alignment data). reads.fq.gz: gzip FASTQ through the pool.
 add_test(NAME cli:threads_one_file:paired_small
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/paired_small.sam
     -DOUTDIR=${CLI_OUT}/threads_one_file_paired -DMODE=one_file -DREPLICATE=40
@@ -375,8 +378,30 @@ add_test(NAME cli:threads_one_file:ont_like
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/longread/ont_like.bam
     -DOUTDIR=${CLI_OUT}/threads_one_file_ont -DMODE=one_file
     -P ${CLI_HELPERS}/run_threads.cmake)
+add_test(NAME cli:threads_one_file:long_fq
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/longread/long.fq
+    -DOUTDIR=${CLI_OUT}/threads_one_file_long_fq -DMODE=one_file
+    -P ${CLI_HELPERS}/run_threads.cmake)
+add_test(NAME cli:threads_one_file:reads_fq_gz
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/reads.fq.gz
+    -DOUTDIR=${CLI_OUT}/threads_one_file_fq_gz -DMODE=one_file
+    -P ${CLI_HELPERS}/run_threads.cmake)
 set_tests_properties(cli:threads_one_file:paired_small cli:threads_one_file:ont_like
-  PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP4.1
+  cli:threads_one_file:long_fq cli:threads_one_file:reads_fq_gz
+  PROPERTIES LABELS cli)
+
+# The -p cutoff at -t 8: the same cases and input as reader:p_cutoff_counts (tests/reader,
+# which owns the generated script), with the reader and 5 workers on one file.
+set(P_CUTOFF_CASES_T8
+  "1:1:0:0:true" "6:6:1:1:true" "8:8:1:1:true" "4096:4096:512:512:true"
+  "4097:4097:512:512:true" "5003:5003:626:625:true" "7199:7199:900:900:true"
+  "7200:7200:900:900:false" "100000:7200:900:900:false")
+string(REPLACE ";" "\;" p_cutoff_cases_t8 "${P_CUTOFF_CASES_T8}")
+add_test(NAME reader:p_cutoff_counts_t8
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${CLI_OUT}/p_cutoff_counts_t8
+    -DCHECK_JSON=${CLI_HELPERS}/check_json.cmake -DTHREADS=8 "-DCASES=${p_cutoff_cases_t8}"
+    -P ${PROJECT_BINARY_DIR}/tests/reader/gen/run_p_cutoff.cmake)
+set_tests_properties(reader:p_cutoff_counts_t8 PROPERTIES LABELS reader)
 
 # --- WP3.2 (htslib reader, content detection, stdin) -----------------------------------
 # stdin: the input is fed through standard input with `-` as the file name. Report file

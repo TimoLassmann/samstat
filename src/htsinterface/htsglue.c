@@ -81,27 +81,101 @@ static int more_primary_follow(struct sam_bam_file *f)
         return r < -1;
 }
 
-int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
-{
-        bam1_t *b = f_handle->b;
-        bam_hdr_t *h = f_handle->header;
-        int r = 0;
-        char* buffer = NULL;
-        int b_len = 1024;
-        uint64_t n_bases = 0;
-        uint64_t max_records = f_handle->batch_records;
+/* A slot that held more than this many bytes of record data gives the memory back when
+ * the batch is reset: with 4096 slots per batch and several batches in flight, slots must
+ * not each keep room for the longest read they ever held. */
+#define BATCH_KEEP_DATA 32768
 
+int bam_batch_alloc(struct bam_batch **batch, int cap)
+{
+        struct bam_batch *b = NULL;
+
+        ASSERT(cap > 0, "A batch needs room for at least one record");
+        MMALLOC(b, sizeof(struct bam_batch));
+        b->recs = NULL;
+        b->n = 0;
+        b->alloc = 0;
+        b->cap = cap;
+        *batch = b;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+void bam_batch_reset(struct bam_batch *batch)
+{
+        for(int i = 0; i < batch->n; i++){
+                bam1_t *r = batch->recs[i];
+                if(r->m_data > BATCH_KEEP_DATA){
+                        free(r->data);
+                        r->data = NULL;
+                        r->m_data = 0;
+                        r->l_data = 0;
+                }
+        }
+        batch->n = 0;
+}
+
+void bam_batch_free(struct bam_batch *batch)
+{
+        if(batch){
+                for(int i = 0; i < batch->alloc; i++){
+                        bam_destroy1(batch->recs[i]);
+                }
+                free(batch->recs);
+                MFREE(batch);
+        }
+}
+
+/* The record slot batch->n, allocated on first use. */
+static bam1_t *batch_slot(struct bam_batch *batch)
+{
+        if(batch->n >= batch->alloc){
+                int new_alloc = MACRO_MIN(batch->cap, MACRO_MAX(64, batch->alloc * 2));
+                bam1_t **tmp = realloc(batch->recs, sizeof(bam1_t *) * (size_t) new_alloc);
+                if(!tmp){
+                        return NULL;
+                }
+                batch->recs = tmp;
+                for(int i = batch->alloc; i < new_alloc; i++){
+                        batch->recs[i] = bam_init1();
+                        if(!batch->recs[i]){
+                                batch->alloc = i;
+                                return NULL;
+                        }
+                }
+                batch->alloc = new_alloc;
+        }
+        return batch->recs[batch->n];
+}
+
+/* Fill <batch> with at most <max_records> records (the batch limits of the file apply too). */
+static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, int max_records)
+{
+        bam_hdr_t *h = f_handle->header;
+        uint64_t n_bases = 0;
+        int r = 0;
+
+        batch->n = 0;
         if(f_handle->at_end || f_handle->is_empty || h == NULL){
                 /* nothing (more) to read: empty input, EOF or -p cutoff reached */
                 return OK;
         }
-        if(max_records > (uint64_t) sb->malloc_num){
-                max_records = (uint64_t) sb->malloc_num;
+        if((uint64_t) max_records > f_handle->batch_records){
+                max_records = (int) f_handle->batch_records;
         }
+        if(max_records > batch->cap){
+                max_records = batch->cap;
+        }
+        ASSERT(max_records > 0, "No room for a record");
 
-        galloc(&buffer, b_len);
-
-        while ((r = sam_read1(f_handle->in, h, b)) >= 0){
+        while(1){
+                bam1_t *b = batch_slot(batch);
+                ASSERT(b != NULL, "Out of memory");
+                r = sam_read1(f_handle->in, h, b);
+                if(r < 0){
+                        break;
+                }
                 if(!f_handle->is_fastx && (b->core.flag & BAM_FSECONDARY)){
                         f_handle->n_secondary++;
                 }else if(!f_handle->is_fastx && (b->core.flag & BAM_FSUPPLEMENTARY)){
@@ -110,121 +184,153 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         /* a FASTA/FASTQ record without sequence is not a read */
                         continue;
                 }else{
-                        struct tl_seq* s = NULL;
-                        struct aln_data* a = NULL;
-                        uint8_t * seq =    bam_get_seq(b);
-                        uint8_t* qual_ptr = bam_get_qual(b);
-
-                        s = sb->sequences[sb->num_seq];
-                        a = (struct aln_data* )s->data;
-
-                        tld_append(s->name, bam_get_qname(b));
-
-                        s->len = b->core.l_qseq;
-
-
-                        /* buffer needs room for s->len characters plus the terminating 0 */
-                        if(s->len >= b_len){
-                                while(b_len <= s->len){
-                                        b_len = b_len + 1024;
-                                }
-                                gfree(buffer);
-                                buffer = NULL;
-                                galloc(&buffer,b_len);
-                        }
-                        for (int i = 0; i < s->len; ++i){
-                                buffer[i] = seq_nt16_str[bam_seqi(seq, i)];
-                        }
-                        buffer[s->len] = 0;
-
-                        tld_append(s->seq, buffer);
-
-                        if(s->len == 0){
-                                /* SEQ '*': no bases and no qualities (qual_ptr must not be read) */
-                                buffer[0] = 0;
-                                tld_append(s->qual, buffer);
-                        }else if(qual_ptr[0] == 0xFF){
-                                if(f_handle->is_fastx){
-                                        /* FASTA: no quality string at all */
-                                        buffer[0] = 0;
-                                }else{
-                                        memset(buffer, 0xFF, s->len);
-                                        buffer[s->len] = 0;
-                                }
-                                tld_append(s->qual, buffer);
-                        }else{
-                                for (int i = 0; i < s->len; ++i){
-                                        buffer[i] = qual_ptr[i] + 33;
-                                }
-                                buffer[s->len] = 0;
-                                tld_append(s->qual, buffer);
-                        }
-
-                        /* FASTA/FASTQ records carry no alignment data (a == NULL). The
-                         * paired/read1/read2 flags htslib derives from /1 and /2 name
-                         * suffixes are ignored: every read is read 1. */
-                        if(a){
-                                a->flag =  b->core.flag;
-                                a->num_hits = 0;
-                                a->map_q = b->core.qual;
-
-                                /* NM is stored only when present: reset it so that a reused
-                                 * slot does not inherit the value of an earlier record. */
-                                a->error = -1;
-                                if(! (BAM_FUNMAP & b->core.flag)){
-                                        uint8_t * aux =  bam_aux_get(b,"NM");
-                                        if(aux){
-                                                a->error = bam_aux2i(aux);
-                                        }
-                                        aux =  bam_aux_get(b,"MD");
-                                        if(aux){
-                                                tld_append(a->md,bam_aux2Z(aux));
-                                        }
-                                }
-
-                                a->n_cigar = b->core.n_cigar;
-                                if(a->n_cigar > a->n_alloc_cigar){
-                                        a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
-                                        gfree(a->cigar);
-                                        a->cigar = NULL;
-                                        galloc(&a->cigar, a->n_alloc_cigar);
-                                }
-                                uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
-                                for(int i = 0; i < a->n_cigar;i++){
-                                        a->cigar[i] = tmp[i];
-                                }
-
-                                a->reverse = bam_is_rev(b);
-                        }
-                        if(s->len > sb->max_len){
-                                sb->max_len = s->len;
-                        }
-
-                        sb->num_seq++;
-                        n_bases += (uint64_t) s->len;
+                        batch->n++;
+                        n_bases += (uint64_t) b->core.l_qseq;
                         f_handle->n_primary++;
 
                         /* -p: stop at exactly max_primary primary records, even mid-batch */
                         if(f_handle->n_primary >= f_handle->max_primary){
                                 f_handle->at_end = 1;
                                 f_handle->partial = (uint8_t) more_primary_follow(f_handle);
-                                gfree(buffer);
                                 return OK;
                         }
-                        if((uint64_t) sb->num_seq >= max_records || n_bases >= f_handle->batch_bases){
-                                gfree(buffer);
+                        if(batch->n >= max_records || n_bases >= f_handle->batch_bases){
                                 return OK;
                         }
                 }
         }
         ASSERT(r == -1,"Error reading alignments from %s (truncated or corrupt input?)", f_handle->filename);
         f_handle->at_end = 1;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch)
+{
+        return read_batch(f_handle, batch, batch->cap);
+}
+
+int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb)
+{
+        char* buffer = NULL;
+        int b_len = 1024;
+
+        ASSERT(sb->num_seq + batch->n <= sb->malloc_num, "The sequence buffer is too small for the batch");
+        galloc(&buffer, b_len);
+
+        for(int k = 0; k < batch->n; k++){
+                bam1_t *b = batch->recs[k];
+                struct tl_seq* s = NULL;
+                struct aln_data* a = NULL;
+                uint8_t * seq =    bam_get_seq(b);
+                uint8_t* qual_ptr = bam_get_qual(b);
+
+                s = sb->sequences[sb->num_seq];
+                a = (struct aln_data* )s->data;
+
+                tld_append(s->name, bam_get_qname(b));
+
+                s->len = b->core.l_qseq;
+
+                /* buffer needs room for s->len characters plus the terminating 0 */
+                if(s->len >= b_len){
+                        while(b_len <= s->len){
+                                b_len = b_len + 1024;
+                        }
+                        gfree(buffer);
+                        buffer = NULL;
+                        galloc(&buffer,b_len);
+                }
+                for (int i = 0; i < s->len; ++i){
+                        buffer[i] = seq_nt16_str[bam_seqi(seq, i)];
+                }
+                buffer[s->len] = 0;
+
+                tld_append(s->seq, buffer);
+
+                if(s->len == 0){
+                        /* SEQ '*': no bases and no qualities (qual_ptr must not be read) */
+                        buffer[0] = 0;
+                        tld_append(s->qual, buffer);
+                }else if(qual_ptr[0] == 0xFF){
+                        if(is_fastx){
+                                /* FASTA: no quality string at all */
+                                buffer[0] = 0;
+                        }else{
+                                memset(buffer, 0xFF, s->len);
+                                buffer[s->len] = 0;
+                        }
+                        tld_append(s->qual, buffer);
+                }else{
+                        for (int i = 0; i < s->len; ++i){
+                                buffer[i] = qual_ptr[i] + 33;
+                        }
+                        buffer[s->len] = 0;
+                        tld_append(s->qual, buffer);
+                }
+
+                /* FASTA/FASTQ records carry no alignment data (a == NULL). The
+                 * paired/read1/read2 flags htslib derives from /1 and /2 name
+                 * suffixes are ignored: every read is read 1. */
+                if(a){
+                        a->flag =  b->core.flag;
+                        a->num_hits = 0;
+                        a->map_q = b->core.qual;
+
+                        /* NM is stored only when present: reset it so that a reused
+                         * slot does not inherit the value of an earlier record. */
+                        a->error = -1;
+                        if(! (BAM_FUNMAP & b->core.flag)){
+                                uint8_t * aux =  bam_aux_get(b,"NM");
+                                if(aux){
+                                        a->error = bam_aux2i(aux);
+                                }
+                                aux =  bam_aux_get(b,"MD");
+                                if(aux){
+                                        tld_append(a->md,bam_aux2Z(aux));
+                                }
+                        }
+
+                        a->n_cigar = b->core.n_cigar;
+                        if(a->n_cigar > a->n_alloc_cigar){
+                                a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
+                                gfree(a->cigar);
+                                a->cigar = NULL;
+                                galloc(&a->cigar, a->n_alloc_cigar);
+                        }
+                        uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
+                        for(int i = 0; i < a->n_cigar;i++){
+                                a->cigar[i] = tmp[i];
+                        }
+
+                        a->reverse = bam_is_rev(b);
+                }
+                if(s->len > sb->max_len){
+                        sb->max_len = s->len;
+                }
+                sb->num_seq++;
+        }
         gfree(buffer);
         return OK;
 ERROR:
         if(buffer){
                 gfree(buffer);
         }
+        return FAIL;
+}
+
+int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
+{
+        if(!f_handle->chunk){
+                int cap = (f_handle->batch_records > (uint64_t) INT32_MAX) ? INT32_MAX : (int) f_handle->batch_records;
+                RUN(bam_batch_alloc(&f_handle->chunk, MACRO_MAX(cap, 1)));
+        }
+        bam_batch_reset(f_handle->chunk);
+        RUN(read_batch(f_handle, f_handle->chunk, sb->malloc_num - sb->num_seq));
+        RUN(convert_bam_batch(f_handle->chunk, f_handle->is_fastx, sb));
+        return OK;
+ERROR:
         return FAIL;
 }
 
@@ -260,6 +366,7 @@ static void destroy_reader(struct sam_bam_file *f_handle)
         if(f_handle->b){
                 bam_destroy1(f_handle->b);
         }
+        bam_batch_free(f_handle->chunk);
         if(f_handle->header){
                 bam_hdr_destroy(f_handle->header);
         }
@@ -296,6 +403,7 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
 
         f_handle->filename = filename;
         f_handle->b = NULL;
+        f_handle->chunk = NULL;
         f_handle->in = NULL;
         f_handle->header = NULL;
         f_handle->pool = NULL;
@@ -390,6 +498,7 @@ int close_bam(struct sam_bam_file* f_handle)
         int status;
 
         bam_destroy1(f_handle->b);
+        bam_batch_free(f_handle->chunk);
         bam_hdr_destroy(f_handle->header);
 
 

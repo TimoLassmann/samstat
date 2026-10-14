@@ -53,12 +53,24 @@ struct reader_opts {
         uint64_t max_primary;    /* -p: stop after exactly this many primary records */
 };
 
+/* A batch of raw records as read from the file (WP4.1): the reader fills batches, the
+ * workers convert them. Slots are allocated on first use and recycled, so a batch costs
+ * nothing until records arrive; the data of a slot that held a very long record is
+ * released by bam_batch_reset(). */
+struct bam_batch {
+        bam1_t **recs;
+        int n;                   /* records in use */
+        int alloc;               /* slots allocated (of the recs array) */
+        int cap;                 /* most records one batch may hold */
+};
+
 /* One reader for every input: SAM, BAM, FASTA and FASTQ, plain or compressed, from a
  * file or from standard input ("-"). The type is taken from the content. */
 struct sam_bam_file {
         samFile *in;
         bam_hdr_t* header;       /* NULL for an empty input */
         bam1_t *b;
+        struct bam_batch *chunk; /* used by read_bam_chunk only */
         char* filename;
         hts_tpool *pool;
         struct htsThreadPool tp;
@@ -80,6 +92,19 @@ EXTERN int add_aln_data(struct tl_seq_buffer *sb);
 EXTERN int clear_aln_data(struct tl_seq_buffer *sb);
 EXTERN int free_aln_data(struct tl_seq_buffer *sb);
 
+/* Batches: bam_batch_alloc(&b, cap) with cap = the record limit of one batch. */
+EXTERN int bam_batch_alloc(struct bam_batch **batch, int cap);
+EXTERN void bam_batch_reset(struct bam_batch *batch);
+EXTERN void bam_batch_free(struct bam_batch *batch);
+/* Reader side: read the next records into <batch> (it must be reset). Counts secondary
+ * and supplementary records, skips empty FASTA/FASTQ records and applies the batch limits
+ * and the -p cutoff. batch->n == 0 on return means that nothing more follows. Must be
+ * called by one thread only. */
+EXTERN int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch);
+/* Worker side: append the records of <batch> to <sb> (names, bases, qualities and, for
+ * SAM/BAM, the alignment data). Touches no reader state, so any thread may call it. */
+EXTERN int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb);
+/* Read and convert in one step (single-threaded callers and tests). */
 EXTERN int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb);
 EXTERN int open_reads(struct sam_bam_file **file, char *filename, const struct reader_opts *opts);
 EXTERN int open_bam(struct sam_bam_file **file, char *filename); /* defaults: no pool, no cutoff */

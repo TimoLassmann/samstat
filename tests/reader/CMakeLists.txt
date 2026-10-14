@@ -47,17 +47,26 @@ function(reader_json_test name input)
   set_tests_properties(reader:json:${name} PROPERTIES LABELS reader)
 endfunction()
 
-# 1024 bases: exactly the size of the initial conversion buffer
+# 1024 bases: exactly the size of the initial conversion buffer. Storage length bins are exact
+# below 1000 bp and then follow g(1000) = 1000, 1010, 1021, ...: 1024 is in the bin of edge 1021,
+# which is bin 1002.
 reader_json_test(read_1024 read_1024.sam
   "summary.total_reads=1"
-  "read1.length.mapq_ge30.1024=1")
+  "summary.min_length=1024"
+  "summary.max_length=1024"
+  "read1.length.reads.mapq_ge30#len=1003"
+  "read1.length.reads.mapq_ge30.1002=1"
+  "read1.length.bases.mapq_ge30.1002=1024"
+  "read1.absolute.qual_bases.mapq_ge30#len=1000")
 
 # SEQ '*' with 10S40M: no length -10/40, no mismatches
 reader_json_test(seq_star_softclip seq_star_softclip.sam
   "summary.total_reads=1"
   "summary.mapq_counts.read1.mapq_ge30=1"
-  "read1.length.mapq_ge30#len=1"
-  "read1.length.mapq_ge30.0=1")
+  "read1.length.reads.mapq_ge30#len=1"
+  "read1.length.reads.mapq_ge30.0=1"
+  "read1.absolute.qual_bases.mapq_ge30#len=0"
+  "read1.absolute.mismatches.mapq_ge30#len=0")
 
 # secondary (0x100) and supplementary (0x800) records are not reads
 reader_json_test(supplementary supplementary.sam
@@ -66,7 +75,7 @@ reader_json_test(supplementary supplementary.sam
   "summary.supplementary=1"
   "summary.mapq_counts.read1.mapq_ge30=1"
   "summary.mapq_counts.read1.mapq_lt10=0"
-  "read1.length.mapq_ge30.50=1")
+  "read1.length.reads.mapq_ge30.50=1")
 
 # 3 primary reads, 2x flag 256 + 1x flag 2304 (secondary wins) + 1x flag 2048
 reader_json_test(secondary secondary.sam
@@ -75,50 +84,57 @@ reader_json_test(secondary secondary.sam
   "summary.supplementary=1"
   "read1.n_reads=3")
 
-# 5'S: the A->C mismatch is at aligned offset 9 on the forward read; the reverse
-# read is reverse complemented (ref T, read G) so it is at offset 20-1-9 = 10.
+# 5'S (5S20M, 25 bp): the A->C mismatch is at aligned offset 9 on the forward read; the reverse
+# read is reverse complemented (ref T, read G) so it is at offset 20-1-9 = 10. The length is the
+# full read length (25), the position axes cover the aligned part (20 positions, both reads have MD).
 reader_json_test(softclip5_md softclip5_md.sam
   "summary.total_reads=2"
-  "read1.length.mapq_ge30.20=2"
-  "read1.mismatches.mapq_ge30.C.9=1"
-  "read1.mismatches.mapq_ge30.G.10=1"
-  "read1.mismatches.mapq_ge30.A.9=0"
-  "read1.mismatches.mapq_ge30.T.9=0")
+  "read1.length.reads.mapq_ge30.25=2"
+  "read1.absolute.aligned_md.mapq_ge30#len=20"
+  "read1.absolute.aligned_md.mapq_ge30.9=2"
+  "read1.absolute.mismatches.mapq_ge30#len=11"
+  "read1.absolute.mismatches.mapq_ge30.9=1"
+  "read1.absolute.mismatches.mapq_ge30.10=1"
+  "read1.absolute.mismatches.mapq_ge30.8=0"
+  "read1.relative.mismatches.mapq_ge30.45=1"
+  "read1.relative.mismatches.mapq_ge30.50=1")
 
-# 3S: the read pointer must advance by the clip length, not by 1. The mismatch
-# at aligned offset 2 is read base G (SEQ index 5), not A (SEQ index 3).
+# 3S (23 bp, 20 aligned): the read pointer must advance by the clip length, not by 1. The
+# mismatch is at aligned offset 2 (bases of the clip do not count).
 reader_json_test(softclip_shift softclip_shift.sam
   "summary.total_reads=1"
-  "read1.length.mapq_ge30.20=1"
-  "read1.mismatches.mapq_ge30.G.2=1"
-  "read1.mismatches.mapq_ge30.A.2=0")
+  "read1.length.reads.mapq_ge30.23=1"
+  "read1.absolute.mismatches.mapq_ge30#len=3"
+  "read1.absolute.mismatches.mapq_ge30.2=1")
 
-# 5H10S40M and 40M10S5H: only the soft clip is removed from the length (50 - 10)
+# 5H10S40M and 40M10S5H: the length is the SEQ length (50, soft clip included), the position
+# axes cover the 40 aligned bases
 reader_json_test(hardclip_softclip hardclip_softclip.sam
   "summary.total_reads=2"
-  "read1.length.mapq_ge30.40=2")
+  "read1.length.reads.mapq_ge30.50=2"
+  "read1.absolute.qual_bases.mapq_ge30#len=40")
 
 # MD tags that disagree with the alignment: bounded by the alignment length
 reader_json_test(md_inconsistent md_inconsistent.sam
   "summary.total_reads=3"
-  "read1.length.mapq_ge30.20=3"
-  "read1.mismatches.mapq_ge30.G.10=1"
-  "read1.mismatches.mapq_ge30.G#len=11")
+  "read1.length.reads.mapq_ge30.20=3"
+  "read1.absolute.mismatches.mapq_ge30.10=1"
+  "read1.absolute.mismatches.mapq_ge30#len=11")
 reader_json_test(md_8digit md_8digit.sam
   "summary.total_reads=1"
-  "read1.length.mapq_ge30.20=1"
-  "read1.mismatches.mapq_ge30.A#len=0")
+  "read1.length.reads.mapq_ge30.20=1"
+  "read1.absolute.mismatches.mapq_ge30#len=0")
 reader_json_test(md_long_number md_long_number.sam
   "summary.total_reads=2"
-  "read1.length.mapq_ge30.20=2"
-  "read1.mismatches.mapq_ge30.G.10=1")
+  "read1.length.reads.mapq_ge30.20=2"
+  "read1.absolute.mismatches.mapq_ge30.10=1")
 
 # 300M reads: the 256 byte slack of the alignment buffers is too small to hide an
 # unbounded MD walk (MD digits 99999 / 300A99999 against 300 aligned bases)
 reader_json_test(md_long_alignment md_long_alignment.sam
   "summary.total_reads=3"
-  "read1.length.mapq_ge30.300=3"
-  "read1.mismatches.mapq_ge30.A#len=0")
+  "read1.length.reads.mapq_ge30.300=3"
+  "read1.absolute.mismatches.mapq_ge30#len=0")
 
 # zero byte file: no header can be read, still a valid empty input
 reader_json_test(zero_bytes zero_bytes.sam
@@ -138,15 +154,22 @@ endfunction()
 reader_error_test(not_a_bam not_a_bam.bam "unrecognised input")
 reader_error_test(truncated truncated.bam "truncated or corrupt")
 
-# a 5000 bp read after three 20 bp reads: the length histogram grows with it, the legacy
-# position matrices stop at 1000 columns (standard-plots.md 3.1)
+# a 5000 bp read after three 20 bp reads: the length histogram grows with it (5000 bp is in the
+# bin of edge 4953, bin 1157); the absolute position axis stops at 1000 bins and counts the other
+# 4000 bases of the long read in bases_beyond_position_axis; the relative axis has 100 bins, the
+# long read puts 50 bases into each (the short reads one base into every fifth bin).
 reader_json_test(long_after_short long_after_short.sam
   "summary.total_reads=4"
-  "read1.length.mapq_ge30.20=3"
-  "read1.length.mapq_ge30.5000=1"
-  "read1.base_quality.mapq_ge30.40.19=4"
-  "read1.base_quality.mapq_ge30.40.999=1"
-  "read1.base_quality.mapq_ge30.40#len=1000")
+  "summary.bases_beyond_position_axis=4000"
+  "read1.length.reads.mapq_ge30.20=3"
+  "read1.length.reads.mapq_ge30#len=1158"
+  "read1.length.reads.mapq_ge30.1157=1"
+  "read1.absolute.qual_bases.mapq_ge30.19=4"
+  "read1.absolute.qual_bases.mapq_ge30.999=1"
+  "read1.absolute.qual_bases.mapq_ge30#len=1000"
+  "read1.relative.qual_bases.mapq_ge30#len=100"
+  "read1.relative.qual_bases.mapq_ge30.0=53"
+  "read1.relative.qual_bases.mapq_ge30.99=50")
 
 # --- reader:truncation_loop (WP2.1) --------------------------------------------------------
 # A BAM cut off at arbitrary offsets must be rejected cleanly: exit code 1 or 2 (never 0,

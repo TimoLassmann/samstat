@@ -4,10 +4,6 @@
 # and the definitions of docs/plan-v2.4/standard-plots.md section 3; none was read from a
 # samstat run. Keys are the `summary` keys of standard-plots.md section 7.
 #
-# Transitional prefix: in waves 3-4 the v2 blocks live under a top-level "v2" key next to
-# the v1 keys. WP4.3 promotes them to the top level and sets LR_PREFIX to the empty string
-# (and passes -DPREFIX= to run_ultralong.cmake) in this one place.
-#
 # Tolerances (testing T3): counts exact; N50 and median length within 1%; median identity
 # within 0.5 percentage points; mean Q within 0.1; other percentages within 0.01.
 #
@@ -15,17 +11,10 @@
 # longread:mapq_sum:<fixture> MAPQ class counts add up to the primary reads
 # longread:ultralong          a 1 Mb read: JSON < 1 MB and bounded array lengths
 
-set(LR_PREFIX "v2")
 set(LR_DIR ${SAMSTAT_FIXTURE_DIR}/longread)
 set(LR_OUT ${SAMSTAT_TEST_OUT_DIR}/longread)
 set(LR_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
 file(MAKE_DIRECTORY ${LR_GEN})
-
-if(LR_PREFIX STREQUAL "")
-  set(LR_P "")
-else()
-  set(LR_P "${LR_PREFIX}.")
-endif()
 
 # --- decimal helpers (CMake has integer arithmetic only) -------------------------------------
 # lr_dec2int(<out> <decimal string>): value x 10000 ("92.9069" -> 929069, "100" -> 1000000)
@@ -67,7 +56,7 @@ function(lr_value_test fixture)
   foreach(kv IN LISTS T_EQ)
     # check_json reads a JSON null as the empty string (string(JSON GET)): "k=null" -> "k="
     string(REGEX REPLACE "=null$" "=" kv "${kv}")
-    list(APPEND checks "${LR_P}summary.${kv}")
+    list(APPEND checks "summary.${kv}")
   endforeach()
   foreach(kv IN LISTS T_PCT1)
     string(REPLACE "=" ";" parts "${kv}")
@@ -75,7 +64,7 @@ function(lr_value_test fixture)
     list(GET parts 1 exact)
     math(EXPR lo "${exact}*99/100")
     math(EXPR hi "(${exact}*101+99)/100")
-    list(APPEND checks "${LR_P}summary.${key}>=${lo}" "${LR_P}summary.${key}<=${hi}")
+    list(APPEND checks "summary.${key}>=${lo}" "summary.${key}<=${hi}")
   endforeach()
   foreach(kv IN LISTS T_NEAR)
     string(REGEX MATCH "^([a-z0-9_]+)=([0-9.]+):([0-9.]+)$" m "${kv}")
@@ -89,7 +78,7 @@ function(lr_value_test fixture)
     math(EXPR hi "${c}+${tol}")
     lr_int2dec(lo_s ${lo})
     lr_int2dec(hi_s ${hi})
-    list(APPEND checks "${LR_P}summary.${key}>=${lo_s}" "${LR_P}summary.${key}<=${hi_s}")
+    list(APPEND checks "summary.${key}>=${lo_s}" "summary.${key}<=${hi_s}")
   endforeach()
   string(REPLACE ";" "\;" checks_arg "${checks}")
   add_test(NAME longread:value:${fixture}
@@ -182,7 +171,7 @@ lr_value_test(ubam_like.sam
 add_test(NAME longread:is_aligned:ubam_like.sam
   COMMAND ${CMAKE_COMMAND}
     -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_DIR}/ubam_like.sam
-    -DOUTDIR=${LR_OUT}/is_aligned_ubam_like "-DCHECKS=${LR_P}summary.is_aligned=false"
+    -DOUTDIR=${LR_OUT}/is_aligned_ubam_like "-DCHECKS=summary.is_aligned=false"
     -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_json.cmake)
 set_tests_properties(longread:is_aligned:ubam_like.sam PROPERTIES LABELS longread)
 
@@ -230,7 +219,7 @@ lr_value_test(softclip_pct.sam
 # --- MAPQ classes add up to the primary reads ------------------------------------------------------
 # -DEXPECT=<ge30>,<10_29>,<lt10>,<unmapped>: class totals over both mates
 file(WRITE ${LR_GEN}/check_mapq_sum.cmake [=[
-# -DSAMSTAT -DINPUT -DOUTDIR -DPREFIX=<v2 object path, may be empty> -DEXPECT=a,b,c,d
+# -DSAMSTAT -DINPUT -DOUTDIR -DEXPECT=a,b,c,d
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
@@ -240,13 +229,10 @@ if(NOT rc EQUAL 0)
 endif()
 get_filename_component(name ${INPUT} NAME)
 file(READ ${OUTDIR}/${name}.samstat.json doc)
-if(PREFIX STREQUAL "")
-  set(base "")
-else()
-  set(base ${PREFIX})
-endif()
-string(JSON total GET "${doc}" ${base} summary total_reads)
-string(JSON r2 GET "${doc}" ${base} summary read2_reads)
+# string(JSON) re-parses its whole input on every call: work on the summary only
+string(JSON sum_obj GET "${doc}" summary)
+string(JSON total GET "${sum_obj}" total_reads)
+string(JSON r2 GET "${sum_obj}" read2_reads)
 set(mates read1)
 if(r2 GREATER 0)
   list(APPEND mates read2)
@@ -259,7 +245,7 @@ set(i 0)
 foreach(c IN LISTS classes)
   set(n 0)
   foreach(m IN LISTS mates)
-    string(JSON v GET "${doc}" ${base} summary mapq_counts ${m} ${c})
+    string(JSON v GET "${sum_obj}" mapq_counts ${m} ${c})
     math(EXPR n "${n}+${v}")
   endforeach()
   list(GET expect ${i} want)
@@ -280,7 +266,7 @@ function(lr_mapq_sum_test fixture expect)
   add_test(NAME longread:mapq_sum:${fixture}
     COMMAND ${CMAKE_COMMAND}
       -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_DIR}/${fixture}
-      -DOUTDIR=${LR_OUT}/mapq_sum_${fixture} -DPREFIX=${LR_PREFIX} -DEXPECT=${expect}
+      -DOUTDIR=${LR_OUT}/mapq_sum_${fixture} -DEXPECT=${expect}
       -P ${LR_GEN}/check_mapq_sum.cmake)
   set_tests_properties(longread:mapq_sum:${fixture} PROPERTIES LABELS longread)
 endfunction()
@@ -294,6 +280,6 @@ lr_mapq_sum_test(sq_nomap.sam 0,0,0,6)
 # --- T4: a 1 Mb read gives a small JSON with bounded arrays ------------------------------------------
 add_test(NAME longread:ultralong
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
-    -DOUTDIR=${LR_OUT}/ultralong -DPREFIX=${LR_PREFIX}
+    -DOUTDIR=${LR_OUT}/ultralong
     -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_ultralong.cmake)
 set_tests_properties(longread:ultralong PROPERTIES LABELS longread)

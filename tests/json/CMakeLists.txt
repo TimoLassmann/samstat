@@ -2,17 +2,16 @@
 #
 # json:<file>      --json on every dev/*.sam|*.fa: parses, required keys, counts add up
 # json:values:*    hand-verified values on small inputs (check_json.cmake)
-# json:golden:*    full report compared with tests/json/golden/*.json (meta ignored)
+# json:golden:*    full report compared with tests/golden/expected/<input>.json (meta ignored)
 # json:off         without --json no .json file is written
 # json:helper:*    self-tests of check_json.cmake / compare_golden.cmake
 #
-# Regenerate a golden after an intended format change:
-#   cmake -DACTUAL=<build>/tests/out/json/golden_<name>/<input>.samstat.json \
-#         -DEXPECTED=tests/json/golden/<name>.json -DUPDATE=ON -P tests/cmake/compare_golden.cmake
+# Goldens live in tests/golden/expected/ and are regenerated in one way only:
+#   cmake --build <build> --target update-goldens
 
 set(JSON_HELPERS ${PROJECT_SOURCE_DIR}/tests/cmake)
 set(JSON_OUT ${SAMSTAT_TEST_OUT_DIR}/json)
-set(JSON_GOLDEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/golden)
+set(JSON_GOLDEN_DIR ${PROJECT_SOURCE_DIR}/tests/golden/expected)
 set(JSON_HELPER_FIXTURE ${CMAKE_CURRENT_SOURCE_DIR}/data)
 
 file(GLOB JSON_INPUTS ${SAMSTAT_TEST_DATA_DIR}/*.sam ${SAMSTAT_TEST_DATA_DIR}/*.fa)
@@ -37,12 +36,12 @@ function(json_value_test name input)
   set_tests_properties(json:values:${name} PROPERTIES LABELS json)
 endfunction()
 
-# json_golden_test(<name> <input>)
+# json_golden_test(<name> <input>): compares with tests/golden/expected/<input>.json
 function(json_golden_test name input)
   add_test(NAME json:golden:${name}
     COMMAND ${CMAKE_COMMAND}
       -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${SAMSTAT_TEST_DATA_DIR}/${input}
-      -DOUTDIR=${JSON_OUT}/golden_${name} -DGOLDEN=${JSON_GOLDEN_DIR}/${name}.json
+      -DOUTDIR=${JSON_OUT}/golden_${name} -DGOLDEN=${JSON_GOLDEN_DIR}/${input}.json
       -P ${JSON_HELPERS}/run_json.cmake)
   set_tests_properties(json:golden:${name} PROPERTIES LABELS json)
 endfunction()
@@ -168,9 +167,9 @@ add_test(NAME json:helper:golden_detects_diff
     -DEXPECTED=${JSON_HELPER_FIXTURE}/golden_b.json -P ${JSON_HELPERS}/compare_golden.cmake)
 set_tests_properties(json:helper:golden_ignores_meta json:helper:golden_detects_diff PROPERTIES LABELS json)
 # WILL_FAIL inverts the exit code; PASS_REGULAR_EXPRESSION then overrides it, so it
-# checks the message names the first differing top-level key.
+# checks the message names the first differing dotted path.
 set_tests_properties(json:helper:golden_detects_diff PROPERTIES
-  PASS_REGULAR_EXPRESSION "first differing top-level key: summary")
+  PASS_REGULAR_EXPRESSION "first differing path: summary.total_reads")
 
 # --- schema ------------------------------------------------------------------
 # json:schema_keys:<input>  member names of the report match docs/samstat.schema.json
@@ -191,3 +190,29 @@ add_test(NAME json:meta_version
     "-DCHECKS=meta.samstat_version=${PROJECT_VERSION}"
     -P ${JSON_HELPERS}/run_expect.cmake)
 set_tests_properties(json:meta_version PROPERTIES LABELS json)
+
+# check_json.cmake >= / <= operators (mini.json: summary.total_reads=6, a_list has 3 elements)
+string(REPLACE ";" "\\;" ops_ok "summary.total_reads>=6;summary.total_reads>=5;summary.total_reads<=6;summary.total_reads<=7;a_list#len>=3;a_list#len<=3")
+add_test(NAME json:check_json_ops
+  COMMAND ${CMAKE_COMMAND} -DJSON=${JSON_HELPER_FIXTURE}/mini.json "-DCHECKS=${ops_ok}"
+    -P ${JSON_HELPERS}/check_json.cmake)
+set_tests_properties(json:check_json_ops PROPERTIES LABELS json)
+
+set(JSON_BAD_OPS
+  ge_fails "summary.total_reads>=7" "mismatch for 'summary.total_reads': expected >= 7, got '6'"
+  le_fails "summary.total_reads<=5" "mismatch for 'summary.total_reads': expected <= 5, got '6'"
+  len_ge_fails "a_list#len>=4" "mismatch for 'a_list': expected >= 4, got '3'"
+  non_numeric "summary.name>=1" "non-numeric operand")
+list(LENGTH JSON_BAD_OPS n_bad_ops)
+math(EXPR last_bad_ops "${n_bad_ops}-1")
+foreach(i RANGE 0 ${last_bad_ops} 3)
+  math(EXPR j "${i}+1")
+  math(EXPR k "${i}+2")
+  list(GET JSON_BAD_OPS ${i} cname)
+  list(GET JSON_BAD_OPS ${j} cchecks)
+  list(GET JSON_BAD_OPS ${k} cregex)
+  add_test(NAME json:check_json_ops_${cname}
+    COMMAND ${CMAKE_COMMAND} -DJSON=${JSON_HELPER_FIXTURE}/mini.json "-DCHECKS=${cchecks}"
+      -P ${JSON_HELPERS}/check_json.cmake)
+  set_tests_properties(json:check_json_ops_${cname} PROPERTIES LABELS json PASS_REGULAR_EXPRESSION "${cregex}")
+endforeach()

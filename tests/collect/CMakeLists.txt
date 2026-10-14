@@ -1,9 +1,11 @@
 # Statistics collection tests (label: collect).
 #
-# collect:qual:*        missing quality (QUAL '*') contributes nothing; qualities are binned 0..41
+# collect:qual:*        missing quality (QUAL '*') contributes nothing; qualities up to Q93 are kept
 # collect:bounds:*      soft/hard clips, SEQ '*', end and normalised plots stay inside their arrays
 # collect:counters      summary.secondary / summary.supplementary exist
 # collect:plots:<file>  every dev/*.sam with --plotend --norm: exit 0 and valid JSON
+# collect:mapq_sum:*    MAPQ class counts and length histograms add up to the primary reads
+# collect:axis_rule:*   layout rule and both position axes
 # collect:unit          unit_collect: the v2 collector (merge, tables, position bins, per-record
 #                       decisions, 128-bit mean Q, summary values of the long-read fixtures)
 #
@@ -72,10 +74,15 @@ endfunction()
 # in any quality plot. Before the fix --plotend / --norm recorded them as Q41.
 set(NO_QUAL_COMMON
   summary.total_reads=3
-  read1.length.mapq_ge30.30=1 read1.length.mapq_10_29.30=1 read1.length.mapq_lt10.30=1
-  "read1.base_quality.mapq_ge30#len=0"
-  "read1.base_quality.mapq_10_29#len=0"
-  "read1.base_quality.mapq_lt10#len=0")
+  read1.length.reads.mapq_ge30.30=1 read1.length.reads.mapq_10_29.30=1 read1.length.reads.mapq_lt10.30=1
+  "read1.absolute.qual_bases.mapq_ge30#len=0"
+  "read1.absolute.qual_bases.mapq_10_29#len=0"
+  "read1.absolute.qual_bases.mapq_lt10#len=0"
+  "read1.relative.qual_error_sum.mapq_ge30#len=0"
+  "read1.read_mean_q.mapq_ge30#len=0"
+  "read1.read_mean_q.mapq_10_29#len=0"
+  "read1.read_mean_q.mapq_lt10#len=0"
+  summary.mean_q=)
 collect_test(qual:missing_default ${SAMSTAT_FIXTURE_DIR}/no_qual.sam
   CHECKS ${NO_QUAL_COMMON})
 collect_test(qual:missing_plotend_norm ${SAMSTAT_FIXTURE_DIR}/no_qual.sam
@@ -84,20 +91,28 @@ collect_test(qual:missing_plotend_norm ${SAMSTAT_FIXTURE_DIR}/no_qual.sam
   HTML_ABSENT "41\\.0000")
 
 # high_qual.sam: hq1 = Q40 x5, Q41 x5, Q42 x5, Q60 x5, Q93 x5; hq2 = Q60 x25.
-# Everything above Q41 is counted in bin 41; nothing lands outside 0..41.
-# Position 0..4: Q40 once (hq1), Q41 once (hq2). Position 5..24: Q41 twice.
+# 2.4 keeps every value up to Q93 (the 2.3 cap at Q41 is gone). E[q] = round(10^(-q/10) * 2^30):
+# E[40]=107374 E[41]=85290 E[42]=67749 E[60]=1074 E[93]=1. Error sums per position:
+# 0..4: E40+E60 = 108448; 5..9: E41+E60 = 86364; 10..14: E42+E60 = 68823;
+# 15..19: 2 * E60 = 2148; 20..24: E93+E60 = 1075. Per-read mean Q: hq2 is Q60;
+# hq1 has mean error 1307440 / 25 = 52297, the largest q with E[q] >= 52297 is 43.
 collect_test(qual:clamp_high ${SAMSTAT_FIXTURE_DIR}/high_qual.sam
   ARGS --plotend --norm
   CHECKS
     summary.total_reads=2
-    "read1.base_quality.mapq_ge30#len=42"
-    read1.base_quality.mapq_ge30.40.0=1
-    read1.base_quality.mapq_ge30.40.4=1
-    read1.base_quality.mapq_ge30.40.5=0
-    read1.base_quality.mapq_ge30.41.0=1
-    read1.base_quality.mapq_ge30.41.4=1
-    read1.base_quality.mapq_ge30.41.5=2
-    read1.base_quality.mapq_ge30.41.24=2)
+    "read1.absolute.qual_bases.mapq_ge30#len=25"
+    read1.absolute.qual_bases.mapq_ge30.0=2
+    read1.absolute.qual_bases.mapq_ge30.24=2
+    read1.absolute.qual_error_sum.mapq_ge30.0=108448
+    read1.absolute.qual_error_sum.mapq_ge30.4=108448
+    read1.absolute.qual_error_sum.mapq_ge30.5=86364
+    read1.absolute.qual_error_sum.mapq_ge30.10=68823
+    read1.absolute.qual_error_sum.mapq_ge30.15=2148
+    read1.absolute.qual_error_sum.mapq_ge30.20=1075
+    read1.absolute.qual_error_sum.mapq_ge30.24=1075
+    "read1.read_mean_q.mapq_ge30#len=61"
+    read1.read_mean_q.mapq_ge30.43=1
+    read1.read_mean_q.mapq_ge30.60=1)
 
 # --- index bounds ----------------------------------------------------------
 # seq_star_softclip.sam: SEQ '*' with CIGAR 10S40M. The stored length is 0, not
@@ -106,15 +121,18 @@ collect_test(bounds:seq_star_softclip ${SAMSTAT_FIXTURE_DIR}/seq_star_softclip.s
   ARGS --plotend --norm
   CHECKS
     summary.total_reads=1
-    read1.length.mapq_ge30.0=1
-    "read1.base_quality.mapq_ge30#len=0")
+    read1.length.reads.mapq_ge30.0=1
+    "read1.absolute.qual_bases.mapq_ge30#len=0")
 
-# hardclip_softclip.sam: 50 bp reads with 10 soft + 5 hard clip, 40 bp aligned.
+# hardclip_softclip.sam: 50 bp reads with 10 soft + 5 hard clip, 40 bp aligned: the position
+# axes cover the aligned part (40 positions, Q40 on both reads).
 collect_test(bounds:hardclip_softclip ${SAMSTAT_FIXTURE_DIR}/hardclip_softclip.sam
   ARGS --plotend --norm
   CHECKS
     summary.total_reads=2
-    read1.base_quality.mapq_ge30.40.0=2)
+    "read1.absolute.qual_bases.mapq_ge30#len=40"
+    read1.absolute.qual_bases.mapq_ge30.0=2
+    read1.absolute.qual_bases.mapq_ge30.39=2)
 
 collect_test(bounds:softclip5_md ${SAMSTAT_FIXTURE_DIR}/softclip5_md.sam
   ARGS --plotend --norm
@@ -146,9 +164,9 @@ foreach(input ${COLLECT_DEV_SAM})
   collect_test(plots:${name} ${input} ARGS --plotend --norm)
 endforeach()
 
-# --- v2 preview (WP3.1b) ----------------------------------------------------
-# collect:mapq_sum:<input>  v2.summary.mapq_counts add up to the primary reads, and so do the
-#                           per-class length histograms of the v2 read blocks
+# --- format 2 summary and axes -----------------------------------------------
+# collect:mapq_sum:<input>  summary.mapq_counts add up to the primary reads, and so do the
+#                           per-class length histograms of the read blocks
 # collect:axis_rule:<len>   reads of <len> bp: layout short (median < 1000) or long, both
 #                           position axes present
 file(MAKE_DIRECTORY ${COLLECT_GEN_DIR}/scripts)
@@ -163,8 +181,10 @@ if(NOT rc EQUAL 0)
 endif()
 get_filename_component(name ${INPUT} NAME)
 file(READ ${OUTDIR}/${name}.samstat.json doc)
-string(JSON total GET "${doc}" v2 summary total_reads)
-string(JSON r2 GET "${doc}" v2 summary read2_reads)
+# string(JSON) re-parses its input on every call: take the parts apart first
+string(JSON sum_obj GET "${doc}" summary)
+string(JSON total GET "${sum_obj}" total_reads)
+string(JSON r2 GET "${sum_obj}" read2_reads)
 set(mates read1)
 if(r2 GREATER 0)
   list(APPEND mates read2)
@@ -173,13 +193,14 @@ set(sum 0)
 set(len_sum 0)
 foreach(m IN LISTS mates)
   foreach(c mapq_ge30 mapq_10_29 mapq_lt10 unmapped)
-    string(JSON v GET "${doc}" v2 summary mapq_counts ${m} ${c})
+    string(JSON v GET "${sum_obj}" mapq_counts ${m} ${c})
     math(EXPR sum "${sum}+${v}")
-    string(JSON n LENGTH "${doc}" v2 ${m} length reads ${c})
+    string(JSON arr GET "${doc}" ${m} length reads ${c})
+    string(JSON n LENGTH "${arr}")
     if(n GREATER 0)
       math(EXPR last "${n}-1")
       foreach(i RANGE ${last})
-        string(JSON v GET "${doc}" v2 ${m} length reads ${c} ${i})
+        string(JSON v GET "${arr}" ${i})
         math(EXPR len_sum "${len_sum}+${v}")
       endforeach()
     endif()
@@ -222,22 +243,22 @@ if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc}\n${out}\n${err}")
 endif()
 file(READ ${OUTDIR}/axis.sam.samstat.json doc)
-string(JSON layout GET "${doc}" v2 summary layout)
+string(JSON layout GET "${doc}" summary layout)
 if(NOT layout STREQUAL LAYOUT)
   message(FATAL_ERROR "reads of ${LEN} bp: layout '${layout}', expected '${LAYOUT}'")
 endif()
 # both axes are filled whatever the layout; the first read base of every read is an A
 # (the relative axis has 1% bins, so bin 0 holds the first bases of several positions)
 foreach(axis absolute relative)
-  string(JSON n LENGTH "${doc}" v2 read1 ${axis} composition mapq_ge30 A)
+  string(JSON n LENGTH "${doc}" read1 ${axis} composition mapq_ge30 A)
   if(n LESS 1)
-    message(FATAL_ERROR "reads of ${LEN} bp: v2.read1.${axis} is empty")
+    message(FATAL_ERROR "reads of ${LEN} bp: read1.${axis} is empty")
   endif()
-  string(JSON a0 GET "${doc}" v2 read1 ${axis} composition mapq_ge30 A 0)
+  string(JSON a0 GET "${doc}" read1 ${axis} composition mapq_ge30 A 0)
   if(axis STREQUAL "absolute" AND NOT a0 EQUAL 3)
-    message(FATAL_ERROR "reads of ${LEN} bp: v2.read1.${axis} bin 0 has ${a0} A, expected 3")
+    message(FATAL_ERROR "reads of ${LEN} bp: read1.${axis} bin 0 has ${a0} A, expected 3")
   elseif(a0 LESS 3)
-    message(FATAL_ERROR "reads of ${LEN} bp: v2.read1.${axis} bin 0 has ${a0} A, expected at least 3")
+    message(FATAL_ERROR "reads of ${LEN} bp: read1.${axis} bin 0 has ${a0} A, expected at least 3")
   endif()
 endforeach()
 ]=])

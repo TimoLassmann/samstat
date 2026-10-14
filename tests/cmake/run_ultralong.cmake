@@ -4,14 +4,8 @@
 #   JSON file < 1 MB; every absolute-axis array <= 1000 elements; every relative-axis array
 #   <= 100; identity arrays <= 1001; read_mean_q <= 94.
 # Required: -DSAMSTAT=<binary> -DOUTDIR=<dir>
-# Optional: -DPREFIX=<json path of the v2 object>   default "v2" (transitional, waves 3-4);
-#           WP4.3 promotes the v2 blocks to the top level and sets it to empty.
 
 cmake_minimum_required(VERSION 3.19)
-
-if(NOT DEFINED PREFIX)
-  set(PREFIX "v2")
-endif()
 
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
@@ -75,11 +69,7 @@ foreach(spec "read1;absolute;1000" "read1;relative;100" "read1;identity;1001" "r
   list(GET spec 0 a)
   list(GET spec 1 b)
   list(GET spec 2 limit)
-  if(PREFIX STREQUAL "")
-    set(start ${a} ${b})
-  else()
-    set(start ${PREFIX} ${a} ${b})
-  endif()
+  set(start ${a} ${b})
   # the block must exist and must not be empty (a test that walks nothing proves nothing)
   string(JSON n ERROR_VARIABLE err LENGTH "${doc}" ${start})
   if(NOT err STREQUAL "NOTFOUND" OR n EQUAL 0)

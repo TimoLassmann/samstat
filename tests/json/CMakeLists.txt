@@ -2,6 +2,8 @@
 #
 # json:<file>      --json on every dev/*.sam|*.fa: parses, required keys, counts add up
 # json:values:*    hand-verified values on small inputs (check_json.cmake)
+# json:format_version_2  top-level layout of format_version 2
+# json:no_v1_key:*  keys of format_version 1 and the "v2" wrapper are gone
 # json:golden:*    full report compared with tests/golden/expected/<input>.json (meta ignored)
 # json:off         without --json no .json file is written
 # json:helper:*    self-tests of check_json.cmake / compare_golden.cmake
@@ -47,9 +49,12 @@ function(json_golden_test name input)
 endfunction()
 
 # xx#pair.sam: 3 read pairs, all MAPQ 1 (bin mapq_lt10), 10M each; read1 AAAAAAAAAA,
-# read2 is stored reverse-complemented (TTTTTTTTTT -> AAAAAAAAAA); all qualities '*' = Q9.
+# read2 is stored reverse-complemented (TTTTTTTTTT -> AAAAAAAAAA); all qualities '*' = Q9
+# (E[9] = round(10^-0.9 * 2^30) = 135176087, 3 bases per position = 405528261). No NM, MD or
+# X operations: identity and mismatches are not available (reads_without_md = identity_na = 6).
+# Relative axis: L = 10, bin = 10 * position, 3 bases in each of the bins 0, 10, ..., 90.
 json_value_test(pair "xx#pair.sam"
-  "format_version=1"
+  "format_version=2"
   "meta.input_file=xx#pair.sam"
   "summary.total_reads=6"
   "summary.read1_reads=3"
@@ -58,6 +63,20 @@ json_value_test(pair "xx#pair.sam"
   "summary.properly_paired=6"
   "summary.is_aligned=true"
   "summary.is_partial_report=false"
+  "summary.total_bases=60"
+  "summary.min_length=10"
+  "summary.max_length=10"
+  "summary.n50=10"
+  "summary.median_length=10"
+  "summary.mean_q>=8.999"
+  "summary.mean_q<=9.001"
+  "summary.pct_mapped>=99.99"
+  "summary.pct_mapq_ge30<=0.001"
+  "summary.median_identity="
+  "summary.layout=short"
+  "summary.reads_without_md=6"
+  "summary.identity_reads=0"
+  "summary.identity_na=6"
   "summary.mapq_counts.read1.mapq_lt10=3"
   "summary.mapq_counts.read1.mapq_ge30=0"
   "summary.mapq_counts.read2.mapq_lt10=3"
@@ -65,20 +84,37 @@ json_value_test(pair "xx#pair.sam"
   "mapq_bins.0.id=mapq_ge30"
   "mapq_bins.3.id=unmapped"
   "mapq_bins.3.label=Unmapped"
+  "axes.length_edges#len=1922"
+  "axes.absolute.bins=1000"
+  "axes.relative.bins=100"
+  "axes.identity_bins=1001"
+  "axes.quality_error_scale=1073741824"
   "read1.n_reads=3"
-  "read1.length.mapq_lt10#len=11"
-  "read1.length.mapq_lt10.10=3"
-  "read1.length.mapq_ge30#len=0"
-  "read1.base_composition.mapq_lt10.A.0=3"
-  "read1.base_composition.mapq_lt10.A#len=10"
-  "read1.base_composition.mapq_lt10.C.0=0"
-  "read1.base_quality.mapq_lt10#len=42"
-  "read1.base_quality.mapq_lt10.9.0=3"
-  "read1.base_quality.mapq_lt10.9.9=3"
-  "read1.base_quality.mapq_lt10.10.0=0"
-  "read1.insertions.mapq_lt10#len=0"
+  "read1.length.reads.mapq_lt10#len=11"
+  "read1.length.reads.mapq_lt10.10=3"
+  "read1.length.bases.mapq_lt10.10=30"
+  "read1.length.reads.mapq_ge30#len=0"
+  "read1.read_mean_q.mapq_lt10#len=10"
+  "read1.read_mean_q.mapq_lt10.9=3"
+  "read1.identity.mapq_lt10#len=0"
+  "read1.absolute.composition.mapq_lt10.A#len=10"
+  "read1.absolute.composition.mapq_lt10.A.0=3"
+  "read1.absolute.composition.mapq_lt10.A.9=3"
+  "read1.absolute.composition.mapq_lt10.C#len=0"
+  "read1.absolute.qual_bases.mapq_lt10#len=10"
+  "read1.absolute.qual_bases.mapq_lt10.0=3"
+  "read1.absolute.qual_error_sum.mapq_lt10.0=405528261"
+  "read1.absolute.qual_error_sum.mapq_lt10.9=405528261"
+  "read1.absolute.aligned.mapq_lt10.9=3"
+  "read1.absolute.aligned_md.mapq_lt10#len=0"
+  "read1.absolute.mismatches.mapq_lt10#len=0"
+  "read1.absolute.insertions.mapq_lt10#len=0"
+  "read1.relative.qual_bases.mapq_lt10#len=91"
+  "read1.relative.qual_bases.mapq_lt10.0=3"
+  "read1.relative.qual_bases.mapq_lt10.5=0"
+  "read1.relative.qual_bases.mapq_lt10.90=3"
   "read2.n_reads=3"
-  "read2.length.mapq_lt10.10=3")
+  "read2.length.reads.mapq_lt10.10=3")
 
 # xx.fa: two FASTA records of 20 nt (AAAAAAAAAATTTTTTTTTT), no alignment, no qualities.
 json_value_test(fasta "xx.fa"
@@ -86,14 +122,21 @@ json_value_test(fasta "xx.fa"
   "summary.read1_reads=2"
   "summary.read2_reads=0"
   "summary.is_aligned=false"
+  "summary.mean_q="
+  "summary.pct_mapped="
+  "summary.pct_mapq_ge30="
+  "summary.pct_clipped="
+  "summary.median_identity="
   "summary.mapq_counts.read1.unmapped=2"
   "read1.n_reads=2"
-  "read1.length.unmapped.20=2"
-  "read1.base_composition.unmapped.A.0=2"
-  "read1.base_composition.unmapped.A.10=0"
-  "read1.base_composition.unmapped.T.10=2"
-  "read1.base_composition.unmapped.T.19=2"
-  "read1.base_quality.unmapped#len=0")
+  "read1.length.reads.unmapped.20=2"
+  "read1.length.bases.unmapped.20=40"
+  "read1.absolute.composition.unmapped.A.0=2"
+  "read1.absolute.composition.unmapped.A#len=10"
+  "read1.absolute.composition.unmapped.T.10=2"
+  "read1.absolute.composition.unmapped.T.19=2"
+  "read1.absolute.qual_bases.unmapped#len=0"
+  "read1.read_mean_q.unmapped#len=0")
 
 # ce#unmap.sam: six unmapped reads (flag 4), no @SQ: is_aligned is false (has_sq or a mapped
 # primary read; standard-plots.md 3.6).
@@ -102,14 +145,20 @@ json_value_test(unmapped "ce#unmap.sam"
   "summary.is_aligned=false"
   "summary.mapq_counts.read1.unmapped=6"
   "summary.mapq_counts.read1.mapq_ge30=0"
-  "read1.n_reads=6")
+  "summary.pct_mapped="
+  "read1.n_reads=6"
+  "read1.length.reads.unmapped.100=6"
+  "read1.absolute.qual_bases.unmapped#len=100"
+  "read1.absolute.qual_bases.unmapped.99=6")
 
 # xx#blank.sam: header only, no reads.
 json_value_test(blank "xx#blank.sam"
   "summary.total_reads=0"
   "summary.read1_reads=0"
   "read1.n_reads=0"
-  "read1.length.unmapped#len=0")
+  "summary.min_length=0"
+  "summary.n50=0"
+  "read1.length.reads.unmapped#len=0")
 
 json_golden_test(pair "xx#pair.sam")
 json_golden_test(fasta "xx.fa")
@@ -216,4 +265,25 @@ foreach(i RANGE 0 ${last_bad_ops} 3)
     COMMAND ${CMAKE_COMMAND} -DJSON=${JSON_HELPER_FIXTURE}/mini.json "-DCHECKS=${cchecks}"
       -P ${JSON_HELPERS}/check_json.cmake)
   set_tests_properties(json:check_json_ops_${cname} PROPERTIES LABELS json PASS_REGULAR_EXPRESSION "${cregex}")
+endforeach()
+
+# --- format_version 2 layout ---------------------------------------------------
+# The v1 keys and the transitional "v2" wrapper are gone: the blocks of standard-plots.md
+# section 7 are the top level. check_json.cmake only resolves paths, so absence is checked
+# with PASS_REGULAR_EXPRESSION on "cannot resolve path".
+add_test(NAME json:format_version_2
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> "-DINPUT=${SAMSTAT_TEST_DATA_DIR}/xx#pair.sam"
+    -DOUTDIR=${JSON_OUT}/format_version_2
+    "-DCHECKS=format_version=2\\;summary.layout\\;axes.length_edges\\;read1.length.reads\\;read1.relative.composition.mapq_lt10.A"
+    -P ${JSON_HELPERS}/run_json.cmake)
+set_tests_properties(json:format_version_2 PROPERTIES LABELS json)
+foreach(old read1.base_quality read1.base_composition read1.mismatches v2 read1.insertions summary.v2)
+  add_test(NAME json:no_v1_key:${old}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> "-DINPUT=${SAMSTAT_TEST_DATA_DIR}/xx#pair.sam"
+      -DOUTDIR=${JSON_OUT}/no_v1_${old} "-DCHECKS=${old}"
+      -P ${JSON_HELPERS}/run_json.cmake)
+  set_tests_properties(json:no_v1_key:${old} PROPERTIES LABELS json
+    PASS_REGULAR_EXPRESSION "cannot resolve")
 endforeach()

@@ -12,17 +12,20 @@
 #define SAMSTAT_EXIT_FAILED 1 /* at least one input could not be processed */
 #define SAMSTAT_EXIT_USAGE 2 /* bad command line */
 
-#define FILE_TYPE_SAMBAM 0
-#define FILE_TYPE_FASTAQ 1
-#define FILE_TYPE_UNKNOWN 2
-#define FILE_TYPE_NOOUT 3 /* report directory not writable: input is failed up front */
+/* Batch limits of the reader: a chunk is 4096 records or 8 Mbases, whichever comes first. */
+#define SAMSTAT_BATCH_RECORDS 4096
+#define SAMSTAT_BATCH_BASES 8000000
+
+/* name of the input that stands for standard input */
+#define SAMSTAT_STDIN "-"
 
 struct samstat_param {
         char** infile;
         char* outfile;
         char* outdir;
-        uint8_t* file_type;
-        int buffer_size;
+        uint8_t* no_output;     /* 1: report directory not writable, input is failed up front */
+        int buffer_size;        /* reader batch: records */
+        uint64_t batch_bases;   /* reader batch: bases */
         int n_infile;
         int n_threads;
         int verbose;
@@ -40,6 +43,11 @@ struct samstat_param {
 EXTERN int parse_param(int argc, char *argv[], struct samstat_param **param);
 EXTERN  int param_init(struct samstat_param **param);
 EXTERN void param_free(struct samstat_param *p);
+/* Name that report files of input <id> are derived from: the input path as given, or
+ * "stdin" for standard input ("-"). Valid as long as p is. */
+EXTERN const char *samstat_output_stem(const struct samstat_param *p, int id);
+/* Decompression threads for the file reader of one input (0: none). */
+EXTERN int samstat_pool_threads(const struct samstat_param *p);
 
 #undef PARAM_IMPORT
 #undef EXTERN

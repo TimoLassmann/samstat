@@ -9,17 +9,15 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/stat.h>
-#include <zlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
 #endif
 
-/* int detect_file_type(char *filename, int* type); */
-int process_sam_bam_file(struct samstat_param *p, int id);
-int process_fasta_fastq_file(struct samstat_param *p, int id);
-static int prepare_fasta_fastq_input(const char *infile, char **open_path, int *is_empty);
+/* Read input <id> (SAM, BAM, FASTA or FASTQ, from a file or standard input) and report. */
+int process_reads_file(struct samstat_param *p, int id);
 
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
@@ -93,16 +91,11 @@ ERROR:
 
 static int process_file(struct samstat_param *p, int id)
 {
-        if(p->file_type[id] == FILE_TYPE_FASTAQ){
-                RUN(process_fasta_fastq_file(p, id));
-        }else if(p->file_type[id] == FILE_TYPE_SAMBAM){
-                RUN(process_sam_bam_file(p, id));
-        }else if(p->file_type[id] == FILE_TYPE_NOOUT){
+        if(p->no_output[id]){
                 /* already reported up front by param.c: fail this input silently */
                 goto ERROR;
-        }else{
-                ERROR_MSG("File type of %s not recognized.", p->infile[id]);
         }
+        RUN(process_reads_file(p, id));
         return OK;
 ERROR:
         return FAIL;
@@ -156,31 +149,42 @@ ERROR:
 }
 #endif
 
-int process_sam_bam_file(struct samstat_param* p, int id)
+int process_reads_file(struct samstat_param* p, int id)
 {
         struct sam_bam_file* f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
-        /* struct metrics* metrics = NULL; */
-
         struct stat_collection* s = NULL;
+        struct reader_opts opts;
         uint64_t n_read = 0;
         uint64_t old_n_read = 0;
+        int is_stdin = (strcmp(p->infile[id], SAMSTAT_STDIN) == 0);
         int ret = FAIL;
 
-        ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
+        if(!is_stdin){
+                ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
+        }
+
+        opts.pool_threads = samstat_pool_threads(p);
+        opts.batch_records = (uint64_t) p->buffer_size;
+        opts.batch_bases = p->batch_bases;
+        opts.max_primary = p->top_n;
+
+        RUN(open_reads(&f_handle, p->infile[id], &opts));
 
         RUN(stat_collection_alloc(&s));
         RUN(stat_collection_config_additional_plot(s,p));
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
-        add_aln_data(sb);
+        if(!f_handle->is_fastx){
+                add_aln_data(sb);
+        }
         RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
 
         sb->data = a;
 
-        s->is_aligned = 1;
+        /* NOTE: replaced by has_sq / mapped reads in the collector's finalise (WP3.1a) */
+        s->is_aligned = f_handle->is_fastx ? 0 : 1;
 
-        RUN(open_bam(&f_handle, p->infile[id]));
         while(1){
                 RUN(read_bam_chunk(f_handle, sb));
                 sb->L = TL_SEQ_BUFFER_DNA;
@@ -190,19 +194,11 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         break;
                 }
 
-                /* -p/--peek: analyse exactly top_n reads */
-                if(n_read >= p->top_n){
-                        s->is_partial_report = 1;
-                        break;
-                }
-                if((uint64_t) sb->num_seq > p->top_n - n_read){
-                        sb->num_seq = (int) (p->top_n - n_read);
-                        s->is_partial_report = 1;
-                }
-
-                for(int i = 0; i < sb->num_seq;i++){
-                        parse_alignment(sb->sequences[i]);
-                        fix_orientation(sb->sequences[i]);
+                if(!f_handle->is_fastx){
+                        for(int i = 0; i < sb->num_seq;i++){
+                                parse_alignment(sb->sequences[i]);
+                                fix_orientation(sb->sequences[i]);
+                        }
                 }
 
                 RUN(collect_stats(sb, s));
@@ -214,14 +210,14 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                                 old_n_read = n_read;
                         }
                 }
-                if(s->is_partial_report){
-                        break;
+                if(!f_handle->is_fastx){
+                        clear_aln_data(sb);
                 }
-                clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
         }
         s->n_secondary = f_handle->n_secondary;
         s->n_supplementary = f_handle->n_supplementary;
+        s->is_partial_report = f_handle->partial;
         ret = close_bam(f_handle);
         f_handle = NULL; /* closed - must not be closed again in the cleanup below */
         RUN(ret);
@@ -248,177 +244,6 @@ ERROR:
                 }
                 free_aln_data(sb);
                 free_tl_seq_buffer(sb);
-        }
-        return ret;
-}
-
-/* The tld parser drops a last record without a trailing newline and rejects
- * inputs without a sequence (empty .gz, only newlines, header-only FASTA). Scan the
- * (decompressed) input once: report such inputs as empty, and when the final
- * newline is missing hand the parser a temporary copy that has one.
- * *open_path is NULL or a malloc'd temporary file name the caller must remove. */
-static int prepare_fasta_fastq_input(const char *infile, char **open_path, int *is_empty)
-{
-        gzFile gz = NULL;
-        FILE *out = NULL;
-        unsigned char buf[65536];
-        int n = 0;
-        int at_line_start = 1;
-        int has_seq = 0;
-        int has_fastq_header = 0;
-        int last = '\n';
-        char *tmp = NULL;
-
-        *open_path = NULL;
-        *is_empty = 0;
-        gz = gzopen(infile, "rb");
-        ASSERT(gz != NULL, "Cannot open %s", infile);
-        while((n = gzread(gz, buf, sizeof(buf))) > 0){
-                for(int i = 0; i < n; i++){
-                        int c = buf[i];
-                        if(at_line_start && c != '\n' && c != '\r' && c != ' ' && c != '\t'){
-                                at_line_start = 0;
-                                if(c == '@'){
-                                        has_fastq_header = 1;
-                                }else if(c != '>'){
-                                        has_seq = 1;
-                                }
-                        }
-                        if(c == '\n'){
-                                at_line_start = 1;
-                        }
-                        last = c;
-                }
-        }
-        ASSERT(n == 0, "Error reading %s (corrupt gzip stream?)", infile);
-        if(!has_seq && !has_fastq_header){
-                /* a header-only FASTQ record is truncated, not empty: left to the parser to reject */
-                *is_empty = 1;
-        }else if(last != '\n'){
-                const char *tmpdir = getenv("TMPDIR");
-                size_t len = strlen(tmpdir ? tmpdir : "/tmp") + 32;
-                int fd = -1;
-                MMALLOC(tmp, len);
-                snprintf(tmp, len, "%s/samstat_XXXXXX", tmpdir ? tmpdir : "/tmp");
-                fd = mkstemp(tmp);
-                ASSERT(fd >= 0, "Cannot create a temporary file in %s", tmpdir ? tmpdir : "/tmp");
-                out = fdopen(fd, "wb");
-                ASSERT(out != NULL, "fdopen failed");
-                ASSERT(gzrewind(gz) == 0, "gzrewind failed");
-                while((n = gzread(gz, buf, sizeof(buf))) > 0){
-                        ASSERT(fwrite(buf, 1, (size_t) n, out) == (size_t) n, "Write to %s failed", tmp);
-                }
-                ASSERT(fputc('\n', out) != EOF, "Write to %s failed", tmp);
-                ASSERT(fclose(out) == 0, "Write to %s failed", tmp);
-                out = NULL;
-                *open_path = tmp;
-                tmp = NULL;
-        }
-        gzclose(gz);
-        return OK;
-ERROR:
-        if(out){
-                fclose(out);
-        }
-        if(tmp){
-                unlink(tmp);
-                MFREE(tmp);
-        }
-        if(gz){
-                gzclose(gz);
-        }
-        return FAIL;
-}
-
-int process_fasta_fastq_file(struct samstat_param* p, int id)
-{
-        struct file_handler *f_handle = NULL;
-        struct tl_seq_buffer* sb = NULL;
-        struct alphabet* a = NULL;
-        struct stat_collection* s = NULL;
-        char *tmp_path = NULL;
-        int is_empty = 0;
-        uint64_t n_read = 0;
-        int ret = FAIL;
-
-        ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
-
-        /* inputs the parser rejects but that are valid and empty are reported with zero reads */
-        RUN(prepare_fasta_fastq_input(p->infile[id], &tmp_path, &is_empty));
-
-        if(!is_empty){
-                RUN(open_fasta_fastq_file(&f_handle, tmp_path ? tmp_path : p->infile[id], TLSEQIO_READ));
-        }
-        RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
-        RUN(stat_collection_alloc(&s));
-        RUN(stat_collection_config_additional_plot(s,p));
-
-        while(!is_empty){
-                RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
-                /* tld resets the offset on every read and no longer detects it */
-                sb->base_quality_offset = 33;
-                if(!sb->data){
-                        LOG_MSG("Setting alphabet");
-                        if(sb->L == TL_SEQ_BUFFER_DNA){
-                                RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA ));
-                        }else if(sb->L == TL_SEQ_BUFFER_PROTEIN){
-                                RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGIOUS_PROTEIN));
-                        }else{
-                                ERROR_MSG("Bio polymer size %d not recognized", sb->L);
-                        }
-                        sb->data = a;
-                }
-
-                if(sb->num_seq == 0){
-                        break;
-                }
-
-                /* -p/--peek: analyse exactly top_n reads */
-                if(n_read >= p->top_n){
-                        s->is_partial_report = 1;
-                        break;
-                }
-                if((uint64_t) sb->num_seq > p->top_n - n_read){
-                        sb->num_seq = (int) (p->top_n - n_read);
-                        s->is_partial_report = 1;
-                }
-
-                RUN(collect_stats(sb, s));
-
-                n_read += sb->num_seq;
-                if(p->verbose){
-                        LOG_MSG("Processed %"PRId64" sequences", n_read);
-                }
-                if(s->is_partial_report){
-                        break;
-                }
-                reset_tl_seq_buffer(sb);
-        }
-
-        if(n_read == 0){
-                WARNING_MSG("%s: the input is empty (no reads), the report will be empty.", p->infile[id]);
-        }
-        if(s->is_partial_report){
-                WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
-        }
-        RUN(stat_report(s,p, id));
-        ret = OK;
-ERROR:
-        /* shared by the success and the error path */
-        stat_collection_free(s);
-        if(sb){
-                if(sb->data){
-                        free_alphabet((struct alphabet*) sb->data);
-                        sb->data = NULL;
-                }
-                free_tl_seq_buffer(sb);
-        }
-        if(f_handle){
-                close_seq_file(&f_handle);
-        }
-        if(tmp_path){
-                unlink(tmp_path);
-                MFREE(tmp_path);
         }
         return ret;
 }

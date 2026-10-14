@@ -111,7 +111,7 @@ fastx_path_test(fastx:json:multiline_fa ${FASTX_GEN}/multiline.fa
   "read1.length.unmapped.10=1"
   "read1.length.unmapped.6=1")
 
-# --- pending: content detection (WP3.2 enables these) ------------------------------------
+# --- content detection (the type comes from the content, WP3.2) --------------------------
 # The type comes from the content, not from the extension. Copies are made at configure
 # time (macOS file systems are case-insensitive: the names differ by more than case).
 configure_file(${SAMSTAT_FIXTURE_DIR}/READS.FQ ${FASTX_GEN}/misnamed_fastq.sam COPYONLY)
@@ -126,5 +126,32 @@ fastx_path_test(fastx:sniff_misnamed_sam ${FASTX_GEN}/misnamed_sam.fq
 fastx_path_test(fastx:sniff_misnamed_gz ${FASTX_GEN}/misnamed_gz.txt
   "summary.total_reads=3"
   "summary.is_aligned=false")
-set_tests_properties(fastx:sniff_misnamed fastx:sniff_misnamed_sam fastx:sniff_misnamed_gz
-  PROPERTIES DISABLED TRUE)   # enabled by WP3.2
+
+# Protein FASTA is unsupported. htslib takes a file for FASTA only if its first sequence
+# line is made of IUPAC nucleotide letters; such a file is read as nucleotides (letters
+# other than ACGT count as N). Any other protein FASTA is rejected: exit 1 and a message.
+file(WRITE ${FASTX_GEN}/iupac_protein.fa ">p1\nMKRSACGTNNRY\n>p2\nMKRSACGTNNRYMKRSACGT\n")
+fastx_path_test(fastx:protein_fasta_iupac ${FASTX_GEN}/iupac_protein.fa
+  "summary.total_reads=2"
+  "summary.is_aligned=false"
+  "read1.length.unmapped.12=1"
+  "read1.length.unmapped.20=1")
+file(WRITE ${FASTX_GEN}/protein.fa ">p1\nMKVLAAGIVGLLLAQ\n>p2\nMSTNPKPQRKTKRNTNRRPQ\n")
+add_test(NAME fastx:protein_fasta_rejected
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> "-DARGS=-d\;@OUTDIR@\;${FASTX_GEN}/protein.fa"
+    -DOUTDIR=${FASTX_OUT}/protein_fasta_rejected -DEXPECT_RC=1 "-DEXPECT_STDERR_REGEX=protein FASTA is not supported"
+    "-DEXPECT_NO_FILES=protein.fa.samstat.html"
+    -P ${FASTX_HELPERS}/run_expect.cmake)
+set_tests_properties(fastx:protein_fasta_rejected PROPERTIES LABELS fastx)
+
+# a record with an empty sequence is not a read
+file(WRITE ${FASTX_GEN}/empty_seq.fa ">r0\nACGT\n>e1\n>r1\nACGT\n>e2\n")
+fastx_path_test(fastx:empty_sequence_fa ${FASTX_GEN}/empty_seq.fa
+  "summary.total_reads=2"
+  "read1.length.unmapped.4=2")
+
+# white space only, compressed: an empty input
+file(WRITE ${FASTX_GEN}/blank.txt "\n\n  \n")
+fastx_gzip(${FASTX_GEN}/blank.txt ${FASTX_GEN}/blank.fq.gz)
+fastx_path_test(fastx:blank_gz ${FASTX_GEN}/blank.fq.gz "summary.total_reads=0")

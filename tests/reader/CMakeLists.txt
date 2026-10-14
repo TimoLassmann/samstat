@@ -135,7 +135,7 @@ function(reader_error_test name input regex)
   set_tests_properties(reader:error:${name} PROPERTIES LABELS reader)
 endfunction()
 
-reader_error_test(not_a_bam not_a_bam.bam "Cannot read the SAM/BAM header")
+reader_error_test(not_a_bam not_a_bam.bam "unrecognised input")
 reader_error_test(truncated truncated.bam "truncated or corrupt")
 
 # a 5000 bp read after three 20 bp reads: length histogram and quality rows grow with it
@@ -201,3 +201,74 @@ add_test(NAME reader:truncation_loop
     -DINPUT=${SAMSTAT_FIXTURE_DIR}/longread/ont_like.bam -DOUTDIR=${READER_OUT}/truncation_loop
     "-DCUTS=10|100|5000|20000|-100" -P ${READER_GEN}/run_truncation.cmake)
 set_tests_properties(reader:truncation_loop PROPERTIES LABELS reader)
+
+# --- WP3.2: -p cutoff counts -------------------------------------------------------------
+# The reader stops at exactly N primary records, even in the middle of a batch, and counts
+# secondary/supplementary records only up to that point. The input is written at test time
+# (900 blocks of 10 records = 9000 records, more than two batches of 4096):
+#   block = p p S p p U p p p p   (p primary, S secondary 0x100, U supplementary 0x800)
+# With N = 8 b + r primaries (0 <= r < 8) the reader has seen b full blocks plus the records
+# up to the r-th primary of the next block: secondary = b + (r >= 3), supplementary = b + (r >= 5).
+# Each case runs with the default batch size and with 7 records per batch
+# (SAMSTAT_BATCH_RECORDS, test-only): the counts must not depend on it.
+# Cases are N:total_reads:secondary:supplementary:partial.
+file(WRITE ${READER_GEN}/run_p_cutoff.cmake [=[
+# -DSAMSTAT -DOUTDIR -DCHECK_JSON=<check_json.cmake> -DTHREADS=<n> -DCASES=<list>
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+set(block "")
+foreach(rec "r1\t0" "r2\t0" "r3\t256" "r4\t0" "r5\t0" "r6\t2048" "r7\t0" "r8\t0" "r9\t0" "r10\t0")
+  string(APPEND block "${rec}\tchr1\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n")
+endforeach()
+string(REPEAT "${block}" 900 body)
+set(input ${OUTDIR}/cutoff.sam)
+file(WRITE ${input} "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:1000\n${body}")
+if(NOT DEFINED THREADS)
+  set(THREADS 1)
+endif()
+string(REPLACE "\;" ";" CASES "${CASES}")
+foreach(batch default 7)
+  if(batch STREQUAL "default")
+    unset(ENV{SAMSTAT_BATCH_RECORDS})
+  else()
+    set(ENV{SAMSTAT_BATCH_RECORDS} ${batch})
+  endif()
+  foreach(case IN LISTS CASES)
+    string(REPLACE ":" ";" f "${case}")
+    list(GET f 0 n)
+    list(GET f 1 total)
+    list(GET f 2 sec)
+    list(GET f 3 supp)
+    list(GET f 4 partial)
+    set(dir ${OUTDIR}/b${batch}_p${n})
+    file(MAKE_DIRECTORY ${dir})
+    execute_process(COMMAND ${SAMSTAT} --json -t ${THREADS} -p ${n} -d ${dir} ${input}
+      RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+    if(NOT rc EQUAL 0)
+      message(FATAL_ERROR "-p ${n} (batch ${batch}): exit ${rc}\n${out}${err}")
+    endif()
+    execute_process(
+      COMMAND ${CMAKE_COMMAND} -DJSON=${dir}/cutoff.sam.samstat.json
+        "-DCHECKS=summary.total_reads=${total}\;summary.secondary=${sec}\;summary.supplementary=${supp}\;summary.is_partial_report=${partial}"
+        -P ${CHECK_JSON}
+      RESULT_VARIABLE rc2 OUTPUT_VARIABLE out2 ERROR_VARIABLE err2)
+    if(NOT rc2 EQUAL 0)
+      message(FATAL_ERROR "-p ${n} (batch ${batch}):\n${out2}${err2}")
+    endif()
+    file(REMOVE_RECURSE ${dir})
+  endforeach()
+endforeach()
+]=])
+# N=1, 6 (r=6, cutoff before the end of a block), 8 (a block boundary, one more primary
+# follows), 4096 (a batch boundary), 4097, 5003 (N not a multiple of 4096), 7199 (the last
+# primary is the next one), 7200 and 100000 (N is the whole file and more: not partial)
+set(P_CUTOFF_CASES
+  "1:1:0:0:true" "6:6:1:1:true" "8:8:1:1:true" "4096:4096:512:512:true"
+  "4097:4097:512:512:true" "5003:5003:626:625:true" "7199:7199:900:900:true"
+  "7200:7200:900:900:false" "100000:7200:900:900:false")
+string(REPLACE ";" "\;" p_cutoff_cases "${P_CUTOFF_CASES}")
+add_test(NAME reader:p_cutoff_counts
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${READER_OUT}/p_cutoff_counts
+    -DCHECK_JSON=${READER_HELPERS}/check_json.cmake -DTHREADS=1 "-DCASES=${p_cutoff_cases}"
+    -P ${READER_GEN}/run_p_cutoff.cmake)
+set_tests_properties(reader:p_cutoff_counts PROPERTIES LABELS reader)

@@ -180,3 +180,13 @@ accompanied by a `reads.fq`; the lower-case FASTQ exists only inside `reads.fq.g
 - Read `sc3_shift` (`3S20M`, SEQ `GGG` + `ACGT` x5, `NM:i:1 MD:Z:2T17`).
 - Expected: total reads 1; length 20; exactly 1 mismatch at aligned offset 2:
   reference `T`, read base `G` (SEQ index 5). With the bug the read base is `A`.
+
+## o) md_long_number.sam
+
+- Purpose: MD digit runs far longer than any integer (50 and 34 digits).
+- `md_long_digits` (`20M`, `MD:Z:99...9`): claims an absurd number of matches.
+  `md_mm_long_digits` (`20M`, `MD:Z:10A99...9`): one mismatch at aligned offset
+  10 (ref `A`, read `G`), then an absurd number of matches.
+- Expected: total reads 2 (`gt30` = 2); read length 20; the first read has 0
+  mismatches, the second exactly 1 (read base `G` at offset 10); no crash and no
+  out-of-bounds access (visible with `-DSAMSTAT_SANITIZE=ON`).

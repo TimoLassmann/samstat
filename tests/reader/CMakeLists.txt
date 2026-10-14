@@ -65,6 +65,21 @@ reader_json_test(hardclip_softclip hardclip_softclip.sam
   "summary.total_reads=2"
   "read1.length.mapq_ge30.40=2")
 
+# MD tags that disagree with the alignment: bounded by the alignment length
+reader_json_test(md_inconsistent md_inconsistent.sam
+  "summary.total_reads=3"
+  "read1.length.mapq_ge30.20=3"
+  "read1.mismatches.mapq_ge30.G.10=1"
+  "read1.mismatches.mapq_ge30.G#len=11")
+reader_json_test(md_8digit md_8digit.sam
+  "summary.total_reads=1"
+  "read1.length.mapq_ge30.20=1"
+  "read1.mismatches.mapq_ge30.A#len=0")
+reader_json_test(md_long_number md_long_number.sam
+  "summary.total_reads=2"
+  "read1.length.mapq_ge30.20=2"
+  "read1.mismatches.mapq_ge30.G.10=1")
+
 # --- rejected inputs -------------------------------------------------------
 # reader_error_test(<name> <fixture> <regex>)
 function(reader_error_test name input regex)

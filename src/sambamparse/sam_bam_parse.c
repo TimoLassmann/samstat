@@ -196,27 +196,24 @@ int parse_alignment(struct tl_seq *s)
         if(l){
                 int pos = 0;
                 int i = 0;
-                char tmp_num[8];
                 char* md = TLD_STR(a->md); //->str;
-                while(i < l){
+                /* Everything below is bounded by the alignment length: an MD tag
+                 * that disagrees with the CIGAR must not reach outside genome / read. */
+                while(i < l && pos < aln_len){
                         if(isdigit((int)md[i])){
-                                int j = 0;
-                                while (isdigit(md[i])) {
-                                        tmp_num[j] = md[i];
-                                        j++;
-                                        i++;
-                                        if(i == l){
-                                                break;
+                                int c = 0;
+                                while(i < l && isdigit((int)md[i])){
+                                        /* saturate - anything above aln_len covers the whole alignment */
+                                        if(c <= aln_len){
+                                                c = c * 10 + (md[i] - '0');
                                         }
+                                        i++;
                                 }
-                                tmp_num[j] = 0;
-
-                                int c = atoi(tmp_num);
-                                for(j = 0; j < c;j++){
+                                /* c matches; insertions are not part of the reference */
+                                while(c && pos < aln_len){
                                         if(genome[pos] != '-'){
                                                 genome[pos] = read[pos];
-                                        }else{
-                                                c++;
+                                                c--;
                                         }
                                         pos++;
                                 }
@@ -224,10 +221,11 @@ int parse_alignment(struct tl_seq *s)
                                 genome[pos] = (int)md[i];
                                 pos++;
                                 i++;
-                        }else if(md[i] == '^'){
+                        }else{
+                                /* '^' or anything unexpected */
                                 i++;
                         }
-                        while(genome[pos] == '-'){
+                        while(pos < aln_len && genome[pos] == '-'){
                                 pos++;
                         }
                 }

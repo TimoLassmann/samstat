@@ -190,3 +190,10 @@ accompanied by a `reads.fq`; the lower-case FASTQ exists only inside `reads.fq.g
 - Expected: total reads 2 (`gt30` = 2); read length 20; the first read has 0
   mismatches, the second exactly 1 (read base `G` at offset 10); no crash and no
   out-of-bounds access (visible with `-DSAMSTAT_SANITIZE=ON`).
+
+## p) zero_bytes.sam
+
+- Purpose: a zero byte file with a `.sam` extension (no header at all, unlike
+  `empty.sam`).
+- Expected: total reads 0; a report is written; exit 0. It is the only input
+  without a readable header that is accepted (`not_a_bam.bam` is rejected).

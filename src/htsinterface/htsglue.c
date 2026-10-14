@@ -4,6 +4,7 @@
 #include "tld.h"
 #include <htslib/sam.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
@@ -71,6 +72,12 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
         int b_len = 1024;
 
         galloc(&buffer, b_len);
+
+        if(h == NULL){
+                /* empty input */
+                gfree(buffer);
+                return OK;
+        }
 
         while ((r = sam_read1(f_handle->in, h, b)) >= 0){
                 if(b->core.flag & BAM_FSECONDARY){
@@ -220,7 +227,11 @@ int open_bam(struct sam_bam_file **file, char *filename)
         f_handle->in = sam_open(f_handle->filename, "r");
         ASSERT(f_handle->in != NULL, "Cannot open %s as SAM/BAM (file missing, unreadable or of unknown format)", f_handle->filename);
         f_handle->header = sam_hdr_read(f_handle->in);
-        ASSERT(f_handle->header != NULL, "Cannot read the SAM/BAM header of %s (not a SAM/BAM file?)", f_handle->filename);
+        if(f_handle->header == NULL){
+                /* a zero byte file has no header but is a valid, empty input */
+                struct stat st;
+                ASSERT(stat(f_handle->filename, &st) == 0 && st.st_size == 0, "Cannot read the SAM/BAM header of %s (not a SAM/BAM file?)", f_handle->filename);
+        }
 
         f_handle->b = bam_init1();
         ASSERT(f_handle->b != NULL, "bam_init1 failed");

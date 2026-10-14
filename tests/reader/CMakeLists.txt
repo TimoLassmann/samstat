@@ -104,6 +104,10 @@ reader_json_test(md_long_number md_long_number.sam
   "read1.length.mapq_ge30.20=2"
   "read1.mismatches.mapq_ge30.G.10=1")
 
+# zero byte file: no header can be read, still a valid empty input
+reader_json_test(zero_bytes zero_bytes.sam
+  "summary.total_reads=0")
+
 # --- rejected inputs -------------------------------------------------------
 # reader_error_test(<name> <fixture> <regex>)
 function(reader_error_test name input regex)

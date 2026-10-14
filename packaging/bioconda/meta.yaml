@@ -31,7 +31,7 @@ test:
     - samstat -v
     - printf '@r1\nACGTACGTAC\n+\nIIIIIIIIII\n@r2\nACGTACGTAC\n+\nIIIIIIIIII\n@r3\nACGTACGTAC\n+\nIIIIIIIIII\n' > test.fq
     - samstat test.fq
-    - test -s test.fq.html
+    - test -s test.fq.samstat.html
 
 about:
   home: https://github.com/TimoLassmann/samstat

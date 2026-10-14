@@ -90,6 +90,10 @@ int json_report_write(struct stat_collection *s, struct samstat_param *p, int id
         RUN(json_u64(o, s->n_paired));
         RUN(json_append(o, ",\n\"properly_paired\": "));
         RUN(json_u64(o, s->n_proper_paired));
+        RUN(json_append(o, ",\n\"secondary\": "));
+        RUN(json_u64(o, s->n_secondary));
+        RUN(json_append(o, ",\n\"supplementary\": "));
+        RUN(json_u64(o, s->n_supplementary));
         RUN(json_append(o, ",\n\"is_aligned\": "));
         RUN(json_append(o, s->is_aligned ? "true" : "false"));
         RUN(json_append(o, ",\n\"is_partial_report\": "));

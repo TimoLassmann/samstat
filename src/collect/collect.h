@@ -64,6 +64,8 @@ struct stat_collection {
         uint64_t n_read2;
         uint64_t n_paired;
         uint64_t n_proper_paired;
+        uint64_t n_secondary;      /* secondary alignments (0x100), not counted as reads */
+        uint64_t n_supplementary;  /* supplementary alignments (0x800), not counted as reads */
         uint8_t collect_end;
         uint8_t norm_len_plot;
         uint8_t is_aligned;

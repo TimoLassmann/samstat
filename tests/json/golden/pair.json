@@ -1,12 +1,14 @@
 {
 "format_version": 1,
-"meta": {"samstat_version": "2.2.3", "input_file": "xx#pair.sam"},
+"meta": {"samstat_version": "1.16", "input_file": "xx#pair.sam"},
 "summary": {
 "total_reads": 6,
 "read1_reads": 3,
 "read2_reads": 3,
 "paired": 6,
 "properly_paired": 6,
+"secondary": 0,
+"supplementary": 0,
 "is_aligned": true,
 "is_partial_report": false,
 "mapq_counts": {

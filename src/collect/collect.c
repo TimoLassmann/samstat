@@ -882,6 +882,8 @@ int stat_collection_alloc(struct stat_collection **stats)
 
         s->n_paired = 0;
         s->n_proper_paired = 0;
+        s->n_secondary = 0;
+        s->n_supplementary = 0;
 
         s->n_read1 = 0;
         s->n_read2 = 0;

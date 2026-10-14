@@ -38,6 +38,8 @@ Properties of the file:
 | `read1_reads`, `read2_reads` | Reads counted as read 1 / read 2. Records without a read 2 flag, and all FASTA/FASTQ records, count as read 1. |
 | `paired` | Reads flagged as paired in sequencing (0x1). |
 | `properly_paired` | Reads flagged as properly paired (0x2). |
+| `secondary` | Secondary alignments (0x100) seen. They are excluded from all per-read statistics and `total_reads`. |
+| `supplementary` | Supplementary alignments (0x800) seen. Excluded from per-read statistics and `total_reads`, like secondary alignments. |
 | `is_aligned` | `true` for SAM/BAM input, `false` for FASTA/FASTQ. When `false` the mapq bins carry no meaning: every read is in `unmapped`, and `mismatches`, `insertions` and `deletions` are empty. |
 | `is_partial_report` | `true` if reading stopped early because of `-p/--peek`; counts then cover only the reads seen. |
 | `mapq_counts` | `{"read1": {...}, "read2": {...}}`, reads per mapq bin (keys below). `read2` only if present. |

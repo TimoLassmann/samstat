@@ -20,7 +20,7 @@
     "summary": {
       "type": "object",
       "required": ["total_reads", "read1_reads", "read2_reads", "paired", "properly_paired",
-                   "is_aligned", "is_partial_report", "mapq_counts"],
+                   "secondary", "supplementary", "is_aligned", "is_partial_report", "mapq_counts"],
       "additionalProperties": false,
       "properties": {
         "total_reads": { "$ref": "#/$defs/count" },
@@ -28,6 +28,8 @@
         "read2_reads": { "$ref": "#/$defs/count" },
         "paired": { "$ref": "#/$defs/count" },
         "properly_paired": { "$ref": "#/$defs/count" },
+        "secondary": { "$ref": "#/$defs/count" },
+        "supplementary": { "$ref": "#/$defs/count" },
         "is_aligned": { "type": "boolean" },
         "is_partial_report": { "type": "boolean" },
         "mapq_counts": {

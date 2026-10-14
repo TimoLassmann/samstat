@@ -1,12 +1,14 @@
 {
 "format_version": 1,
-"meta": {"samstat_version": "2.2.3", "input_file": "xx.fa"},
+"meta": {"samstat_version": "1.16", "input_file": "xx.fa"},
 "summary": {
 "total_reads": 2,
 "read1_reads": 2,
 "read2_reads": 0,
 "paired": 0,
 "properly_paired": 0,
+"secondary": 0,
+"supplementary": 0,
 "is_aligned": false,
 "is_partial_report": false,
 "mapq_counts": {

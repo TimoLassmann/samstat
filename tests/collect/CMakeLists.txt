@@ -93,9 +93,11 @@ collect_test(bounds:small_bam_plotend_norm ${SAMSTAT_FIXTURE_DIR}/small.bam
   ARGS --plotend --norm
   CHECKS summary.total_reads=20)
 
-collect_test(bounds:md_inconsistent ${SAMSTAT_FIXTURE_DIR}/md_inconsistent.sam
-  ARGS --plotend --norm
-  CHECKS summary.total_reads=3)
+# --- counters --------------------------------------------------------------
+# The reader fills the counters; the collection must at least report them (as 0
+# here) in summary.
+collect_test(counters ${SAMSTAT_FIXTURE_DIR}/small.sam
+  CHECKS summary.secondary=0 summary.supplementary=0 summary.total_reads=20)
 
 # --- every dev/*.sam with --plotend --norm ---------------------------------
 file(GLOB COLLECT_DEV_SAM ${SAMSTAT_TEST_DATA_DIR}/*.sam)

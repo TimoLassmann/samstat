@@ -81,7 +81,7 @@ Before reading any input SAMStat checks that every report can be written. If a r
 
 * The report
 
-The report is one self-contained HTML page: no JavaScript, no network request, and it prints to A4. It has a header line, a summary strip (reads, bases, N50, mean Q and, for aligned input, % mapped, % MAPQ >= 30, % bases clipped and median identity), a few factual notes where they apply, and, for aligned input, a table of the four MAPQ classes that is also the key for every coloured line. Then come six plots in a fixed order, each with a question as title, a one-sentence caption, a visible "Good:" line and a collapsed "How to read plot N":
+The report is one self-contained HTML page: no JavaScript, no network request, and it prints to A4. It has a header line, a summary strip (reads, bases, N50, mean Q and, for aligned input, % mapped, % MAPQ >= 30, % bases clipped and median identity), a few factual notes where they apply, and, for aligned input, a table of the four MAPQ classes that is also the key for every coloured line. Then come six plots in a fixed order, each with a question as title, a one-sentence caption, a visible "What good looks like:" line and a collapsed "How to read plot N":
 
 1. How long are the reads? Read length distribution with N50.
 2. How good is each read? Distribution of per-read mean base quality.

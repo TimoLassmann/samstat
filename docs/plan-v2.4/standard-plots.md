@@ -21,9 +21,9 @@ There is no flag, status light, dropdown, tab, zoom, hover tooltip or JavaScript
 
 ### 1.1 Header line
 
-`<file> · <format> · <short|long> layout (median length <X>; long when >= 1 kb) · SAMStat <version>`
+`<file> · <format> · <short|long> reads (median <X>) · SAMStat <version>`
 
-- When no read has a sequence (`total_bases` = 0), the layout clause is left out (the layout is a guess from zero lengths).
+- When no read has a sequence (`total_bases` = 0), the reads clause is left out (the layout is a guess from zero lengths). The word "layout" and the 1 kb switch are not in the header: the switch is explained in the collapsed note of plot 1 ("Files whose median read length is 1 kb or more are drawn in the long-read style: ...").
 - `<format>` is the htslib-detected format: `SAM`, `BAM`, `CRAM`, `FASTQ`, `FASTA` (with `gzip` where it applies).
 - Under `-p N`, append: ` · partial: first N reads only (-p); not a random sample`. 2.3 already renders a partial warning section (`src/report/stat_report.c:58-59`, `samstat_partial_warning_section`); 2.4 moves it into the header line.
 
@@ -34,17 +34,17 @@ There is no flag, status light, dropdown, tab, zoom, hover tooltip or JavaScript
 | 1 | Reads | Primary records. Paired input labels it `Reads (R1+R2)`. Secondary and supplementary records are excluded from every statistic. | `total_reads` | |
 | 2 | Bases | Sum of full read length (`l_qseq`, soft-clipped bases included); shown in bases (`9,876 bp`, `89.5 kb`, `1.0 Mb`) with the exact count as the small line when the display is rounded | `total_bases` | |
 | 3 | N50 | Smallest length L such that reads of length >= L hold >= 50% of bases. From the length histogram (section 3.1). Small line: `half of all bases are in reads at least this long`. | `n50` | |
-| 4 | Mean Q | Error-probability average over **all bases with a quality value, clipped bases included** (section 3.3). Omitted for FASTA. | `mean_q` | |
+| 4 | Mean Q | Error-probability average over **all bases with a quality value, clipped bases included** (section 3.3). Omitted for FASTA. Small line: `average base quality (Q30 = 1 error in 1000 bases)` | `mean_q` | |
 | 5 | % mapped | Mapped primary / primary x 100 | `pct_mapped` | yes |
-| 6 | % MAPQ >= 30 | Primary reads with MAPQ >= 30 / primary x 100 | `pct_mapq_ge30` | yes |
-| 7 | % bases clipped | Soft-clipped bases of mapped primary reads / all bases of mapped primary reads x 100. Small line: `trimmed by the aligner (soft-clipped)` | `pct_clipped` | yes |
-| 8 | Median identity | Median per-read gap-compressed identity (plot 6) | `median_identity` | yes |
+| 6 | % MAPQ >= 30 | Primary reads with MAPQ >= 30 / primary x 100. Small line: `reads placed with high confidence` | `pct_mapq_ge30` | yes |
+| 7 | % bases clipped | Soft-clipped bases of mapped primary reads / all bases of mapped primary reads x 100. Small line: `ends the aligner trimmed off` | `pct_clipped` | yes |
+| 8 | Median identity | Median per-read gap-compressed identity (plot 6). Small line: `how closely reads match the reference` | `median_identity` | yes |
 
 - Median length is not a strip value: it is in the header line and in JSON `summary.median_length`.
 - Unaligned input: values 5-8 are omitted, not shown as 0 or blank.
 - No sequence in any read (`total_bases` = 0, e.g. SEQ is `*`): Bases and N50 read `n/a`, never `0`; the note in 1.3 says why.
 - The three percentage tiles (5, 6, 7) and Median identity carry a `%` sign.
-- Number formatting in HTML: counts with thousands separators and SI suffix (`12.4 M`), lengths in bp below 10 kb and in kb above (`18.2 kb`), Q to one decimal, percentages to one decimal.
+- Number formatting in HTML: counts with thousands separators and SI suffix (`12.4 M`), lengths in bp below 10 kb, in kb up to 1 Mb (`18.2 kb`) and in Mb above (`1.0 Mb`, the unit of the Bases tile; the same in the N50 label of plot 1), Q to one decimal, percentages to one decimal.
 - Length values (N50, median length) are exact below 1000 bp and within 1% above; above 1 kb the HTML prefixes `~` unless the value is known exactly (section 3.1: one read in the bin, or every read has the same length).
 
 ### 1.3 Notes (facts, never verdicts, no thresholds)
@@ -55,7 +55,8 @@ Shown under the strip only when the condition holds. This table is the only sour
 |---|---|
 | `-p` used | `Partial run: first N reads only (-p); not a random sample.` |
 | no read has a sequence | `Reads have no stored sequence (SEQ is *): length, quality and base composition are not available.` |
-| fewer than 100 reads (and some sequence) | `Few reads (N): per-position plots are noisy, and positions covered by fewer than 10 reads are not drawn.` |
+| 50 to 99 reads (and some sequence) | `Few reads (N): per-position plots are noisy, and positions covered by fewer than 50 reads are not drawn.` |
+| fewer than 50 reads (and some sequence) | `Only N reads: per-position plots (3-5) are not reliable and are hidden.` (`read` for N = 1) |
 | `reads_without_md > 0` | `Mismatch profile excludes N of M mapped reads (no MD tag and no X operations in CIGAR). Add MD with: samtools calmd -b in.bam ref.fa > out.bam (minimap2: use --MD).` |
 | `identity_na > 0` | `Identity unavailable for N of M mapped reads (no NM tag and no =/X operations).` |
 | short layout and `bases_beyond_position_axis > 0` | `P% of bases lie beyond position 1000 and are not in plots 3-5.` |
@@ -74,7 +75,7 @@ Four rows in fixed order. Columns: line sample (colour + dash, drawn as a short 
 |---|---|---|---|
 | `mapq_ge30` | MAPQ >= 30 | blue `#0072B2` | solid |
 | `mapq_10_29` | MAPQ 10-29 | dark orange `#B86E00` | dashed `8 4` |
-| `mapq_lt10` | MAPQ < 10 | vermillion `#D55E00` | dotted `2 4` |
+| `mapq_lt10` | MAPQ < 10 | vermillion `#D55E00` | dotted `3 4` |
 | `unmapped` | Unmapped | grey `#777777` | dash-dot `12 4 2 4` |
 
 - MAPQ 255 ("unavailable" in the SAM spec, https://samtools.github.io/hts-specs/SAMv1.pdf, UNVERIFIED; STAR uses it for unique hits) is classed as `>= 30`, unchanged from 2.3 (`collect.c` `get_mapqual_bins`: every value >= 30).
@@ -90,8 +91,8 @@ Unaligned input: the table is absent and plots 1-4 draw one line, `all reads`, s
 2. **Mates:** paired input draws R1 and R2 as side-by-side panels with identical x and y axes and the titles `Read 1` / `Read 2`. Never extra lines.
 3. **Max 5 lines per panel.**
 4. **No direct line labels.** MAPQ lines are identified only by the MAPQ table. Plot 4 has one fixed inline legend row (A C G T N swatches) in its caption area.
-5. Each plot: title (a question), one always-visible caption sentence (above the figure), one always-visible `Good:` line (under the figure), one collapsed `<details>` `How to read plot N` with `Worth a look:`, `Often benign:` and, for plots 2 and 6, `How it is calculated:`. All text lives in `src/report/report_help.c` (section 5). The caption of plot 3 names MAPQ classes only for aligned input.
-6. Every `<svg>` has `role="img"`, `<title>`, `<desc>`. Each series is one `<path>`/`<polyline>` with one series-level `<title>`; **no per-point elements or tooltips**. The JSON is the data channel. Lines are 2 units wide. A histogram bin with no drawn neighbour is drawn at least 2 units wide and 1 unit high, so a single read on a log axis is still visible.
+5. Each plot: title (a question), one always-visible caption sentence (above the figure), one always-visible `What good looks like:` line (under the figure; it describes the ideal, not a verdict on this file), one collapsed `<details>` `How to read plot N` with `Worth a look:`, `Often benign:` and, for plots 2 and 6, `How it is calculated:`. All text lives in `src/report/report_help.c` (section 5). The caption of plot 3 names MAPQ classes only for aligned input.
+6. Every `<svg>` has `role="img"`, `<title>`, `<desc>`. Each series is one `<path>`/`<polyline>` with one series-level `<title>`; **no per-point elements or tooltips**. The JSON is the data channel. Lines are 2 units wide. A histogram bin with no drawn neighbour is drawn at least 6 units wide and 1 unit high, so a single read on a log axis is still visible. A log axis has at least three labelled ticks (200 k, 500 k, 1 M for a lone bin), a count axis is at least 0-3 and uses whole-number ticks.
 7. Figures are 400 units wide with 15 unit text and scale to their column (a figure up to 32 rem wide, a Read 1 / Read 2 pair side by side, one column below 40 rem), so text is >= 12 px at 360 px width. System font stack, >= 12 px text, light theme only, layout works at 360 px width, one `@media print` block (forces `<details>` open, `break-inside: avoid`, A4 portrait).
 8. The base-composition palette (plot 4) shares no hex value with the MAPQ palette.
 
@@ -135,9 +136,9 @@ On aligned input the plot labels append `, aligned part`.
 
 **Layout rule:** `layout = "long"` if `median_length >= 1000`, else `"short"`. Decided once, after all records are read (works for stdin). No override. Short layout shows the absolute axis, long layout the relative axis. JSON carries both.
 
-**x range:** short layout x = 1 to the last bin backed by at least 10 bases (over all classes, per mate; R1 and R2 panels share the range; every bin with a base counts if no bin reaches 10). Long layout x = 0-100%.
+**x range:** short layout x = 1 to the last bin backed by at least 50 bases (over all classes, per mate; R1 and R2 panels share the range). Long layout x = 0-100%.
 
-**Thin positions:** in plots 3-5 a bin backed by fewer than 10 bases (all classes pooled, per mate; on the absolute axis that is fewer than 10 reads) is a gap, unless no bin reaches 10.
+**Thin positions:** in plots 3-5 a bin backed by fewer than 50 bases (`REPORT_MIN_POS_BASES`; all classes pooled, per mate; on the absolute axis that is fewer than 50 reads) is a gap. **Too few reads:** an input with fewer than 50 reads has no per-position view at all: plots 3, 4 and 5 are each replaced by the N/A line `Too few reads (N) for a per-position plot (needs at least 50).` (plots 1, 2 and 6 are drawn). The stated rule is the rule that is applied.
 
 `bases_beyond_position_axis` (JSON and the note in 1.3) counts bases beyond the **absolute** axis only; in the long layout (relative axis) no base is lost and the field is not shown as a note.
 
@@ -204,14 +205,14 @@ One function in `collect.c` derives every summary value (`n50`, `median_length`,
 
 ## 4. The six plots
 
-Common: plot title = question; caption and `Good:` line always visible; "How to read plot N" collapsed. Exact text in section 5. Plots 1-4 apply to all inputs, 5-6 to aligned input only (absent, not N/A, on unaligned input).
+Common: plot title = question; caption and `What good looks like:` line always visible; "How to read plot N" collapsed. Exact text in section 5. Plots 1-4 apply to all inputs, 5-6 to aligned input only (absent, not N/A, on unaligned input).
 
 ### Plot 1: How long are the reads?
 
 | | |
 |---|---|
 | Data | `read{1,2}.length.reads[m]`: storage bins (short layout) or display bins (long layout), section 3.1 |
-| x | short layout: read length, **linear**; long layout: read length, **log scale**, ticks at 1-2-5 decades (`100`, `1 k`, `10 k`, ...). Range = min to max non-empty bin, padded to at least 10 bp (linear) or one decade (log) centred on the data |
+| x | short layout: read length, **linear**; long layout: read length, **log scale**, ticks at 1-2-5 decades (`100`, `1 k`, `10 k`, ...). Range = min to max non-empty bin, padded to at least 10 bp (linear) or one decade (log) centred on the data; a log axis always has at least three labelled ticks (the 2 and the 5 of the decade are labelled when fewer than three decades would be) |
 | y | reads per bin, linear, from 0 |
 | Lines | one per MAPQ class (all reads on unaligned input) |
 | Marks | vertical dashed black line at N50, labelled `N50 <value>` |
@@ -249,7 +250,7 @@ A single-length short-read library shows one honest spike in the middle of a 10 
 | Data | `composition` summed over all MAPQ classes, per mate, as % of the bin's bases |
 | x | layout axis and x range (3.2) |
 | y | % of bases, 0-100 |
-| Lines | A green `#009E73` solid, C reddish purple `#CC79A7` dashed `6 3`, G black `#000000` dotted `2 3`, T brown `#8C5A00` dash-dot `8 3 2 3`, N blue `#2E86C1` fine dotted `1 2`. Every base has its own dash pattern (WCAG 1.4.1) and every colour has at least 3:1 contrast on white. None of the hex values is in the MAPQ palette. |
+| Lines | A green `#007A5A` solid, C reddish purple `#A8467F` dashed `6 3`, G black `#000000` dotted `2 3`, T brown `#8C5A00` dash-dot `8 3 2 3`, N blue `#1F6FA8` long-dashed `12 3` (a fine dotted N line looked pale; N is rare and its line is mostly flat). Every base has its own dash pattern (WCAG 1.4.1) and every colour has at least 5:1 contrast on white (thin dashed lines). None of the hex values is in the MAPQ palette. |
 | Legend | one inline row of five swatches A C G T N above the panels |
 | Panels | one (unpaired) or R1, R2 side by side. No MAPQ split (`decisions.md` A3) |
 | N/A note | no sequence in any read: `Not available: the input has no sequence.` |
@@ -264,10 +265,10 @@ SAMStat's differentiator. Full page width, the tallest figure.
 | Data | three rates per bin: `mismatches / aligned_md`, `insertions / aligned`, `deletions / aligned` |
 | Layout | three rows stacked vertically, sharing one x-axis: Mismatches, Insertions, Deletions. Paired: two columns (R1, R2) |
 | x | layout axis and x range (3.2) |
-| y | % of aligned bases, linear from 0. Each row (mismatch, insertion, deletion) has its own y-scale, **shared between the R1 and R2 columns** |
+| y | % of aligned bases, linear from 0. Each row (mismatch, insertion, deletion) has its own y-scale, **shared between the R1 and R2 columns**. A row that is zero at every position keeps a whole-number scale (0, 2, 4) and is labelled `none detected` inside the panel |
 | Lines | one per mapped MAPQ class (>= 30, 10-29, < 10). Bins with `aligned` (or `aligned_md`) = 0 are gaps |
 | Partial tags | the mismatch row caption appends the "excludes N of M reads" note when `reads_without_md > 0` |
-| N/A note | no mapped read: `No mapped reads.` No read has MD or X: mismatch row only shows `Mismatches not available: no MD tag. Add one with samtools calmd -b in.bam ref.fa > out.bam (minimap2: --MD).`; insertion and deletion rows still render |
+| N/A note | no mapped read: `No mapped reads.` Fewer than 50 reads: `Too few reads (N) for a per-position plot (needs at least 50).` No read has MD or X: mismatch row only shows `Mismatches not available: no MD tag. Add one with samtools calmd -b in.bam ref.fa > out.bam (minimap2: --MD).`; insertion and deletion rows still render |
 
 Rates replace the 2.3 raw counts (GitHub issue #12).
 
@@ -276,8 +277,8 @@ Rates replace the 2.3 raw counts (GitHub issue #12).
 | | |
 |---|---|
 | Data | `read{1,2}.identity[m]`, mapped classes |
-| x | identity %, linear, from `floor` of the 1st-percentile bin (whole %, at most 99) to 100 |
-| y | reads per bin: 0.1% bins in long layout; 1% bins in short layout (10 stored bins summed; the exact-100% bin stays its own bin), because a 150 bp read can only take identity steps of about 0.7% |
+| x | identity %, linear, from `floor` of the 1st-percentile bin (whole %, at most 95: the axis is at least 5 points wide, whole-number ticks) to 100; no tick, bar or axis beyond 100 |
+| y | reads per bin: 0.1% bins in long layout; 1% bins in short layout (10 stored bins summed); the stored exact-100% bin joins the last bin, which ends at 100 (`[99, 100]` or `[99.9, 100]`), because a 150 bp read can only take identity steps of about 0.7% |
 | Lines | one per mapped MAPQ class |
 | Marks | vertical dashed black line at the median, labelled `median <value>%` |
 | N/A note | no mapped read: `No mapped reads.` No usable read: `Identity not available: no NM tag and no =/X operations.` |
@@ -286,43 +287,44 @@ Rates replace the 2.3 raw counts (GitHub issue #12).
 
 ## 5. Report text (goes verbatim into `src/report/report_help.c`)
 
-Captions describe shape only. No numeric "typical range" appears until checked on real Dorado, Revio and NovaSeq data (`decisions.md` E4). Each plot shows its `Good:` line under the figure; the collapsed "How to read plot N" block holds `Worth a look:`, `Often benign:` and, where a value is calculated in a way a reader may not expect, `How it is calculated:`. Plain words: MAPQ is explained in the table caption, soft-clipping as "trimmed by the aligner".
+Captions describe shape only. No numeric "typical range" appears until checked on real Dorado, Revio and NovaSeq data (`decisions.md` E4). Each plot shows its `What good looks like:` line under the figure; the collapsed "How to read plot N" block holds `Worth a look:`, `Often benign:` and, where a value is calculated in a way a reader may not expect, `How it is calculated:`. Plain words: MAPQ is explained in the table caption and in the tile captions, clipping as "ends the aligner trimmed off", chimeras as "reads joined from two places".
 
 **Plot 1. How long are the reads?**
 Caption: `Reads per length bin (log scale for long reads). The dashed line is N50: half of all bases are in reads at least this long.`
-- Good: one peak where the library preparation or sequencing kit puts it.
+- What good looks like: one peak where the library preparation or sequencing kit puts it.
 - Worth a look: a second peak of short reads (adapter dimers, degraded input, failed reads), especially if those reads are unmapped.
 - Often benign: trimmed short reads form a ramp below the full read length; amplicon libraries show one peak per amplicon.
+- How it is calculated: files whose median read length is 1 kb or more are drawn in the long-read style: a log length axis here, and positions as % of read length in plots 3-5.
 
 **Plot 2. How good is each read?**
 Caption: `Reads by their average base quality (higher is better; Q20 = 1 error in 100 bases, Q30 = 1 in 1000).`
-- Good: one peak at high quality.
+- What good looks like: one peak at high quality.
 - Worth a look: a second, low-quality peak, especially if it matches the poorly mapped or unmapped reads.
 - Often benign: instruments that bin qualities give a few spikes instead of a smooth curve.
 - How it is calculated: base qualities are averaged as error probabilities, so a few bad bases pull a read down and the values read lower than a plain average of Q scores, which is what FastQC reports. Mean Q at the top of the page and plot 3 are averaged in the same way.
 
 **Plot 3. Where along the read does quality drop?**
 Caption, aligned input: `Mean base quality at each position along the read, one line per MAPQ class (see the table above).` Unaligned input: `Mean base quality at each position along the read.`
-- Good: a flat line or a slow decline towards the end of the read.
+- What good looks like: a flat line or a slow decline towards the end of the read.
 - Worth a look: a sudden drop at one position (a failed cycle) or a steep decline that suggests trimming.
 - Often benign: the first few positions are slightly lower; long-read files use % of read length as the axis, which dilutes effects in the first few bases.
 
 **Plot 4. Is base composition even along the read?**
 Caption: `Percentage of A, C, G, T and N at each position along the read.`
-- Good: roughly parallel, flat lines.
-- Worth a look: an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually trim adapters off the alignment, which is called soft-clipping, so they are then not shown).
+- What good looks like: roughly parallel, flat lines.
+- Worth a look: an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).
 - Often benign: uneven first positions in random-primed libraries; amplicon and bisulfite libraries are uneven by design.
 
 **Plot 5. Where along the read do errors occur?**
 Caption: `Mismatches, insertions and deletions per aligned base at each position, one line per MAPQ class. Each panel has its own vertical scale.`
-- Good: low, flat lines, with MAPQ >= 30 the lowest.
-- Worth a look: rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, chimeras); high mismatch rates in well-mapped reads (wrong reference or contamination).
+- What good looks like: low, flat lines, with MAPQ >= 30 the lowest.
+- Worth a look: rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, reads joined from two places); high mismatch rates in well-mapped reads (wrong reference or contamination).
 - Often benign: low-MAPQ reads are often ambiguous (repeats, reads that fit several places), not necessarily wrong. Long reads carry more insertions and deletions than short reads. A few very long reads can dominate a line.
 
 **Plot 6. How accurate are the aligned reads?**
 Caption: `Reads by how closely they match the reference (100% = perfect). The dashed line is the median.`
-- Good: a narrow peak close to 100%.
-- Worth a look: a broad distribution or a second peak at low identity (contamination, wrong reference, chimeric reads); a high % bases clipped at the top of the page with high identity here (chimeras or adapters hidden by clipping).
+- What good looks like: a narrow peak close to 100%.
+- Worth a look: a broad distribution or a second peak at low identity (contamination, wrong reference, reads joined from two places); a high % bases clipped at the top of the page with high identity here (reads joined from two places, or adapters hidden by clipping).
 - Often benign: real differences between the sample and the reference lower identity slightly; short reads pile up at 100%.
 - How it is calculated: identity = matching bases / aligned columns, each gap counted once; clipped bases are not counted.
 

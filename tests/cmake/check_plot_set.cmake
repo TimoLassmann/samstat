@@ -7,6 +7,10 @@
 #   -DNOT_CONTAINS=a|b     literal strings that must not occur
 #   -DMATCHES=re@@re       regular expressions that must match (separated by '@@': they may contain '|')
 #   -DNOT_MATCHES=re@@re   regular expressions that must not match
+#   -DARGS=-p|5            extra samstat arguments, before the input ('|' separated)
+#   -DSVG_A11Y=1           every <svg> has role="img", a <title> and a <desc> (and there is at least one)
+#   -DSVG_MIN=n            at least n <svg> elements
+#   -DNO_SVG=1             no <svg> at all
 # Always: no 'NaN', 'Infinity' or 'undefined' anywhere in the report.
 
 cmake_minimum_required(VERSION 3.19)
@@ -14,8 +18,12 @@ cmake_minimum_required(VERSION 3.19)
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 
+set(extra_args "")
+if(ARGS)
+  string(REPLACE "|" ";" extra_args "${ARGS}")
+endif()
 execute_process(
-  COMMAND ${SAMSTAT} -d ${OUTDIR} ${INPUT}
+  COMMAND ${SAMSTAT} ${extra_args} -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc} on ${INPUT}\nstdout:\n${out}\nstderr:\n${err}")
@@ -91,6 +99,43 @@ if(NOT_MATCHES)
       string(APPEND failed "  unexpected regex match: ${item} (${CMAKE_MATCH_0})\n")
     endif()
   endforeach()
+endif()
+
+# <svg> elements: count them and check the accessibility markup of each one
+set(n_svg 0)
+set(rest "${html}")
+while(TRUE)
+  string(FIND "${rest}" "<svg" start)
+  if(start EQUAL -1)
+    break()
+  endif()
+  string(SUBSTRING "${rest}" ${start} -1 rest)
+  string(FIND "${rest}" "</svg>" stop)
+  if(stop EQUAL -1)
+    string(APPEND failed "  <svg> without </svg>\n")
+    break()
+  endif()
+  string(SUBSTRING "${rest}" 0 ${stop} one)
+  string(SUBSTRING "${rest}" ${stop} -1 rest)
+  math(EXPR n_svg "${n_svg}+1")
+  if(SVG_A11Y)
+    foreach(needle "role=\"img\"" "<title" "<desc")
+      string(FIND "${one}" "${needle}" pos)
+      if(pos EQUAL -1)
+        string(SUBSTRING "${one}" 0 80 head)
+        string(APPEND failed "  svg #${n_svg} lacks ${needle}: ${head}\n")
+      endif()
+    endforeach()
+  endif()
+endwhile()
+if(SVG_A11Y AND n_svg EQUAL 0)
+  string(APPEND failed "  no <svg> in the report\n")
+endif()
+if(DEFINED SVG_MIN AND n_svg LESS "${SVG_MIN}")
+  string(APPEND failed "  ${n_svg} <svg> elements, expected at least ${SVG_MIN}\n")
+endif()
+if(NO_SVG AND NOT n_svg EQUAL 0)
+  string(APPEND failed "  ${n_svg} <svg> elements, expected none\n")
 endif()
 
 if(failed)

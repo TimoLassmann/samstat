@@ -1,243 +1,297 @@
 #include "tld.h"
 
 #include <inttypes.h>
-#include <sys/stat.h>
-#include <time.h>
-#include "lst.h"
-#include "../plot/plot.h"
+#include <math.h>
+#include <string.h>
+#include "hts.h"
+#include "../plot/report_plots.h"
 #include "../param/param.h"
 #include "../collect/collect.h"
 #include "config.h"
+#include "report_help.h"
 #define  STAT_REPORT_IMPORT
 #include "stat_report.h"
 #include "json_report.h"
 #include "mqc_report.h"
 
-static int samstat_title(tld_strbuf *o, struct samstat_param *p, int id);
-static int samstat_file_stat_section(tld_strbuf *o, char *filename);
-static int samstat_version_section(tld_strbuf *o);
-static int samstat_partial_warning_section(tld_strbuf *o, struct stat_collection *s);
-static int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collection *s);
-static int samstat_footer(tld_strbuf *out_buffer);
+/*
+ * The standard report page (docs/plan-v2.4/standard-plots.md section 1).
+ *
+ * One self-contained HTML file, no script, no external resource:
+ *   header, summary strip, notes, MAPQ table (aligned input), plots 1-6, footer.
+ * All numbers come from the finalised collection (stat_collection_finalise); nothing
+ * is recomputed here except presentation (rounding, units). All wording that is not
+ * layout lives in report_help.c, the figures in report_plots.c.
+ */
 
-static int samstat_add_large_number(tld_strbuf *o, uint64_t n);
-static double samstat_ratio(uint64_t num, uint64_t den);
+#define MAX_NUM 64          /* longest formatted number */
+
+static int page_head(tld_strbuf *o, const char *name);
+static int page_header(tld_strbuf *o, const char *name, const char *format, struct stat_collection *s);
+static int page_strip(tld_strbuf *o, struct stat_collection *s);
+static int page_notes(tld_strbuf *o, struct stat_collection *s);
+static int page_mapq_table(tld_strbuf *o, struct stat_collection *s);
+static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id);
+static int page_footer(tld_strbuf *o, const char *name, struct stat_collection *s);
 
 static int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id);
 
-/* n / d, or 0.0 for an empty input (d == 0) so that no nan ends up in the report */
-static double samstat_ratio(uint64_t n, uint64_t d)
+/* ------------------------------------------------------------------ */
+/* small helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+static int app(tld_strbuf *o, const char *text)
 {
-        if(d == 0){
-                return 0.0;
-        }
-        return (double) n / (double) d;
+        return tld_append(o, (char *) text);
 }
 
-int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
+/* text with &, <, > and quotes escaped */
+static int esc(tld_strbuf *o, const char *text)
 {
+        for(const char *c = text; *c; c++){
+                switch(*c){
+                case '&':
+                        RUN(app(o, "&amp;"));
+                        break;
+                case '<':
+                        RUN(app(o, "&lt;"));
+                        break;
+                case '>':
+                        RUN(app(o, "&gt;"));
+                        break;
+                case '"':
+                        RUN(app(o, "&quot;"));
+                        break;
+                case '\'':
+                        RUN(app(o, "&#39;"));
+                        break;
+                default:
+                        RUN(tld_append_char(o, *c));
+                        break;
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
 
-        char* n = NULL;
-        tld_strbuf* out = NULL;
-        RUN(tld_get_filename(p->infile[id], &n));/* char *path, char **out) */
-        /* RUN(tlfilename(p->infile[id], &n)); */
+/* A template from report_help.c: every "%s" is replaced by the next argument (numbers
+ * formatted by the caller, so they need no escaping), "%%" is a percent sign, the rest is
+ * escaped text. Not printf: the templates are data. */
+static int app_template(tld_strbuf *o, const char *t, const char *a1, const char *a2)
+{
+        const char *arg[2] = {a1, a2};
+        int n_used = 0;
+        for(const char *c = t; *c; c++){
+                if(c[0] == '%' && c[1] == 's'){
+                        if(n_used < 2 && arg[n_used]){
+                                RUN(app(o, arg[n_used]));
+                        }
+                        n_used++;
+                        c++;
+                }else if(c[0] == '%' && c[1] == '%'){
+                        RUN(app(o, "%"));
+                        c++;
+                }else{
+                        char one[2] = {*c, 0};
+                        RUN(esc(o, one));
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* 1234567 -> "1,234,567" */
+static void fmt_count(char *buf, size_t n, uint64_t v)
+{
+        char raw[32];
+        char out[48];
+        int len = snprintf(raw, sizeof(raw), "%" PRIu64, v);
+        int k = 0;
+        for(int i = 0; i < len; i++){
+                if(i > 0 && (len - i) % 3 == 0){
+                        out[k++] = ',';
+                }
+                out[k++] = raw[i];
+        }
+        out[k] = 0;
+        snprintf(buf, n, "%s", out);
+}
+
+/* "%.<decimals>f" that does not depend on the locale */
+static void fmt_dec(char *buf, size_t n, int decimals, double v)
+{
+        snprintf(buf, n, "%.*f", decimals, v);
+        for(char *c = buf; *c; c++){
+                if(*c == ','){
+                        *c = '.';
+                }
+        }
+}
+
+/* Counts: exact with thousands separators below 10,000, then one decimal and an SI suffix
+ * (12.4 M). */
+static void fmt_si(char *buf, size_t n, uint64_t v)
+{
+        static const char *const unit[] = {"k", "M", "G", "T", "P", "E"};
+        double x;
+        int u = -1;
+        char d[32];
+
+        if(v < 10000){
+                fmt_count(buf, n, v);
+                return;
+        }
+        x = (double) v / 1000.0;
+        u = 0;
+        /* 999.96 k rounds to 1000.0: move up one unit instead */
+        while(u < 5 && floor(x * 10.0 + 0.5) / 10.0 >= 1000.0){
+                x /= 1000.0;
+                u++;
+        }
+        fmt_dec(d, sizeof(d), 1, x);
+        snprintf(buf, n, "%s %s", d, unit[u]);
+}
+
+/* Lengths: exact below 1 kb; a bin edge (within 1%) above, marked with "~"; bp below 10 kb,
+ * kb above. */
+static void fmt_len(char *buf, size_t n, uint64_t v)
+{
+        char t[48];
+        if(v < 1000){
+                fmt_count(t, sizeof(t), v);
+                snprintf(buf, n, "%s bp", t);
+        }else if(v < 10000){
+                fmt_count(t, sizeof(t), v);
+                snprintf(buf, n, "~%s bp", t);
+        }else{
+                char d[32];
+                char ip[32];
+                char *dot;
+                size_t il;
+                fmt_dec(d, sizeof(d), 1, (double) v / 1000.0);
+                dot = strchr(d, '.');
+                il = dot ? (size_t) (dot - d) : strlen(d);
+                snprintf(ip, sizeof(ip), "%.*s", (int) il, d);
+                fmt_count(t, sizeof(t), (uint64_t) strtoull(ip, NULL, 10));
+                snprintf(buf, n, "~%s%s kb", t, dot ? dot : "");
+        }
+}
+
+/* percent with one decimal, or "n/a" for a value that does not apply */
+static void fmt_pct(char *buf, size_t n, double v)
+{
+        if(COLLECT_IS_NA(v)){
+                snprintf(buf, n, "n/a");
+        }else{
+                fmt_dec(buf, n, 1, v);
+        }
+}
+
+static int is_paired(const struct stat_collection *s)
+{
+        return s->n_read2 > 0;
+}
+
+static uint64_t n_mapped(const struct stat_collection *s)
+{
+        uint64_t n = 0;
+        for(int r = 0; r < COLLECT_N_MATE; r++){
+                for(int m = 0; m < COLLECT_MAPQ_UNMAPPED; m++){
+                        n += s->basic_nums[r][m];
+                }
+        }
+        return n;
+}
+
+/* Format as detected by htslib ("BAM", "FASTQ, gzip", ...). The reader does not pass it on,
+ * so the first bytes of the input are looked at again. Empty for standard input and for
+ * anything htslib does not recognise: the header line then leaves the format out. */
+static void input_format_name(const char *path, char *buf, size_t n)
+{
+        htsFile *fp;
+        const htsFormat *f;
+        const char *name = NULL;
+        int gz;
+
+        buf[0] = 0;
+        if(strcmp(path, SAMSTAT_STDIN) == 0){
+                return;
+        }
+        fp = hts_open(path, "r");
+        if(!fp){
+                return;
+        }
+        f = hts_get_format(fp);
+        switch(f->format){
+        case sam:
+                name = "SAM";
+                break;
+        case bam:
+                name = "BAM";
+                break;
+        case cram:
+                name = "CRAM";
+                break;
+        case fastq_format:
+                name = "FASTQ";
+                break;
+        case fasta_format:
+                name = "FASTA";
+                break;
+        default:
+                break;
+        }
+        gz = (f->compression == gzip || f->compression == bgzf);
+        if(name){
+                if(gz && f->format != bam && f->format != cram){
+                        snprintf(buf, n, "%s, gzip", name);
+                }else{
+                        snprintf(buf, n, "%s", name);
+                }
+        }
+        hts_close(fp);
+}
+
+/* ------------------------------------------------------------------ */
+/* the page                                                             */
+/* ------------------------------------------------------------------ */
+
+int stat_report(struct stat_collection *s, struct samstat_param *p, int id)
+{
+        char *n = NULL;
+        tld_strbuf *out = NULL;
+        char format[32];
+
+        RUN(tld_get_filename((char *) samstat_output_stem(p, id), &n));
 
         RUN(stat_collection_finalise(s));
+        input_format_name(p->infile[id], format, sizeof(format));
 
-        RUN(tld_strbuf_alloc(&out, 1024));
-        html_header(out,n);
+        RUN(tld_strbuf_alloc(&out, 1 << 16));
 
-        RUN(samstat_title(out, p, id));
-
-        if(strcmp(p->infile[id], SAMSTAT_STDIN) != 0){
-                /* standard input has no file to stat */
-                RUN(samstat_file_stat_section(out, p->infile[id]));
-        }
-        RUN(samstat_version_section(out));
-
-        /* LOG_MSG("add mapping stat"); */
-        RUN(samstat_mapping_quality_overview_section(out, s));
-
-        if(s->is_partial_report){
-                RUN(samstat_partial_warning_section(out, s));
-        }
-
-        /* for(int i = 0 ; i < 2;i++){ */
-        /*         for(int j = 0; j < s->mapq_map->n_bin;j++){ */
-        /*                 fprintf(stderr,"%"PRId64"\t", s->basic_nums[i][j]); */
-        /*         } */
-        /*         fprintf(stderr," - READ %d\n",i+1); */
-        /* } */
-
-        /* LENGTH Distribution  */
-        if(!s->n_paired){
-                RUN(tld_append(out, "<h2>Length distribution</h2>\n"));
-        }else{
-                RUN(tld_append(out, "<h2>Length distribution Read 1</h2>\n"));
-        }
-        plot_add(out,s->len_dist_R1);
+        RUN(page_head(out, n));
+        RUN(app(out, "<body>\n<div class=\"page\">\n"));
+        RUN(page_header(out, n, format, s));
+        RUN(app(out, "<main>\n"));
+        RUN(page_strip(out, s));
+        RUN(page_notes(out, s));
         if(s->is_aligned){
-                RUN(tld_append(out,"<p>Density plot of read lengths split by mapping quality. If aligned reads are soft clipped, additional length distribution of the aligned reads are shown (indicated by the 'mapped' keyword). </p>"));
-        }else{
-                RUN(tld_append(out,"<p>Density plot of read lengths. </p>"));
+                RUN(page_mapq_table(out, s));
         }
-        if(s->n_paired){
-                RUN(tld_append(out, "<h2>Length distribution Read 2</h2>\n"));
-                plot_add(out,s->len_dist_R2);
-                if(s->is_aligned){
-                        RUN(tld_append(out,"<p>Density plot of read lengths split by mapping quality. If aligned reads are soft clipped, additional length distribution of the aligned reads are shown (indicated by the 'mapped' keyword). </p>"));
-                }else{
-                        RUN(tld_append(out,"<p>Density plot of read lengths. </p>"));
+        for(int plot_id = 1; plot_id <= 6; plot_id++){
+                /* plots 5 and 6 exist for aligned input only; nothing is written otherwise */
+                if(plot_id >= 5 && !s->is_aligned){
+                        continue;
                 }
+                RUN(page_plot(out, s, plot_id));
         }
+        RUN(app(out, "</main>\n"));
+        RUN(page_footer(out, n, s));
+        RUN(app(out, "</div>\n</body>\n</html>\n"));
 
-
-        /* Base composition   */
-        if(!s->n_paired){
-                RUN(tld_append(out, "<h2>Base composition</h2>"));
-        }else{
-                RUN(tld_append(out, "<h2>Base composition Read 1 </h2>"));
-        }
-
-        plot_add(out,s->base_comp_R1);
-        RUN(tld_append(out,"<p>Base composition. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
-
-        if(s->n_paired){
-                RUN(tld_append(out, "<h2>Base composition Read 2 </h2>"));
-                plot_add(out,s->base_comp_R2);
-                RUN(tld_append(out,"<p>Base composition. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
-
-        }
-
-
-        /* Base quality  */
-
-        if(!s->n_paired){
-                RUN(tld_append(out, "<h2>Base quality distribution</h2>\n"));
-        }else{
-                RUN(tld_append(out, "<h2>Base quality distribution Read 1</h2>\n"));
-        }
-
-        plot_add(out,s->qual_comp_R1);
-        if(s->is_aligned){
-                RUN(tld_append(out,"<p>Base quality distribution split up by mapping quality.</p>"));
-        }else{
-                RUN(tld_append(out,"<p>Base quality distribution.</p>"));
-        }
-        if(s->n_paired){
-                RUN(tld_append(out, "<h2>Base quality distribution Read 2</h2>\n"));
-                plot_add(out,s->qual_comp_R2);
-                if(s->is_aligned){
-                        RUN(tld_append(out,"<p>Base quality distribution split up by mapping quality.</p>"));
-                }else{
-                        RUN(tld_append(out,"<p>Base quality distribution.</p>"));
-                }
-        }
-
-
-
-        /* end report if  */
-        if(s->collect_end){
-                if(!s->n_paired){
-                        RUN(tld_append(out, "<h2>Base composition at end of reads</h2>"));
-                }else{
-                        RUN(tld_append(out, "<h2>Base composition at end of Read 1 </h2>"));
-                }
-
-                plot_add(out,s->base_comp_R1_end);
-                RUN(tld_append(out,"<p>Base compostions at the end of the reads (0), the second last base (1) and so forth. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
-
-                if(s->n_paired){
-                        RUN(tld_append(out, "<h2>Base composition at end of Read 2 </h2>"));
-                        plot_add(out,s->base_comp_R2_end);
-                        RUN(tld_append(out,"<p>Base compostions at the end of the reads (0), the second last base (1) and so forth. Use the toggle box to view composition of reads mapped at different mapping qualities. Soft clipped sequences are excluded.</p>"));
-
-                }
-
-                if(!s->n_paired){
-                        RUN(tld_append(out, "<h2>Base quality distribution at end of reads</h2>\n"));
-                }else{
-                        RUN(tld_append(out, "<h2>Base quality distribution at end of Read 1</h2>\n"));
-                }
-                /* RUN(tld_append(out, "<h2>Base quality distribution at end of Read 1</h2>\n")); */
-                plot_add(out,s->qual_comp_R1_end);
-
-                RUN(tld_append(out,"<p>Base quality distribution at the last (0), second last (1) and so forth base.</p>"));
-
-                if(s->n_paired){
-                        RUN(tld_append(out, "<h2>Base quality distribution at end of Read 2</h2>\n"));
-                        plot_add(out,s->qual_comp_R2_end);
-                        RUN(tld_append(out,"<p>Base quality distribution at the last (0), second last (1) and so forth base.</p>"));
-                }
-        }
-
-        /* norm  */
-        if(s->norm_len_plot){
-                if(!s->n_paired){
-                        RUN(tld_append(out, "<h2>Base composition along the read</h2>"));
-                }else{
-                        RUN(tld_append(out, "<h2>Base composition along read 1</h2>"));
-                }
-
-                plot_add(out,s->base_comp_len_norm_R1);
-                RUN(tld_append(out,"<p>Base compostion; reads are split into bins each representing 1% of the read length.</p>"));
-                if(s->n_paired){
-                        RUN(tld_append(out, "<h2>Base composition along read 2 </h2>"));
-
-                        plot_add(out,s->base_comp_len_norm_R2);
-                        RUN(tld_append(out,"<p>Base compostion; reads are split into bins each representing 1% of the read length.</p>"));
-
-                }
-
-
-                if(!s->n_paired){
-                        RUN(tld_append(out, "<h2>Base quality distibution along the read</h2>"));
-                }else{
-                        RUN(tld_append(out, "<h2>Base quality distibution along read 1</h2>"));
-                }
-                plot_add(out,s->qual_comp_len_norm_R1);
-                RUN(tld_append(out,"<p>Base quality distibution; reads are split into bins each representing 1% of the read length.</p>"));
-                if(s->n_paired){
-                        RUN(tld_append(out, "<h2>Base quality distibution along read 2 </h2>"));
-
-
-                        plot_add(out,s->qual_comp_len_norm_R2);
-                        RUN(tld_append(out,"<p>Base quality distibution; reads are split into bins each representing 1% of the read length.</p>"));
-                }
-        }
-
-
-
-
-
-        if(s->is_aligned){
-                if(!s->n_paired){
-                        RUN(tld_append(out, "<h2>Error composition</h2>"));
-                }else{
-                        RUN(tld_append(out, "<h2>Error composition Read 1</h2>"));
-                }
-                plot_add(out,s->mis_R1);
-                plot_add(out,s->ins_R1);
-                plot_add(out,s->del_R1);
-                RUN(tld_append(out,"<p>Distibution of mismatches, insertions and deletions along the read length. Note: if no 'MD' tag is present in the SAM/BAM file no mismatch profile is displayed.</p>"));
-
-                if(s->n_paired){
-                        RUN(tld_append(out, "<h2>Error composition Read 2</h2>"));
-                        plot_add(out,s->mis_R2);
-
-                        plot_add(out,s->ins_R2);
-
-                        plot_add(out,s->del_R2);
-
-                        RUN(tld_append(out,"<p>Distibution of mismatches, insertions and deletions along the read length. Note: if no 'MD' tag is present in the SAM/BAM file no mismatch profile is displayed.</p>"));
-
-                }
-        }
-
-        RUN(samstat_footer(out));
-        RUN(html_end(out));
-
-        RUN(write_buffer(out, p,id));
+        RUN(write_buffer(out, p, id));
         if(p->json){
                 RUN(json_report_write(s, p, id));
         }
@@ -249,30 +303,37 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
         MFREE(n);
         return OK;
 ERROR:
+        if(out){
+                tld_strbuf_free(out);
+        }
+        if(n){
+                MFREE(n);
+        }
         return FAIL;
 }
 
 int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id)
 {
-        char* buffer = NULL;
-        char* filename = NULL;
-        FILE* f_ptr = NULL;
-        const char* str = TLD_STR(out_buffer);
+        char *buffer = NULL;
+        char *filename = NULL;
+        FILE *f_ptr = NULL;
+        const char *str = TLD_STR(out_buffer);
+        const char *stem = samstat_output_stem(p, id);
         size_t len = strlen(str);
         int needed;
 
         if(p->outdir){
-                RUN(tld_get_filename(p->infile[id], &filename));
+                RUN(tld_get_filename((char *) stem, &filename));
                 needed = snprintf(NULL, 0, "%s/%s.samstat.html", p->outdir, filename);
         }else{
-                needed = snprintf(NULL, 0, "%s.samstat.html", p->infile[id]);
+                needed = snprintf(NULL, 0, "%s.samstat.html", stem);
         }
         ASSERT(needed > 0, "Could not build output file name");
         MMALLOC(buffer, (size_t) needed + 1);
         if(p->outdir){
                 ASSERT(snprintf(buffer, (size_t) needed + 1, "%s/%s.samstat.html", p->outdir, filename) == needed, "Output file name was truncated");
         }else{
-                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s.samstat.html", p->infile[id]) == needed, "Output file name was truncated");
+                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s.samstat.html", stem) == needed, "Output file name was truncated");
         }
         LOG_MSG("Writing to: %s", buffer);
         f_ptr = fopen(buffer, "w");
@@ -299,363 +360,411 @@ ERROR:
         return FAIL;
 }
 
+/* <head> with the whole style sheet. Light theme only, system fonts, nothing external. */
+static const char page_css[] =
+        ":root{--ink:#1a1a1a;--muted:#555555;--line:#c9cdd3;--wash:#f4f5f7;--accent:#0b4f8a;--accent-bg:#eaf1f8}\n"
+        "*{box-sizing:border-box}\n"
+        "html{-webkit-text-size-adjust:100%;text-size-adjust:100%}\n"
+        "body{margin:0;background:#ffffff;color:var(--ink);"
+        "font:16px/1.55 system-ui,-apple-system,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,sans-serif}\n"
+        ".page{max-width:62rem;margin:0 auto;padding:28px 16px 48px}\n"
+        "h1,h2{line-height:1.25;overflow-wrap:anywhere}\n"
+        "h1{font-size:1.75rem;margin:0 0 .25rem}\n"
+        "h2{font-size:1.3rem;margin:0 0 .35rem}\n"
+        "p{margin:0 0 .75rem}\n"
+        ".eyebrow{margin:0 0 .25rem;font-size:.875rem;font-weight:600;letter-spacing:.04em;"
+        "text-transform:uppercase;color:var(--accent)}\n"
+        ".meta{margin:0;color:var(--muted)}\n"
+        ".partial{font-weight:600;color:var(--ink)}\n"
+        "main>section,main>.strip,main>.notes{margin-top:2.25rem}\n"
+        "main>.strip{margin-top:1.75rem}\n"
+        /* summary strip */
+        ".strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:0}\n"
+        "@media (max-width:42rem){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}}\n"
+        ".strip>div{margin:0;padding:12px 14px;background:var(--wash);border:1px solid var(--line);border-radius:8px}\n"
+        ".strip dt{margin:0;font-size:.9rem;color:var(--muted)}\n"
+        ".strip dd{margin:.1rem 0 0;font-size:1.75rem;line-height:1.2;font-weight:650;"
+        "font-variant-numeric:tabular-nums;white-space:nowrap}\n"
+        ".strip .sub{display:block;font-size:.85rem;font-weight:400;color:var(--muted)}\n"
+        /* notes */
+        ".notes{list-style:none;padding:0}\n"
+        ".notes li{margin:0 0 8px;padding:.6rem .9rem;background:var(--wash);border-left:5px solid var(--muted);"
+        "border-radius:0 6px 6px 0}\n"
+        /* table */
+        ".caption{max-width:48rem;margin-bottom:1rem}\n"
+        ".table-wrap{overflow-x:auto}\n"
+        "table{border-collapse:collapse;min-width:20rem}\n"
+        "th,td{padding:.55rem .9rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}\n"
+        "thead th{border-bottom:2px solid var(--ink);font-size:.9rem}\n"
+        "td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}\n"
+        "td svg{display:block}\n"
+        /* plots */
+        ".plot h2 .num{display:inline-block;min-width:1.6rem;color:var(--accent)}\n"
+        ".figs{margin:0 0 .5rem}\n"
+        ".figs svg{margin:0 0 12px 0}\n"
+        "@media (min-width:58rem){.figs svg{margin-right:20px}}\n"
+        ".plot-na{display:inline-block;margin:0 0 .75rem;padding:.6rem .9rem;border:2px dashed var(--muted);border-radius:6px}\n"
+        ".plot-note{margin:0 0 .75rem;padding:.5rem .9rem;background:var(--wash);border-left:5px solid var(--muted);"
+        "border-radius:0 6px 6px 0;max-width:48rem}\n"
+        ".plot-key{margin:0 0 .5rem}\n"
+        ".plot-key svg{margin:0}\n"
+        "details{margin:.25rem 0 0;border:1px solid var(--line);border-radius:6px;max-width:48rem}\n"
+        "summary{padding:.5rem .9rem;font-weight:600;color:var(--accent);cursor:pointer}\n"
+        "summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}\n"
+        "details[open] summary{border-bottom:1px solid var(--line)}\n"
+        ".howto{padding:.75rem .9rem 0}\n"
+        ".howto p{margin-bottom:.6rem}\n"
+        /* footer */
+        "footer{margin-top:3rem;padding-top:1rem;border-top:2px solid var(--line);font-size:.9rem;color:var(--muted)}\n"
+        "footer p{margin-bottom:.5rem}\n"
+        /* print: A4 portrait, every explanation open, figures stay whole */
+        "@page{size:A4 portrait;margin:14mm}\n"
+        "@media print{\n"
+        "body{font-size:11pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n"
+        ".page{max-width:none;padding:0}\n"
+        "main>section,.strip>div,.notes li,details,table,tr,.figs,.plot-na,.plot-note{break-inside:avoid}\n"
+        "h1,h2,summary{break-after:avoid}\n"
+        "section.plot{break-inside:avoid-page}\n"
+        "details>*:not(summary){display:block!important}\n"
+        "details::details-content{content-visibility:visible!important;display:block!important}\n"
+        "details>summary{list-style:none;border-bottom:1px solid var(--line)}\n"
+        "details>summary::-webkit-details-marker{display:none}\n"
+        "summary{color:var(--ink)}\n"
+        "}\n";
 
-int samstat_title(tld_strbuf *o,struct samstat_param *p , int id)
+static int page_head(tld_strbuf *o, const char *name)
 {
-        char* n = NULL;
-
-        RUN(tld_get_filename(p->infile[id], &n));
-        RUN(tld_append(o,"<h1>"));
-        RUN(html_escape_append(o,n));
-        RUN(tld_append(o,"</h1>\n"));
-
-        MFREE(n);
+        RUN(app(o, "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"));
+        RUN(app(o, "<meta charset=\"utf-8\">\n"));
+        RUN(app(o, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"));
+        RUN(app(o, "<meta name=\"color-scheme\" content=\"light\">\n"));
+        RUN(app(o, "<title>"));
+        RUN(esc(o, name));
+        RUN(app(o, " - SAMStat report</title>\n"));
+        RUN(app(o, "<style>\n"));
+        RUN(app(o, page_css));
+        RUN(app(o, "</style>\n</head>\n"));
         return OK;
 ERROR:
         return FAIL;
 }
 
-int samstat_file_stat_section(tld_strbuf *o, char* filename)
+/* 1.1: <file> - <format> - <layout> - SAMStat <version> [- partial] */
+static int page_header(tld_strbuf *o, const char *name, const char *format, struct stat_collection *s)
 {
-        struct stat buf;
-        int local_ret;
-        char buffer[256];
-        struct tm newtime;
+        char buf[MAX_NUM];
+        char len[MAX_NUM];
 
-        local_ret= stat ( filename, &buf );
-        if ( local_ret == 0 ){
+        RUN(app(o, "<header>\n<p class=\"eyebrow\">SAMStat report</p>\n<h1>"));
+        RUN(esc(o, name));
+        RUN(app(o, "</h1>\n<p class=\"meta\">"));
+        if(format[0]){
+                RUN(esc(o, format));
+                RUN(app(o, " &middot; "));
+        }
+        if(s->n_total){
+                fmt_len(len, sizeof(len), s->median_length);
+                RUN(app(o, s->layout == COLLECT_LAYOUT_LONG ? "long" : "short"));
+                RUN(app(o, " layout (median length "));
+                RUN(esc(o, len));
+                RUN(app(o, "; long when &gt;= 1 kb) &middot; "));
+        }
+        RUN(app(o, "SAMStat "));
+        RUN(esc(o, PACKAGE_VERSION));
+        if(s->is_partial_report){
+                fmt_count(buf, sizeof(buf), s->n_total);
+                RUN(app(o, "<span class=\"partial\">"));
+                RUN(app_template(o, report_header_partial, buf, NULL));
+                RUN(app(o, "</span>"));
+        }
+        RUN(app(o, "</p>\n</header>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
-                localtime_r(&buf.st_mtime, &newtime);
-                tld_append(o, "<p>File size: ");
-                snprintf(buffer, 256,"%"PRId64"", (uint64_t)buf.st_size);
-                tld_append(o, buffer);
-                tld_append(o, " bytes, created ");
-                if(!strftime(buffer, 256, "%F %H:%M:%S", &newtime )){
-                        ERROR_MSG("Could not make time string.");
-                }
+/* 1.2: one card per value, same order every time */
+static int strip_item(tld_strbuf *o, const char *label, const char *value, const char *sub)
+{
+        RUN(app(o, "<div><dt>"));
+        RUN(esc(o, label));
+        RUN(app(o, "</dt><dd>"));
+        RUN(esc(o, value));
+        if(sub && sub[0]){
+                RUN(app(o, "<span class=\"sub\">"));
+                RUN(esc(o, sub));
+                RUN(app(o, "</span>"));
+        }
+        RUN(app(o, "</dd></div>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
-                tld_append(o, buffer);
-                tld_append(o, "</p>");
-                /* strftime(time_string, 200, "%F %H:%M:%S\t", ptr); */
-                /* sprintf(buffer,"size:%lld bytes, created %s",(long long)buf.st_size, time_string); */
+static int page_strip(tld_strbuf *o, struct stat_collection *s)
+{
+        char v[MAX_NUM];
+        char sub[MAX_NUM];
+        char tmp[MAX_NUM];
+
+        RUN(app(o, "<dl class=\"strip\" aria-label=\"Summary\">\n"));
+
+        fmt_si(v, sizeof(v), s->n_total);
+        sub[0] = 0;
+        if(s->n_total >= 10000){
+                fmt_count(sub, sizeof(sub), s->n_total);
+        }
+        RUN(strip_item(o, is_paired(s) ? "Reads (R1+R2)" : "Reads", v, sub));
+
+        fmt_si(v, sizeof(v), s->total_bases);
+        sub[0] = 0;
+        if(s->total_bases >= 10000){
+                fmt_count(sub, sizeof(sub), s->total_bases);
+        }
+        RUN(strip_item(o, "Bases", v, sub));
+
+        if(s->n_total){
+                fmt_len(v, sizeof(v), s->n50);
         }else{
-                ERROR_MSG("Failed getting stats for file:%s\n",filename );
+                snprintf(v, sizeof(v), "n/a");
+        }
+        RUN(strip_item(o, "N50", v, NULL));
+
+        /* mean Q is left out when no base has a quality (FASTA) */
+        if(s->qual_bases_all > 0){
+                fmt_dec(v, sizeof(v), 1, s->mean_q);
+                RUN(strip_item(o, "Mean Q", v, NULL));
         }
 
-
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-int samstat_version_section(tld_strbuf *o)
-{
-        char buffer[256];
-        RUN(tld_append(o,"<p>(report produced by: "));
-        snprintf(buffer, 256,"%s version %s",PACKAGE_NAME,PACKAGE_VERSION);
-        RUN(tld_append(o,buffer));
-        RUN(tld_append(o,")</p>"));
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-int samstat_partial_warning_section(tld_strbuf *o , struct stat_collection*s)
-{
-        char buf[256];
-        snprintf(buf, 256,"%"PRId64"", s->n_read1+s->n_read2);
-        RUN(tld_append(o,"<h2 style=\"color: red;border-bottom: none;\"> Warning: this is partial report based on the first "));
-        RUN(tld_append(o,buf));
-
-        RUN(tld_append(o," reads only.</h2>"));
-
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-int samstat_add_large_number(tld_strbuf *o, uint64_t n)
-{
-        char buf[256];
-        if(n < 1000){
-                snprintf(buf, 256,"%"PRId64"", n);
-                RUN(tld_append(o, buf));
-        }else if(n >= 1000 && n < 1000000){
-                uint64_t tmp = (uint64_t) round((double)  n / 1000.0);
-                snprintf(buf, 256,"%"PRId64"", tmp);
-                RUN(tld_append(o, buf));
-                RUN(tld_append(o, "K"));
-        }else if(n >= 1000000 && n < 1000000000ull){
-                uint64_t tmp = (uint64_t) round((double)  n / 1000000.0);
-                snprintf(buf, 256,"%"PRId64"", tmp);
-                RUN(tld_append(o, buf));
-                RUN(tld_append(o, "M"));
-        }else if(n >= 1000000000ull){
-                uint64_t tmp = (uint64_t) round((double)  n / 1000000000.0);
-                snprintf(buf, 256,"%"PRId64"", tmp);
-                RUN(tld_append(o, buf));
-                RUN(tld_append(o, "G"));
-        }
-
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-
-int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collection *s)
-{
-        char buf[256];
-        lst_node* n = NULL;
-
-        uint64_t total = 0;
-        for(int i = 0; i < 2;i++){
-                for(int j = 0;j < s->mapq_map->n_bin;j++){
-                        total += s->basic_nums[i][j];
+        if(s->is_aligned){
+                fmt_pct(v, sizeof(v), s->pct_mapped);
+                RUN(strip_item(o, "% mapped", v, NULL));
+                fmt_pct(v, sizeof(v), s->pct_mapq_ge30);
+                RUN(strip_item(o, "% MAPQ >= 30", v, NULL));
+                fmt_pct(v, sizeof(v), s->pct_clipped);
+                RUN(strip_item(o, "% bases clipped", v, NULL));
+                if(COLLECT_IS_NA(s->median_identity)){
+                        snprintf(v, sizeof(v), "n/a");
+                }else{
+                        fmt_dec(tmp, sizeof(tmp), 1, s->median_identity);
+                        snprintf(v, sizeof(v), "%s%%", tmp);
                 }
+                RUN(strip_item(o, "Median identity", v, NULL));
         }
+        RUN(app(o, "</dl>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
+/* 1.3: facts, never verdicts. Only the lines whose condition holds. */
+static int note_item(tld_strbuf *o, const char *tmpl, const char *a1, const char *a2)
+{
+        RUN(app(o, "<li>"));
+        RUN(app_template(o, tmpl, a1, a2));
+        RUN(app(o, "</li>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
-        if(!s->is_aligned){
-                RUN(tld_append(o, "<h2>File statistics</h2>\n"));
-                samstat_add_large_number(o, total);
-                RUN(tld_append(o, " - reads"));
-                if(total >= 1000){
-                        RUN(tld_append(o, " (exact: "));
-                        snprintf(buf, 256,"%"PRId64"", total);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o, ")"));
-                }
-                RUN(tld_append(o, "<br>"));
+static int page_notes(tld_strbuf *o, struct stat_collection *s)
+{
+        char a[MAX_NUM];
+        char b[MAX_NUM];
+        uint64_t mapped = n_mapped(s);
+        int partial = s->is_partial_report;
+        int no_md = s->reads_without_md > 0;
+        int ident_na = s->identity_na > 0;
+        int beyond = (s->layout == COLLECT_LAYOUT_SHORT && s->bases_beyond_position_axis > 0);
+        uint64_t in_axis = 0;
+        double pct = 0.0;
 
-
+        if(!(partial || no_md || ident_na || beyond)){
                 return OK;
         }
-
-        /* TABLE  */
-        RUN(tld_append(o, "<h2>Mapping statistics</h2>\n"));
-
-        if(s->n_paired){
-                RUN(tld_append(o, "<p>"));
-
-                samstat_add_large_number(o, total);
-                RUN(tld_append(o, " - reads "));
-                if(total  >= 1000){
-                        RUN(tld_append(o, " (exact: "));
-                        snprintf(buf, 256,"%"PRId64"", total);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o, ")"));
+        RUN(app(o, "<ul class=\"notes\" aria-label=\"Notes\">\n"));
+        if(partial){
+                fmt_count(a, sizeof(a), s->n_total);
+                RUN(note_item(o, report_note_partial, a, NULL));
+        }
+        if(no_md){
+                fmt_count(a, sizeof(a), s->reads_without_md);
+                fmt_count(b, sizeof(b), mapped);
+                RUN(note_item(o, report_note_no_md, a, b));
+        }
+        if(ident_na){
+                fmt_count(a, sizeof(a), s->identity_na);
+                fmt_count(b, sizeof(b), mapped);
+                RUN(note_item(o, report_note_identity_na, a, b));
+        }
+        if(beyond){
+                /* share of the bases of the position plots that lie past the last bin */
+                for(int r = 0; r < COLLECT_N_MATE; r++){
+                        for(int m = 0; m < COLLECT_N_MAPQ; m++){
+                                for(int i = 0; i < COLLECT_ABS_BINS; i++){
+                                        const struct collect_pos_bin *pb = &s->acc->pos_abs[r][m][i];
+                                        for(int k = 0; k < COLLECT_N_BASE; k++){
+                                                in_axis += pb->comp[k];
+                                        }
+                                }
+                        }
                 }
-                RUN(tld_append(o, "<br>"));
-
-                /* RUN(tld_append(o, " - in total<br>")); */
-                if(s->n_paired){
-                        /* snprintf(buf, 256,"%"PRId64"", s->n_paired); */
-                        samstat_add_large_number(o, s->n_paired);
-                        /* RUN(tld_append(o, buf)); */
-                        RUN(tld_append(o, " - paired in sequencing ("));
-                        snprintf(buf, 256,"%0.1f", samstat_ratio(s->n_paired, total) * 100.0);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o, "%)<br>"));
-
-                        /* snprintf(buf, 256,"%"PRId64"", s->n_proper_paired); */
-                        samstat_add_large_number(o, s->n_proper_paired);
-                        /* RUN(tld_append(o, buf)); */
-                        RUN(tld_append(o, " - properly paired ("));
-                        snprintf(buf, 256,"%0.1f", samstat_ratio(s->n_proper_paired, s->n_paired) * 100.0);
-                        RUN(tld_append(o, buf));
-                        RUN(tld_append(o, "%)<br>"));
-                        RUN(tld_append(o, "(Stats below are based on all reads)<br>"));
+                pct = 100.0 * (double) s->bases_beyond_position_axis
+                        / (double) (s->bases_beyond_position_axis + in_axis);
+                if(pct > 0.0 && pct < 0.1){
+                        /* template arguments are written as they are, so the "<" is escaped here */
+                        snprintf(a, sizeof(a), "&lt;0.1");
+                }else{
+                        fmt_dec(a, sizeof(a), 1, pct);
                 }
-                RUN(tld_append(o, "</p>"));
+                RUN(note_item(o, report_note_beyond_axis, a, NULL));
         }
-
-        /* LOG_MSG("%d %d -> %d  (paired: %d proper: %d )", m->n_R1_reads,m->n_R2_reads, m->n_R1_reads+m->n_R2_reads,m->n_paired, m->n_proper_paired); */
-
-
-        if(s->n_secondary || s->n_supplementary){
-                RUN(tld_append(o, "<p>"));
-                if(s->n_secondary){
-                        samstat_add_large_number(o, s->n_secondary);
-                        RUN(tld_append(o, " - secondary alignments (not counted)<br>"));
-                }
-                if(s->n_supplementary){
-                        samstat_add_large_number(o, s->n_supplementary);
-                        RUN(tld_append(o, " - supplementary alignments (not counted)<br>"));
-                }
-                RUN(tld_append(o, "</p>"));
-        }
-
-        RUN(tld_append(o, "<div id=\"MappingStatsTable\" style=\"width:100%;max-width:900px;height:240px;\"></div>\n"));
-        RUN(tld_append(o,"<script>\n"));
-        RUN(tld_append(o, "var mappingtableval = [\n"));
-        RUN(tld_append(o, "["));
-        for(int i = 0; i < s->mapq_map->n_bin;i++){
-                snprintf(buf, 256, "\"%s\",",s->mapq_map->description[i]);
-                RUN(tld_append(o,buf));
-        }
-        snprintf(buf, 256, "\"Total\",");
-        RUN(tld_append(o,buf));
-        o->len--;
-        RUN(tld_append(o, "],"));
-
-        total = 0;
-        RUN(tld_append(o, "["));
-        for(int i = 0; i < s->mapq_map->n_bin;i++){
-                total += s->basic_nums[0][i];
-                snprintf(buf, 256, "%"PRId64",", s->basic_nums[0][i]);
-                RUN(tld_append(o,buf));
-        }
-        snprintf(buf, 256, "%"PRId64",", total);
-        RUN(tld_append(o,buf));
-        o->len--;
-        RUN(tld_append(o, "],"));
-        RUN(tld_append(o, "["));
-        for(int i = 0; i < s->mapq_map->n_bin;i++){
-                snprintf(buf, 256, "%.5f,", samstat_ratio(s->basic_nums[0][i], total));
-                RUN(tld_append(o,buf));
-        }
-        snprintf(buf, 256, "%.5f,", samstat_ratio(total, total));
-        RUN(tld_append(o,buf));
-        o->len--;
-        RUN(tld_append(o, "]\n"));
-
-        if(s->n_paired){
-                RUN(tld_append(o, ","));
-                uint64_t total = 0;
-                RUN(tld_append(o, "["));
-                for(int i = 0; i < s->mapq_map->n_bin;i++){
-                        total += s->basic_nums[1][i];
-                        snprintf(buf, 256, "%"PRId64",",  s->basic_nums[1][i]);
-                        RUN(tld_append(o,buf));
-                }
-                snprintf(buf, 256, "%"PRId64",", total);
-                RUN(tld_append(o,buf));
-                o->len--;
-                RUN(tld_append(o, "],"));
-                RUN(tld_append(o, "["));
-                for(int i = 0; i < s->mapq_map->n_bin;i++){
-                        snprintf(buf, 256, "%.5f,", samstat_ratio(s->basic_nums[1][i], total));
-                        RUN(tld_append(o,buf));
-                }
-                snprintf(buf, 256, "%.5f,", samstat_ratio(total, total));
-                RUN(tld_append(o,buf));
-                o->len--;
-                RUN(tld_append(o, "]\n"));
-        }
-
-        RUN(tld_append(o, "]\n"));
-
-        RUN(tld_append(o, "var mappingtable_data = [{\n"));
-        RUN(tld_append(o, "type: 'table',\n"));
-        RUN(tld_append(o, "header: {\n"));
-        if(s->n_paired){
-                RUN(tld_append(o, "values: [[\"<b>Mapping Quality</b>\"], [\"<b>Read 1</b>\"], [\"<b>Percentage</b>\"], [\"<b>Read 2</b>\"], [\"<b>Percentage</b>\"]],\n"));
-        }else{
-                RUN(tld_append(o, "values: [[\"<b>Mapping Quality</b>\"], [\"<b>Sequences</b>\"], [\"<b>Percentage</b>\"]],\n"));
-        }
-        RUN(tld_append(o, "align: \"center\",\n"));
-        RUN(tld_append(o, "line: {width: 1, color: 'black'},\n"));
-        RUN(tld_append(o, "fill: {color: \"grey\"},\n"));
-        RUN(tld_append(o, "font: {size: 14, color: \"white\"}\n"));
-        RUN(tld_append(o, "},\n"));
-        RUN(tld_append(o, "cells: {\n"));
-        RUN(tld_append(o, "height: 40,\n"));
-        RUN(tld_append(o, "values: mappingtableval,\n"));
-        if(s->n_paired){
-                RUN(tld_append(o, "format : [\"\", \",\", \".1%\", \",\", \".1%\"],\n"));
-
-        }else{
-                RUN(tld_append(o, "format : [\"\",\",\",\".1%\"],\n"));
-        }
-
-        RUN(tld_append(o, "align: [\"center\",\"right\"],\n"));
-        RUN(tld_append(o, "line: {color: \"black\", width: 1},\n"));
-        RUN(tld_append(o, "font: {size: 14, color: [\"black\"]}\n"));
-        RUN(tld_append(o, "}\n"));
-        RUN(tld_append(o, "}]\n"));
-
-        RUN(tld_append(o, "var mapping_table_layout = {\n"));
-        RUN(tld_append(o, "margin: {\"t\": 0, \"b\": 0, \"l\": 0, \"r\": 0},\n"));
-        RUN(tld_append(o, "showlegend: false\n"));
-        RUN(tld_append(o, "}\n"));
-
-
-        RUN(tld_append(o, "Plotly.newPlot('MappingStatsTable', mappingtable_data,mapping_table_layout\n"));
-
-
-        /* config section - here the svg buttom */
-
-
-
-        lst_append(&n,"format : 'svg'");
-        snprintf(buf, 256, "filename : 'MappingOverview'");
-
-        lst_append(&n,buf);
-        lst_append(&n,"height : 500");
-        lst_append(&n,"width : 700");
-        lst_append(&n, "scale : 1");
-
-
-        lst_concatenate(n, ",\n");
-        tld_prepend(n->data, "toImageButtonOptions : {\n");
-        tld_append(n->data, "}");
-        /* encapsulate whole config */
-        tld_prepend(n->data, "{");
-        tld_append(n->data, "}");
-
-
-        RUN(tld_append(o, ",\n"));
-
-
-
-        RUN(tld_append(o, TLD_STR(n->data)));
-
-        lst_free(n);
-        RUN(tld_append(o, ")\n"));
-
-        RUN(tld_append(o, "</script>\n"));
-
+        RUN(app(o, "</ul>\n"));
         return OK;
 ERROR:
         return FAIL;
 }
 
-int samstat_footer(tld_strbuf *out_buffer)
+/* 1.4: the table that is also the key of every MAPQ line on the page */
+static int page_mapq_table(tld_strbuf *o, struct stat_collection *s)
 {
-        RUN(tld_append(out_buffer, "<footer>\n"));
+        char v[MAX_NUM];
+        int paired = is_paired(s);
 
-        RUN(tld_append(out_buffer, "<div>\n"));
-        RUN(tld_append(out_buffer, "<section id=\"about\">\n"));
-        RUN(tld_append(out_buffer, "<h3>About</h3>\n"));
-        RUN(tld_append(out_buffer, "<p>SAMStat is a basic quality control program for NGS data. It displays information about mapped and unmapped reads to diagnose mapping and other problems.</p> <p> The plots on this page were draw using <a href=\"https://plotly.com/graphing-libraries/\">Plotly</a>.</p>\n"));
-        RUN(tld_append(out_buffer, "</section>\n"));
-        RUN(tld_append(out_buffer, "<section id=\"contact\">\n"));
+        RUN(app(o, "<section id=\"mapq\" aria-labelledby=\"mapq-title\">\n<h2 id=\"mapq-title\">"));
+        RUN(esc(o, report_mapq_title));
+        RUN(app(o, "</h2>\n<p class=\"caption\">"));
+        RUN(esc(o, report_mapq_caption));
+        RUN(app(o, "</p>\n<div class=\"table-wrap\">\n<table aria-labelledby=\"mapq-title\">\n<thead><tr>"));
+        RUN(app(o, "<th scope=\"col\">Line in plots</th><th scope=\"col\">Class</th>"));
+        RUN(app(o, "<th scope=\"col\" class=\"num\">Reads</th><th scope=\"col\" class=\"num\">% of reads</th>"));
+        if(paired){
+                RUN(app(o, "<th scope=\"col\" class=\"num\">Read 1</th><th scope=\"col\" class=\"num\">Read 2</th>"));
+        }
+        RUN(app(o, "</tr></thead>\n<tbody>\n"));
+        for(int m = 0; m < COLLECT_N_MAPQ; m++){
+                uint64_t reads = s->basic_nums[0][m] + s->basic_nums[1][m];
+                RUN(app(o, "<tr><td>"));
+                RUN(report_mapq_swatch(o, m));
+                RUN(app(o, "</td><th scope=\"row\">"));
+                RUN(esc(o, report_mapq_help[m].label));
+                RUN(app(o, "</th><td class=\"num\">"));
+                fmt_count(v, sizeof(v), reads);
+                RUN(app(o, v));
+                RUN(app(o, "</td><td class=\"num\">"));
+                if(s->n_total){
+                        fmt_dec(v, sizeof(v), 1, 100.0 * (double) reads / (double) s->n_total);
+                }else{
+                        snprintf(v, sizeof(v), "n/a");
+                }
+                RUN(app(o, v));
+                RUN(app(o, "</td>"));
+                if(paired){
+                        for(int r = 0; r < COLLECT_N_MATE; r++){
+                                RUN(app(o, "<td class=\"num\">"));
+                                fmt_count(v, sizeof(v), s->basic_nums[r][m]);
+                                RUN(app(o, v));
+                                RUN(app(o, "</td>"));
+                        }
+                }
+                RUN(app(o, "</tr>\n"));
+        }
+        RUN(app(o, "</tbody>\n</table>\n</div>\n</section>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
-        RUN(tld_append(out_buffer, "<h3>Contact</h3>\n"));
+/* One plot: question, one-sentence caption, the figure(s), collapsed explanation. */
+static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
+{
+        const struct report_plot_help *h = &report_plot_help[plot_id - 1];
+        char num[16];
+        size_t start;
+        int has_figure;
 
-        RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann.</p>\n"));
-        RUN(tld_append(out_buffer, "<h3>Please cite:</h3>\n"));
+        snprintf(num, sizeof(num), "%d", plot_id);
+        RUN(app(o, "<section class=\"plot\" id=\"plot-"));
+        RUN(app(o, num));
+        RUN(app(o, "\" aria-labelledby=\"plot-"));
+        RUN(app(o, num));
+        RUN(app(o, "-title\">\n<h2 id=\"plot-"));
+        RUN(app(o, num));
+        RUN(app(o, "-title\"><span class=\"num\">"));
+        RUN(app(o, num));
+        RUN(app(o, ".</span> "));
+        RUN(esc(o, h->title));
+        RUN(app(o, "</h2>\n<p class=\"caption\">"));
+        RUN(esc(o, h->caption));
+        RUN(app(o, "</p>\n<div class=\"figs\">\n"));
+        start = o->len;
+        RUN(report_plot_render(o, s, plot_id));
+        has_figure = (strstr(TLD_STR(o) + start, "<svg") != NULL);
+        RUN(app(o, "</div>\n"));
 
-        RUN(tld_append(out_buffer, "<p>Lassmann T. (2023) SAMStat 2. Bioinformatics doi:10.1093/bioinformatics/btad019</p>\n"));
-        RUN(tld_append(out_buffer, "<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n"));
-        RUN(tld_append(out_buffer, "</section>\n"));
-        RUN(tld_append(out_buffer, "<section id=\"blogroll\">\n"));
-        RUN(tld_append(out_buffer, "<h3>Links</h3>\n"));
-        RUN(tld_append(out_buffer, "<ul>\n"));
-        /* RUN(tld_append(out_buffer, "<li><a href=\"http://telethonkids.org.au/\">Telethon Kids Institute</a></li>\n")); */
-        RUN(tld_append(out_buffer, "<li><a href=\"https://samtools.github.io/hts-specs/\">SAM/BAM specifications</a></li>\n"));
-        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/SAMStat/\">SAMStat</a></li>\n"));
-        /* RUN(tld_append(out_buffer, "<li><a href=\"http://code.google.com/p/bedtools/\">BEDtools</a></li>\n")); */
-        RUN(tld_append(out_buffer, "<li><a href=\"https://github.com/TimoLassmann/kalign/\">Kalign</a></li>\n"));
-        /* RUN(tld_append(out_buffer, "<li><a href=\"http://ngsview.sourceforge.net/\">NGSview</a></li>\n")); */
+        /* an N/A line stands alone: the explanation would describe a figure that is not there */
+        if(has_figure){
+                RUN(app(o, "<details>\n<summary>"));
+                RUN(esc(o, report_how_to_read_label));
+                RUN(app(o, "</summary>\n<div class=\"howto\">\n"));
+                RUN(app(o, "<p><strong>"));
+                RUN(esc(o, report_good_label));
+                RUN(app(o, "</strong> "));
+                RUN(esc(o, h->good));
+                RUN(app(o, "</p>\n<p><strong>"));
+                RUN(esc(o, report_look_label));
+                RUN(app(o, "</strong> "));
+                RUN(esc(o, h->look));
+                RUN(app(o, "</p>\n<p><strong>"));
+                RUN(esc(o, report_benign_label));
+                RUN(app(o, "</strong> "));
+                RUN(esc(o, h->benign));
+                RUN(app(o, "</p>\n</div>\n</details>\n"));
+        }
+        RUN(app(o, "</section>\n"));
+        return OK;
+ERROR:
+        return FAIL;
+}
 
+/* 1.6 / F10: version, input basename, citation, raw secondary and supplementary counts.
+ * No command line (it would leak absolute paths and differ with -t). Plain text only: the
+ * report makes no request and links nowhere. */
+static int page_footer(tld_strbuf *o, const char *name, struct stat_collection *s)
+{
+        char v[MAX_NUM];
 
-        RUN(tld_append(out_buffer, "</ul>\n"));
-        RUN(tld_append(out_buffer, "</section>\n"));
-
-        RUN(tld_append(out_buffer, "</div>\n"));
-        RUN(tld_append(out_buffer, "</footer>\n"));
+        RUN(app(o, "<footer>\n<p>Report of <strong>"));
+        RUN(esc(o, name));
+        RUN(app(o, "</strong> made by "));
+        RUN(esc(o, PACKAGE_NAME));
+        RUN(app(o, " "));
+        RUN(esc(o, PACKAGE_VERSION));
+        RUN(app(o, ".</p>\n"));
+        if(s->n_secondary || s->n_supplementary){
+                RUN(app(o, "<p>"));
+                if(s->n_secondary){
+                        fmt_count(v, sizeof(v), s->n_secondary);
+                        RUN(app(o, v));
+                        RUN(app(o, " secondary alignments (not counted)"));
+                }
+                if(s->n_secondary && s->n_supplementary){
+                        RUN(app(o, "; "));
+                }
+                if(s->n_supplementary){
+                        fmt_count(v, sizeof(v), s->n_supplementary);
+                        RUN(app(o, v));
+                        RUN(app(o, " supplementary alignments (not counted)"));
+                }
+                RUN(app(o, ".</p>\n"));
+        }
+        RUN(app(o, "<p>Please cite: Lassmann T., &ldquo;SAMStat 2: quality control for next generation sequencing data&rdquo;, "
+                "<em>Bioinformatics</em> 39(1), btad019, 2023, doi:10.1093/bioinformatics/btad019.</p>\n"));
+        RUN(app(o, "<p>Original method: Lassmann T., Hayashizaki Y., Daub C.O., &ldquo;SAMStat: monitoring biases in next "
+                "generation sequencing data&rdquo;, <em>Bioinformatics</em> 27(1), 130-131, 2011, "
+                "doi:10.1093/bioinformatics/btq614.</p>\n"));
+        RUN(app(o, "</footer>\n"));
         return OK;
 ERROR:
         return FAIL;

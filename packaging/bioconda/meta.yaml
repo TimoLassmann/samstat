@@ -1,0 +1,44 @@
+# DRAFT bioconda recipe for SAMStat - not submitted.
+# The sha256 below is a placeholder: after tagging a release, replace it with
+# the value from samstat-<version>.tar.gz.sha256 attached to the GitHub release.
+{% set version = "2.3.0" %}
+
+package:
+  name: samstat
+  version: {{ version }}
+
+source:
+  url: https://github.com/TimoLassmann/samstat/releases/download/v{{ version }}/samstat-{{ version }}.tar.gz
+  sha256: 0000000000000000000000000000000000000000000000000000000000000000  # FIXME: real sha256 after release
+
+build:
+  number: 0
+  run_exports:
+    - {{ pin_subpackage('samstat', max_pin='x') }}
+
+requirements:
+  build:
+    - {{ compiler('c') }}
+    - cmake >=3.19
+    - make
+    - autoconf
+    - automake
+  host:
+    - hdf5
+    - zlib
+    - bzip2
+    - xz
+    - libcurl
+  run:
+    - hdf5
+
+test:
+  commands:
+    - samstat -v
+
+about:
+  home: https://github.com/TimoLassmann/samstat
+  license: GPL-3.0-or-later
+  license_file: COPYING
+  summary: Quality control and statistics for SAM/BAM/FASTA/FASTQ sequence files.
+  doc_url: https://github.com/TimoLassmann/samstat

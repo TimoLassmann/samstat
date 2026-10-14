@@ -10,6 +10,30 @@
 set(READER_HELPERS ${PROJECT_SOURCE_DIR}/tests/cmake)
 set(READER_OUT ${SAMSTAT_TEST_OUT_DIR}/reader)
 
+# --- unit test -------------------------------------------------------------
+add_executable(unit_parse_alignment
+  unit_parse_alignment.c
+  ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
+  ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c)
+if(SAMSTAT_USE_SYSTEM_HTSLIB)
+  target_link_libraries(unit_parse_alignment PRIVATE PkgConfig::HTSLIB)
+else()
+  add_dependencies(unit_parse_alignment htslib)
+  target_include_directories(unit_parse_alignment PRIVATE ${HTSLIB_SRC_DIR})
+  target_link_libraries(unit_parse_alignment PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
+endif()
+if(Threads_FOUND)
+  target_link_libraries(unit_parse_alignment PRIVATE Threads::Threads)
+endif()
+target_link_libraries(unit_parse_alignment PRIVATE tld-dev)
+if(SAMSTAT_SANITIZE)
+  target_compile_options(unit_parse_alignment PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+  target_link_options(unit_parse_alignment PRIVATE -fsanitize=address,undefined)
+endif()
+
+add_test(NAME reader:unit_parse_alignment COMMAND unit_parse_alignment)
+set_tests_properties(reader:unit_parse_alignment PROPERTIES LABELS reader)
+
 # --- JSON value tests ------------------------------------------------------
 # reader_json_test(<name> <fixture> <checks...>)
 function(reader_json_test name input)

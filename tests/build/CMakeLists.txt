@@ -1,10 +1,11 @@
 # Build-system tests (label: build)
 
+string(REPLACE "." "\\." PROJECT_VERSION_RE "${PROJECT_VERSION}")
 add_test(NAME build:version
   COMMAND samstat -v)
 set_tests_properties(build:version PROPERTIES
   LABELS build
-  PASS_REGULAR_EXPRESSION "${PROJECT_VERSION}")
+  PASS_REGULAR_EXPRESSION "${PROJECT_VERSION_RE}")
 
 add_test(NAME build:help
   COMMAND samstat -h)

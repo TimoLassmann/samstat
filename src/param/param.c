@@ -317,7 +317,7 @@ int print_help(char **argv )
         fprintf(stdout,"\n");
         fprintf(stdout,"%s (v%s)\n", tmp, PACKAGE_VERSION);
         fprintf(stdout,"\n");
-        fprintf(stdout,"Copyright (C) 2011,2022 Timo Lassmann\n");
+        fprintf(stdout,"Copyright (C) 2011-2026 Timo Lassmann\n");
         fprintf(stdout,"\n");
 
 

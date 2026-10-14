@@ -21,10 +21,10 @@ Two commits on top of f745dd8, branch `fix/hdf5-optional-keeps-seq`:
 
 Files (git format-patch output):
 
-- `/private/tmp/claude-502/-Users-timo-code-samstat/cd63f9d1-90ba-4cf8-9117-1c8e6cda68a9/scratchpad/tld-patches/0001-Keep-seq-module-when-TLD_USE_HDF5-OFF-add-TLD_NO_HDF.patch`
-- `/private/tmp/claude-502/-Users-timo-code-samstat/cd63f9d1-90ba-4cf8-9117-1c8e6cda68a9/scratchpad/tld-patches/0002-Include-inttypes.h-from-tld.h.patch`
+- `docs/tld-patches/0001-Keep-seq-module-when-TLD_USE_HDF5-OFF-add-TLD_NO_HDF.patch`
+- `docs/tld-patches/0002-Include-inttypes.h-from-tld.h.patch`
 
-Patched clone: `.../scratchpad/tld-fix` (same scratchpad directory).
+Apply them in a tld checkout at f745dd8 with `git am docs/tld-patches/*.patch`.
 
 Verified: tld ctest passes with HDF5 ON (36 tests) and OFF (35 tests, no
 unit-hdf5). samstat built against the patched tld with `-DTLD_USE_HDF5=OFF`

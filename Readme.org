@@ -42,6 +42,15 @@ cmake --build build -j4
 cmake --install build
 #+end_src
 
+Optional CMake options: =-DSAMSTAT_USE_SYSTEM_HTSLIB=ON= (use the system htslib >= 1.16 instead of the bundled one), =-DSAMSTAT_SANITIZE=ON= (AddressSanitizer and UBSan) and =-DSAMSTAT_REQUIRE_MULTIQC=ON= (fail to configure if =multiqc= is missing, so the MultiQC integration test always runs).
+
+Some memory errors only show up in a sanitizer build, so before a release also run the whole suite with it:
+
+#+begin_src bash :eval never
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON
+cmake --build build-asan -j4 && (cd build-asan && ctest --output-on-failure -j4)
+#+end_src
+
 If you already cloned without =--recursive= run =git submodule update --init --recursive=.
 
 * Usage
@@ -50,7 +59,7 @@ If you already cloned without =--recursive= run =git submodule update --init --r
 samstat <file.sam>  <file.bam>  <file.fa>  <file.fq> ...  <options> 
 #+end_src
 
-For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix.
+For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix. Exit codes: 0 success (also for inputs without reads, with a warning), 1 at least one input failed (the others are still processed), 2 usage error.
 
 Available options:
 
@@ -60,6 +69,8 @@ Available options:
    -p/-peek           : Report stats only on the first <n> sequences. [unlimited]
    -t                 : Number of threads. [4]
                         will only be used when multiple input files are present. 
+   --json             : Also write <input>.samstat.json (see docs/json-format.md). []
+   --multiqc          : Also write MultiQC custom content files (see docs/multiqc.md). []
    --plotend          : Add base and quality plots relative to the read ends. []
    --seed             : Random number seed. [0]
    --verbose          : Enables verbose output. []
@@ -74,7 +85,7 @@ Available options:
 * New in 2.3.0
 
 - =--json= : machine-readable summary of the statistics (for pipelines and downstream tools).
-- MultiQC support: SAMStat output can be aggregated by [[https://multiqc.info][MultiQC]] (in development for 2.3.0).
+- MultiQC support: SAMStat output can be aggregated by [[https://multiqc.info][MultiQC]] (see =docs/multiqc.md=, option =--multiqc=).
 
 See =CHANGELOG.md= for details.
 

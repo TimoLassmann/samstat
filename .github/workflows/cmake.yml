@@ -2,7 +2,7 @@ name: CMake
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "maintenance/**" ]
   pull_request:
     branches: [ "main" ]
 
@@ -68,3 +68,26 @@ jobs:
       env:
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=0
       run: ctest --output-on-failure --no-tests=error -j4
+
+  ubuntu-multiqc:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y libhdf5-dev autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+
+    - name: Install MultiQC
+      run: pip install multiqc==1.25.1
+
+    - name: Configure (MultiQC is required, so multiqc:run is registered)
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF -DSAMSTAT_REQUIRE_MULTIQC=ON
+
+    - name: Build
+      run: cmake --build build -j4
+
+    - name: Test (random order, repeated, to find tests that share output directories)
+      working-directory: build
+      run: ctest --output-on-failure --no-tests=error -j4 --schedule-random --repeat until-fail:2

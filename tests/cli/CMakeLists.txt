@@ -205,3 +205,9 @@ cli_test(error_fastq_truncated
 cli_test(error_good_after_bad_fastq
   ARGS -t 1 -d ${D} ${CMAKE_CURRENT_SOURCE_DIR}/data/bad_no_seq.fq ${FX}/small.sam
   RC 1 FILES small.sam.samstat.html)
+
+# --- threads give the same results ---------------------------------------------
+add_test(NAME cli:threads_many_inputs
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/small.sam
+    -DOUTDIR=${CLI_OUT}/threads_many_inputs -P ${CLI_HELPERS}/run_threads.cmake)
+set_tests_properties(cli:threads_many_inputs PROPERTIES LABELS cli)

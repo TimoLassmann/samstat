@@ -1,0 +1,88 @@
+From 784f52b6cae8b90128a529121d2bb6733b4558d5 Mon Sep 17 00:00:00 2001
+From: Timo Lassmann <timolassmann@icloud.com>
+Date: Wed, 14 Oct 2026 09:19:12 +0800
+Subject: [PATCH 1/2] Keep seq module when TLD_USE_HDF5=OFF; add TLD_NO_HDF5
+
+With TLD_USE_HDF5=OFF the library exported the BOOT define publicly.
+BOOT guards both the seq module and the hdf5 module, so consumers lost
+the seq API (tld-seq.h) as well. Introduce TLD_NO_HDF5 (PUBLIC, set when
+HDF5 is off) that guards only the hdf5 headers and sources. BOOT is now
+used only for the gentable bootstrap build. The unit-hdf5 test is only
+registered when TLD_USE_HDF5 is ON.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/CMakeLists.txt   | 6 ++++--
+ src/tld.c            | 2 +-
+ src/tld.h            | 2 +-
+ tests/CMakeLists.txt | 4 +++-
+ 4 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 8eae773..6d0a4b9 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -35,7 +35,8 @@ if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/tld-seq-tables.h)
+     target_include_directories(tld-dev PUBLIC ${HDF5_C_INCLUDE_DIRS})
+   else()
+     target_link_libraries(tld-dev PRIVATE m ZLIB::ZLIB Threads::Threads)
+-    target_compile_definitions(tld-dev PUBLIC BOOT)
++    # only the hdf5 module is dropped; the seq module must stay available
++    target_compile_definitions(tld-dev PUBLIC TLD_NO_HDF5)
+   endif()
+ else()
+   add_library(boot STATIC
+@@ -71,7 +72,8 @@ else()
+     target_include_directories(tld-dev PUBLIC ${HDF5_C_INCLUDE_DIRS})
+   else()
+     target_link_libraries(tld-dev PRIVATE m ZLIB::ZLIB Threads::Threads)
+-    target_compile_definitions(tld-dev PUBLIC BOOT)
++    # only the hdf5 module is dropped; the seq module must stay available
++    target_compile_definitions(tld-dev PUBLIC TLD_NO_HDF5)
+   endif()
+ 
+ endif(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/tld-seq-tables.h)
+diff --git a/src/tld.c b/src/tld.c
+index c3c7181..aeada87 100644
+--- a/src/tld.c
++++ b/src/tld.c
+@@ -19,7 +19,7 @@
+ 
+ #include "logsum/tld-logsum.c"
+ 
+-#ifndef BOOT
++#if !defined(BOOT) && !defined(TLD_NO_HDF5)
+ #include "hdf5/tld-hdf5.c"
+ #include "hdf5/tld-hdf5_types.c"
+ #include "hdf5/tld-hdf5_tree.c"
+diff --git a/src/tld.h b/src/tld.h
+index 6c7982d..27a01dd 100644
+--- a/src/tld.h
++++ b/src/tld.h
+@@ -25,7 +25,7 @@
+ #include "logsum/tld-logsum.h"
+ 
+ /* #include "./hdf5/tld-hdf5_struct.h" */
+-#ifndef BOOT
++#if !defined(BOOT) && !defined(TLD_NO_HDF5)
+ #include "hdf5/tld-hdf5.h"
+ #include "hdf5/tld-hdf5_types.h"
+ #include "hdf5/tld-hdf5_tree.h"
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index 39e2d5e..4c13af9 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -66,7 +66,9 @@ add_custom_test(unit-seq-rev utests/unit_seq_rev.c)
+ add_custom_test(int-noise itests/noise.c) 
+ add_custom_test(unit-stats utests/unit_stats.c) 
+ add_custom_test(unit-pearson utests/unit_pearson.c) 
+-add_custom_test(unit-hdf5 utests/unit_hdf5.c) 
++if(TLD_USE_HDF5)
++  add_custom_test(unit-hdf5 utests/unit_hdf5.c)
++endif()
+ add_custom_test(unit-test-suite utests/unit_tests.c) 
+ add_custom_test(unit-rng utests/unit_rng.c) 
+ add_custom_test(unit-alpha utests/unit_alphabet.c) 
+-- 
+2.56.0
+

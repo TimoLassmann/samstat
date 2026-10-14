@@ -137,3 +137,12 @@ endfunction()
 
 reader_error_test(not_a_bam not_a_bam.bam "Cannot read the SAM/BAM header")
 reader_error_test(truncated truncated.bam "truncated or corrupt")
+
+# a 5000 bp read after three 20 bp reads: length histogram and quality rows grow with it
+reader_json_test(long_after_short long_after_short.sam
+  "summary.total_reads=4"
+  "read1.length.mapq_ge30.20=3"
+  "read1.length.mapq_ge30.5000=1"
+  "read1.base_quality.mapq_ge30.40.19=4"
+  "read1.base_quality.mapq_ge30.40.4999=1"
+  "read1.base_quality.mapq_ge30.40#len=5000")

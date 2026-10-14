@@ -64,7 +64,9 @@ mqc_check(basequal_paired paired paired_small.sam.samstat_basequal_mqc.json
 
 set_tests_properties(multiqc:files multiqc:files_paired multiqc:off PROPERTIES LABELS multiqc)
 
-# Optional: a real MultiQC run. Registered only if multiqc is installed.
+# Optional: a real MultiQC run. Registered only if multiqc is installed;
+# -DSAMSTAT_REQUIRE_MULTIQC=ON turns a missing multiqc into a configure error (CI).
+option(SAMSTAT_REQUIRE_MULTIQC "Fail the configure step if multiqc is not installed" OFF)
 find_program(MULTIQC multiqc)
 if(MULTIQC)
   set(MQC_INDIR ${MQC_OUT}/multiqc_in)
@@ -88,6 +90,8 @@ if(MULTIQC)
   set_tests_properties(multiqc:run_setup_c PROPERTIES DEPENDS multiqc:run_setup_b)
   set_tests_properties(multiqc:run PROPERTIES FIXTURES_REQUIRED mqc_tool LABELS multiqc TIMEOUT 300)
   message(STATUS "multiqc found (${MULTIQC}): registering multiqc:run")
+elseif(SAMSTAT_REQUIRE_MULTIQC)
+  message(FATAL_ERROR "SAMSTAT_REQUIRE_MULTIQC is ON but multiqc was not found on PATH")
 else()
   message(STATUS "multiqc not found: skipping optional multiqc:run test")
 endif()
@@ -192,3 +196,23 @@ mqc_run_test(unwritable_file 1
   MKDIR small.sam.samstat_mapq_mqc.json
   ARGS --multiqc -d @OUTDIR@ ${SAMSTAT_FIXTURE_DIR}/small.sam
   REGEX "Failed to open output file")
+
+# MultiQC file names are limited to 1024 characters: a -d path of 995 characters still
+# takes the HTML report (+23) but not the longest MultiQC file (+35), which is an error
+# and not a truncation. The directory is created below the scratch directory.
+string(LENGTH "${MQC_OUT}/path_too_long" mqc_prefix_len)
+math(EXPR mqc_rest "995 - ${mqc_prefix_len}")
+set(MQC_LONG "")
+while(mqc_rest GREATER 201)
+  string(REPEAT "d" 200 comp)
+  string(APPEND MQC_LONG "/${comp}")
+  math(EXPR mqc_rest "${mqc_rest} - 201")
+endwhile()
+math(EXPR mqc_rest "${mqc_rest} - 1")
+string(REPEAT "d" ${mqc_rest} comp)
+string(APPEND MQC_LONG "/${comp}")
+string(SUBSTRING "${MQC_LONG}" 1 -1 MQC_LONG_REL)
+mqc_run_test(path_too_long 1
+  MKDIR ${MQC_LONG_REL}
+  ARGS --multiqc -d @OUTDIR@${MQC_LONG} ${SAMSTAT_FIXTURE_DIR}/small.sam
+  REGEX "Output path too long")

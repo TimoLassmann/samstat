@@ -197,3 +197,31 @@ accompanied by a `reads.fq`; the lower-case FASTQ exists only inside `reads.fq.g
   `empty.sam`).
 - Expected: total reads 0; a report is written; exit 0. It is the only input
   without a readable header that is accepted (`not_a_bam.bam` is rejected).
+
+## q) md_long_alignment.sam
+
+- Purpose: 300M reads with MD tags (`99999`, `300A99999`, `300`) that are longer than
+  the alignment. The alignment buffers start with 256 bytes of slack, so 20M
+  fixtures cannot expose an unbounded MD walk; 300 bases can.
+- Expected: total reads 3; read length 300 (3 x); no mismatches; no crash (the
+  unbounded loop is caught by `-DSAMSTAT_SANITIZE=ON`).
+
+## r) secondary.sam
+
+- Purpose: counting of secondary and supplementary records. 3 primary (flags 0,
+  0, 16), 2 secondary (256), 1 flag 2304 (secondary and supplementary: counted
+  as secondary), 1 supplementary (2048).
+- Expected: total reads 3; `secondary` 3; `supplementary` 1.
+
+## s) FASTA/FASTQ fixtures
+
+- `qual.fq`: `!III` and `IIII`; `!` is Q0, `I` is Q40 (Phred+33).
+- `nonl.fq`, `nonl.fa`: last record without trailing newline (1 and 2 reads).
+- `empty.fq.gz`, `newline_only.fq`, `header_only.fa`: valid inputs without reads
+  (0 reads, report written, exit 0).
+
+## t) long_after_short.sam
+
+- Purpose: three 20 bp reads followed by one 5000 bp read (arrays must grow).
+- Expected: total reads 4; length 20 x3 and 5000 x1; Q40 count at position 19 is 4
+  and at position 4999 is 1.

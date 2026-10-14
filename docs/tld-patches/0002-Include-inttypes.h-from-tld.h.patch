@@ -1,0 +1,29 @@
+From d940a154b16cced6b5684d917c5572524b7ea905 Mon Sep 17 00:00:00 2001
+From: Timo Lassmann <timolassmann@icloud.com>
+Date: Wed, 14 Oct 2026 09:22:17 +0800
+Subject: [PATCH 2/2] Include inttypes.h from tld.h
+
+Consumers use the PRId64 family of macros via tld.h. These were only
+available transitively through the hdf5 headers; with TLD_USE_HDF5=OFF
+they were undefined. Include inttypes.h directly next to stdint.h.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/tld.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/tld.h b/src/tld.h
+index 27a01dd..2beff37 100644
+--- a/src/tld.h
++++ b/src/tld.h
+@@ -5,6 +5,7 @@
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <stdint.h>
++#include <inttypes.h>
+ 
+ #include <float.h>
+ 
+-- 
+2.56.0
+

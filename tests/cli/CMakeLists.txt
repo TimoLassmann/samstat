@@ -149,6 +149,12 @@ foreach(opt -t -p)
 endforeach()
 cli_test(badnum_t_zero ARGS -t 0 ${FX}/small.sam RC 2 REGEX "-t")
 cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
+# -t is capped at 64: larger values are rejected before any thread or buffer is created
+cli_test(threads_max_ok ARGS -d ${D} -t 64 ${FX}/small.sam FILES small.sam.samstat.html)
+foreach(n 65 100000)
+  cli_test(threads_over_max_${n} ARGS -d ${D} -t ${n} ${FX}/small.sam
+    RC 2 REGEX "at most 64 threads" NO_FILES small.sam.samstat.html)
+endforeach()
 cli_test(num_ok ARGS -d ${D} -t 3 -p 100 ${FX}/small.sam FILES small.sam.samstat.html)
 
 # --- -p/--peek analyses exactly N reads (reader batch is 4096 records) --------------------------

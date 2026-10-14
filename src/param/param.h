@@ -19,6 +19,8 @@
 /* name of the input that stands for standard input */
 #define SAMSTAT_STDIN "-"
 
+#define SAMSTAT_MAX_THREADS 64 /* -t above this is a usage error */
+
 struct samstat_param {
         char** infile;
         char* outfile;

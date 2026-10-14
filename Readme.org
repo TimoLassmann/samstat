@@ -68,7 +68,7 @@ Available options:
 #+begin_src bash :eval never 
   -d, --dir DIR      write reports to DIR (created if missing) [next to input]
   -p, --peek N       analyse only the first N reads (not random) [all]
-  -t, --threads N    total threads; also speeds up a single input [4]
+  -t, --threads N    total threads, 1-64 [4]
       --json         also write <input>.samstat.json (see docs/json-format.md)
       --multiqc      also write MultiQC files <input>.samstat_*_mqc.json (see docs/multiqc.md)
       --verbose      debug output

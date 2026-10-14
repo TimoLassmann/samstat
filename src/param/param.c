@@ -94,6 +94,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         break;
                 case 't':
                         RUN(parse_unsigned(optarg, "-t/--threads", INT32_MAX, &v));
+                        ASSERT(v <= SAMSTAT_MAX_THREADS, "Option -t/--threads: at most %d threads (got %s)", SAMSTAT_MAX_THREADS, optarg);
                         p->n_threads = (int) v;
                         break;
                 case 'd':
@@ -440,7 +441,7 @@ int print_help(char **argv )
         fprintf(stdout,"Usage: %s [options] <file|-> [file ...]\n\n", tmp);
         fprintf(stdout,"  -d, --dir DIR      write reports to DIR (created if missing) [next to input]\n");
         fprintf(stdout,"  -p, --peek N       analyse only the first N reads (not random) [all]\n");
-        fprintf(stdout,"  -t, --threads N    total threads [4]\n");
+        fprintf(stdout,"  -t, --threads N    total threads, 1-64 [4]\n");
         fprintf(stdout,"      --json         also write <input>.samstat.json\n");
         fprintf(stdout,"      --multiqc      also write MultiQC files <input>.samstat_*_mqc.json\n");
         fprintf(stdout,"      --verbose      debug output\n");

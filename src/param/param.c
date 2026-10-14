@@ -410,6 +410,26 @@ int samstat_pool_threads(const struct samstat_param *p)
         return MACRO_MAX(1, p->n_threads / 4);
 }
 
+int samstat_worker_threads(const struct samstat_param *p)
+{
+        /* The calling thread reads. T >= n_files: one file per thread, each inline.
+         * Otherwise the files run one after another and spend all T threads: the reader,
+         * P decompression threads (none below T = 3) and the rest as workers. */
+        if(p->n_threads < 2 || p->n_infile >= p->n_threads){
+                return 0;
+        }
+        return p->n_threads - 1 - samstat_pool_threads(p);
+}
+
+int samstat_file_threads(const struct samstat_param *p)
+{
+        /* threads that each work on a different file at the same time */
+        if(p->n_infile >= p->n_threads){
+                return p->n_threads;
+        }
+        return 1;
+}
+
 int print_help(char **argv )
 {
         char* tmp = NULL;
@@ -420,7 +440,7 @@ int print_help(char **argv )
         fprintf(stdout,"Usage: %s [options] <file|-> [file ...]\n\n", tmp);
         fprintf(stdout,"  -d, --dir DIR      write reports to DIR (created if missing) [next to input]\n");
         fprintf(stdout,"  -p, --peek N       analyse only the first N reads (not random) [all]\n");
-        fprintf(stdout,"  -t, --threads N    threads; one input file per thread [4]\n");
+        fprintf(stdout,"  -t, --threads N    total threads [4]\n");
         fprintf(stdout,"      --json         also write <input>.samstat.json\n");
         fprintf(stdout,"      --multiqc      also write MultiQC files <input>.samstat_*_mqc.json\n");
         fprintf(stdout,"      --verbose      debug output\n");

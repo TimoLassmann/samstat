@@ -59,3 +59,47 @@ collect_test(qual:clamp_high ${SAMSTAT_FIXTURE_DIR}/high_qual.sam
     read1.base_quality.mapq_ge30.41.5=2
     read1.base_quality.mapq_ge30.41.24=2)
 
+# --- index bounds ----------------------------------------------------------
+# seq_star_softclip.sam: SEQ '*' with CIGAR 10S40M. The stored length is 0, not
+# 0 - 10 (out-of-bounds write before the fix).
+collect_test(bounds:seq_star_softclip ${SAMSTAT_FIXTURE_DIR}/seq_star_softclip.sam
+  ARGS --plotend --norm
+  CHECKS
+    summary.total_reads=1
+    read1.length.mapq_ge30.0=1
+    "read1.base_quality.mapq_ge30#len=0")
+
+# hardclip_softclip.sam: 50 bp reads with 10 soft + 5 hard clip, 40 bp aligned.
+collect_test(bounds:hardclip_softclip ${SAMSTAT_FIXTURE_DIR}/hardclip_softclip.sam
+  ARGS --plotend --norm
+  CHECKS
+    summary.total_reads=2
+    read1.base_quality.mapq_ge30.40.0=2)
+
+collect_test(bounds:softclip5_md ${SAMSTAT_FIXTURE_DIR}/softclip5_md.sam
+  ARGS --plotend --norm
+  CHECKS summary.total_reads=2)
+
+# 4 reads from 2 pairs: read2 plots and R2 end / norm plots are exercised.
+collect_test(bounds:paired_plotend_norm ${SAMSTAT_FIXTURE_DIR}/paired_small.sam
+  ARGS --plotend --norm
+  CHECKS
+    summary.total_reads=4
+    summary.read1_reads=2
+    summary.read2_reads=2
+    read2.n_reads=2)
+
+collect_test(bounds:small_bam_plotend_norm ${SAMSTAT_FIXTURE_DIR}/small.bam
+  ARGS --plotend --norm
+  CHECKS summary.total_reads=20)
+
+collect_test(bounds:md_inconsistent ${SAMSTAT_FIXTURE_DIR}/md_inconsistent.sam
+  ARGS --plotend --norm
+  CHECKS summary.total_reads=3)
+
+# --- every dev/*.sam with --plotend --norm ---------------------------------
+file(GLOB COLLECT_DEV_SAM ${SAMSTAT_TEST_DATA_DIR}/*.sam)
+foreach(input ${COLLECT_DEV_SAM})
+  get_filename_component(name ${input} NAME)
+  collect_test(plots:${name} ${input} ARGS --plotend --norm)
+endforeach()

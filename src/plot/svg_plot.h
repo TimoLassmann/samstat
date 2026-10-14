@@ -24,7 +24,7 @@
  * text at a 360 px viewport (328 px of content) should therefore keep
  * width * 12 / font <= 328 (the report uses 400 units with 15 unit text), or
  * stack the figures. A page may also scale a figure up with CSS width:100%.
- * A histogram bin with no drawn neighbour is at least 2 units wide and 1 unit
+ * A histogram bin with no drawn neighbour is at least 6 units wide and 1 unit
  * high (svg_step), so a lone bin on a log axis is not a hairline.
  *
  * Colours are passed as "#rrggbb" strings and dash patterns as
@@ -154,6 +154,9 @@ int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s);
 
 /* Dashed black vertical line at data value x with a text label beside it. */
 int svg_vline(tld_strbuf* o, const svg_panel* p, double x, const char* label);
+
+/* Short text centred in the plotting area of panel p (for example "none detected" in a flat panel). */
+int svg_panel_note(tld_strbuf* o, const svg_panel* p, const char* text);
 
 /* A complete small <svg> showing one line sample (for the MAPQ table). */
 int svg_swatch(tld_strbuf* o, const char* id, const char* color, const char* dash,

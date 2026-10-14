@@ -164,8 +164,8 @@ static void fmt_si(char *buf, size_t n, uint64_t v)
         fmt_si_unit(buf, n, v, "");
 }
 
-/* Lengths: bp below 10 kb, kb above. Above 1 kb a value that is a bin edge (within 1%) is marked
- * with "~"; exact is set when the value is the true length. */
+/* Lengths: bp below 10 kb, kb up to 1 Mb, Mb above (the unit of the Bases tile). Above 1 kb a value
+ * that is a bin edge (within 1%) is marked with "~"; exact is set when the value is the true length. */
 static void fmt_len(char *buf, size_t n, uint64_t v, int exact)
 {
         char t[48];
@@ -176,6 +176,10 @@ static void fmt_len(char *buf, size_t n, uint64_t v, int exact)
         }else if(v < 10000){
                 fmt_count(t, sizeof(t), v);
                 snprintf(buf, n, "%s%s bp", tilde, t);
+        }else if(v >= 999950){
+                char d[32];
+                fmt_dec(d, sizeof(d), 1, (double) v / 1000000.0);
+                snprintf(buf, n, "%s%s Mb", tilde, d);
         }else{
                 char d[32];
                 char ip[32];
@@ -499,9 +503,9 @@ static int page_header(tld_strbuf *o, const char *name, const char *format, stru
         if(s->n_total && s->total_bases){
                 fmt_len(len, sizeof(len), s->median_best, s->median_exact);
                 RUN(app(o, s->layout == COLLECT_LAYOUT_LONG ? "long" : "short"));
-                RUN(app(o, " layout (median length "));
+                RUN(app(o, " reads (median "));
                 RUN(esc(o, len));
-                RUN(app(o, "; long when &gt;= 1 kb) &middot; "));
+                RUN(app(o, ") &middot; "));
         }
         RUN(app(o, "SAMStat "));
         RUN(esc(o, PACKAGE_VERSION));
@@ -573,14 +577,14 @@ static int page_strip(tld_strbuf *o, struct stat_collection *s)
         /* mean Q is left out when no base has a quality (FASTA) */
         if(s->qual_bases_all > 0){
                 fmt_dec(v, sizeof(v), 1, s->mean_q);
-                RUN(strip_item(o, "Mean Q", v, NULL));
+                RUN(strip_item(o, "Mean Q", v, report_tile_meanq_sub));
         }
 
         if(s->is_aligned){
                 fmt_pct_tile(v, sizeof(v), s->pct_mapped);
                 RUN(strip_item(o, "% mapped", v, NULL));
                 fmt_pct_tile(v, sizeof(v), s->pct_mapq_ge30);
-                RUN(strip_item(o, "% MAPQ >= 30", v, NULL));
+                RUN(strip_item(o, "% MAPQ >= 30", v, COLLECT_IS_NA(s->pct_mapq_ge30) ? NULL : report_tile_mapq_sub));
                 fmt_pct_tile(v, sizeof(v), s->pct_clipped);
                 RUN(strip_item(o, "% bases clipped", v, COLLECT_IS_NA(s->pct_clipped) ? NULL : report_tile_clipped_sub));
                 if(COLLECT_IS_NA(s->median_identity)){
@@ -589,7 +593,7 @@ static int page_strip(tld_strbuf *o, struct stat_collection *s)
                         fmt_dec(tmp, sizeof(tmp), 1, s->median_identity);
                         snprintf(v, sizeof(v), "%s%%", tmp);
                 }
-                RUN(strip_item(o, "Median identity", v, NULL));
+                RUN(strip_item(o, "Median identity", v, COLLECT_IS_NA(s->median_identity) ? NULL : report_tile_identity_sub));
         }
         RUN(app(o, "</dl>\n"));
         return OK;
@@ -618,11 +622,12 @@ static int page_notes(tld_strbuf *o, struct stat_collection *s)
         int ident_na = s->identity_na > 0;
         int beyond = (s->layout == COLLECT_LAYOUT_SHORT && s->bases_beyond_position_axis > 0);
         int no_seq = (s->n_total > 0 && s->total_bases == 0);
-        int few = (!no_seq && s->n_total > 0 && s->n_total < REPORT_FEW_READS);
+        int hidden = (!no_seq && s->n_total > 0 && s->n_total < REPORT_MIN_POS_BASES);   /* plots 3-5 are not drawn */
+        int few = (!no_seq && !hidden && s->n_total > 0 && s->n_total < REPORT_FEW_READS);
         uint64_t in_axis = 0;
         double pct = 0.0;
 
-        if(!(partial || no_md || ident_na || beyond || no_seq || few)){
+        if(!(partial || no_md || ident_na || beyond || no_seq || few || hidden)){
                 return OK;
         }
         RUN(app(o, "<ul class=\"notes\" aria-label=\"Notes\">\n"));
@@ -633,9 +638,13 @@ static int page_notes(tld_strbuf *o, struct stat_collection *s)
         if(no_seq){
                 RUN(note_item(o, report_note_no_sequence, NULL, NULL));
         }
+        if(hidden){
+                fmt_count(a, sizeof(a), s->n_total);
+                RUN(note_item(o, report_note_hidden, a, s->n_total == 1 ? "" : "s"));
+        }
         if(few){
                 fmt_count(a, sizeof(a), s->n_total);
-                RUN(note_item(o, report_note_few_reads, a, NULL));
+                RUN(note_item(o, report_note_few_reads, a, REPORT_MIN_POS_BASES_STR));
         }
         if(no_md){
                 fmt_count(a, sizeof(a), s->reads_without_md);
@@ -725,7 +734,7 @@ ERROR:
         return FAIL;
 }
 
-/* One plot: question, one-sentence caption, the figure(s), the "Good:" line, collapsed explanation. */
+/* One plot: question, one-sentence caption, the figure(s), the "What good looks like:" line, collapsed explanation. */
 static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
 {
         const struct report_plot_help *h = &report_plot_help[plot_id - 1];

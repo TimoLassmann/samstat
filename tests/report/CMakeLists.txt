@@ -127,6 +127,39 @@ set_tests_properties(report:ultralong_html report:short_html_size
 # =============================================================================
 
 set(LONGREAD "${SAMSTAT_FIXTURE_DIR}/longread")
+
+# Inputs of 49 and 60 reads for the thresholds of the per-position plots (REPORT_MIN_POS_BASES = 50),
+# written at configure time into the build tree (no fixture files): single-end 100 bp reads, MAPQ 60,
+# qualities that differ per read. mode: perfect = NM:i:0 and MD:Z:100 (error panels all zero),
+# mismatch = one mismatch at position i%100 per read, nomd = no NM and no MD tag.
+set(GEN_DIR ${REPORT_OUT}/gen)
+file(MAKE_DIRECTORY ${GEN_DIR})
+function(gen_reads path n mode)
+  string(REPEAT "ACGT" 25 seq)
+  set(txt "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:100000\n")
+  math(EXPR last "${n}-1")
+  foreach(i RANGE 0 ${last})
+    math(EXPR pos "1+${i}*10")
+    math(EXPR q "33+20+(${i}*7)%20")
+    string(ASCII ${q} qc)
+    string(REPEAT "${qc}" 100 qual)
+    set(tags "")
+    if(mode STREQUAL "perfect")
+      set(tags "\tNM:i:0\tMD:Z:100")
+    elseif(mode STREQUAL "mismatch")
+      math(EXPR mm "${i}%100")
+      math(EXPR rest "99-${mm}")
+      set(tags "\tNM:i:1\tMD:Z:${mm}A${rest}")
+    endif()
+    string(APPEND txt "r${i}\t0\tchr1\t${pos}\t60\t100M\t*\t0\t0\t${seq}\t${qual}${tags}\n")
+  endforeach()
+  file(WRITE ${path} "${txt}")
+endfunction()
+gen_reads(${GEN_DIR}/perfect49.sam 49 perfect)
+gen_reads(${GEN_DIR}/perfect50.sam 50 perfect)
+gen_reads(${GEN_DIR}/perfect60.sam 60 perfect)
+gen_reads(${GEN_DIR}/mismatch60.sam 60 mismatch)
+gen_reads(${GEN_DIR}/nomd60.sam 60 nomd)
 set(NO_PLOT_56 "${PLOT_T5}|${PLOT_T6}|No mapped reads.|Mismatches not available")
 
 # report:na_notes. Unaligned input (FASTQ, FASTA, uBAM without @SQ): plots 1-4 only, no MAPQ
@@ -134,7 +167,7 @@ set(NO_PLOT_56 "${PLOT_T5}|${PLOT_T6}|No mapped reads.|Mismatches not available"
 plot_set_test(na_notes:fastq "${LONGREAD}/long.fq"
   "-DTITLES=${TITLES_UNALIGNED}" "-DNOT_TITLES=${TITLES_ABSENT_UNALIGNED}"
   "-DNOT_CONTAINS=No mapped reads.|Mismatches not available|Identity|% mapped|MAPQ >= 30"
-  "-DSVG_MIN=4")
+  "-DSVG_MIN=2")
 plot_set_test(na_notes:fasta "${SAMSTAT_FIXTURE_DIR}/reads.fa.gz"
   "-DTITLES=${PLOT_T1}|${PLOT_T4}" "-DNOT_TITLES=${TITLES_ABSENT_UNALIGNED}"
   "-DCONTAINS=Not available: the input has no base qualities."
@@ -151,19 +184,25 @@ plot_set_test(na_notes:eqx_nomd "${LONGREAD}/eqx_nomd.sam"
   "-DTITLES=${TITLES_ALIGNED}"
   "-DNOT_CONTAINS=Mismatches not available|Mismatch profile excludes|Excludes ")
 # neither MD nor X: the mismatch row says why, insertions and deletions are still drawn
-# (plot 5 keeps its svg), the notes name the reads that were left out
-plot_set_test(na_notes:no_md "${SAMSTAT_FIXTURE_DIR}/hardclip_softclip.sam"
+# (plot 5 keeps its svg), the notes name the reads that were left out (60 reads: plot 5 is drawn)
+plot_set_test(na_notes:no_md "${GEN_DIR}/nomd60.sam"
   "-DTITLES=${TITLES_ALIGNED}"
-  "-DCONTAINS=Mismatches not available: no MD tag.|Mismatch profile excludes 2 of 2 mapped reads|Insertions (% of aligned bases)|Deletions (% of aligned bases)")
+  "-DCONTAINS=Mismatches not available: no MD tag.|Mismatch profile excludes 60 of 60 mapped reads|Insertions (% of aligned bases)|Deletions (% of aligned bases)|id=\"samstat-p5-t\"")
+# the same with 2 reads: the notes stay, the per-position plots are replaced (see clarity_r2:*)
+plot_set_test(na_notes:no_md_few "${SAMSTAT_FIXTURE_DIR}/hardclip_softclip.sam"
+  "-DTITLES=${TITLES_ALIGNED}"
+  "-DCONTAINS=Mismatch profile excludes 2 of 2 mapped reads")
 # NM missing: the identity note
 plot_set_test(na_notes:nonm "${LONGREAD}/nonm.sam"
   "-DTITLES=${TITLES_ALIGNED}"
   "-DCONTAINS=Identity unavailable for ")
 
 # report:svg_a11y: every figure has role="img", <title> and <desc>
-plot_set_test(svg_a11y:aligned "${SAMSTAT_FIXTURE_DIR}/paired_small.sam" "-DSVG_A11Y=1" "-DSVG_MIN=14")
-plot_set_test(svg_a11y:ont_like "${LONGREAD}/ont_like.bam" "-DSVG_A11Y=1" "-DSVG_MIN=10")
-plot_set_test(svg_a11y:fastq "${LONGREAD}/long.fq" "-DSVG_A11Y=1" "-DSVG_MIN=4")
+# (fixtures of fewer than 50 reads have no per-position plots; mismatch60.sam has all six)
+plot_set_test(svg_a11y:aligned "${SAMSTAT_FIXTURE_DIR}/paired_small.sam" "-DSVG_A11Y=1" "-DSVG_MIN=10")
+plot_set_test(svg_a11y:ont_like "${LONGREAD}/ont_like.bam" "-DSVG_A11Y=1" "-DSVG_MIN=7")
+plot_set_test(svg_a11y:fastq "${LONGREAD}/long.fq" "-DSVG_A11Y=1" "-DSVG_MIN=2")
+plot_set_test(svg_a11y:all_plots "${GEN_DIR}/mismatch60.sam" "-DSVG_A11Y=1" "-DSVG_MIN=11")
 
 # report:no_flags: facts, never verdicts (no PASS, WARN, FAIL; also not as part of a word)
 foreach(input small.bam paired_small.sam longread/ont_like.bam longread/long.fq longread/sq_nomap.sam)
@@ -181,10 +220,12 @@ plot_set_test(partial_absent "${LONGREAD}/ont_like.sam"
 
 # header line (1.1) and summary strip (1.2)
 plot_set_test(header_line:aligned_long "${LONGREAD}/ont_like.bam"
-  "-DCONTAINS=<h1>ont_like.bam</h1>|BAM &middot|long layout (median length 1,434 bp|long when &gt;= 1 kb) &middot|SAMStat "
+  "-DCONTAINS=<h1>ont_like.bam</h1>|BAM &middot|long reads (median 1,434 bp) &middot|SAMStat "
+  "-DNOT_CONTAINS=layout|long when"
   "-DTITLES=<dt>Reads</dt>|<dt>Bases</dt>|<dt>N50</dt>|<dt>Mean Q</dt>|<dt>% mapped</dt>|<dt>% MAPQ &gt;= 30</dt>|<dt>% bases clipped</dt>|<dt>Median identity</dt>")
 plot_set_test(header_line:aligned_short "${SAMSTAT_FIXTURE_DIR}/paired_small.sam"
-  "-DCONTAINS=short layout (median length |<dt>Reads (R1+R2)</dt>|<th scope=\"col\" class=\"num\">Read 1</th>")
+  "-DCONTAINS=short reads (median |<dt>Reads (R1+R2)</dt>|<th scope=\"col\" class=\"num\">Read 1</th>"
+  "-DNOT_CONTAINS=layout")
 plot_set_test(header_line:fastq "${LONGREAD}/long.fq"
   "-DCONTAINS=FASTQ &middot"
   "-DTITLES=<dt>Reads</dt>|<dt>Bases</dt>|<dt>N50</dt>|<dt>Mean Q</dt>"
@@ -203,10 +244,11 @@ plot_set_test(footer:plain "${LONGREAD}/ont_like.bam"
 # (standard-plots.md sections 1.2, 1.3, 2 and 5)
 # =============================================================================
 
-# The "Good:" line of every plot is visible under the figure; the collapsed block names its plot.
+# The "What good looks like:" line of every plot is visible under the figure (it is not a verdict on
+# this file, so it must not be called "Good:"); the collapsed block names its plot.
 plot_set_test(clarity:good_and_howto "${LONGREAD}/ont_like.bam"
-  "-DMATCHES=<p class=\"good\"><strong>Good:</strong> One peak where@@<summary>How to read plot 1</summary>@@<summary>How to read plot 6</summary>@@</svg>\n</div>\n<p class=\"good\">"
-  "-DNOT_CONTAINS=How to read this|<details>\n<summary>How to read plot 1</summary>\n<div class=\"howto\">\n<p><strong>Good:")
+  "-DMATCHES=<p class=\"good\"><strong>What good looks like:</strong> One peak where@@<summary>How to read plot 1</summary>@@<summary>How to read plot 6</summary>@@</svg>\n</div>\n<p class=\"good\">"
+  "-DNOT_CONTAINS=How to read this|<strong>Good:|<details>\n<summary>How to read plot 1</summary>\n<div class=\"howto\">\n<p><strong>What good looks like:")
 # the three percent tiles carry a percent sign; Bases is written in bases
 plot_set_test(clarity:tiles "${LONGREAD}/ont_like.bam"
   "-DMATCHES=<dt>% mapped</dt><dd>[0-9.]+%</dd>@@<dt>% MAPQ &gt;= 30</dt><dd>[0-9.]+%</dd>@@<dt>% bases clipped</dt><dd>[0-9.]+%<span class=\"sub\">trimmed by the aligner@@<dt>Bases</dt><dd>89\\.5 kb<span class=\"sub\">89,490</span>@@<dt>N50</dt><dd>[^<]*<span class=\"sub\">half of all bases are in reads at least this long"
@@ -219,8 +261,12 @@ plot_set_test(clarity:caption_unaligned "${LONGREAD}/long.fq"
   "-DNOT_CONTAINS=MAPQ|mapping-quality")
 # plain wording instead of jargon in the visible text; the statistics note is in the collapsed block once
 plot_set_test(clarity:wording "${LONGREAD}/ont_like.bam"
-  "-DCONTAINS=Q20 = 1 error in 100 bases|how closely they match the reference (100% = perfect)|How it is calculated:|A few very long reads can dominate a line.|Each panel has its own vertical scale."
+  "-DCONTAINS=Q20 = 1 error in 100 bases|how closely they match the reference (100% = perfect)|How it is calculated:|Each panel has its own vertical scale."
   "-DNOT_CONTAINS=Phred Q|multimappers|error probabilities, so it reads lower|mapping-quality class|(as in FastQC)")
+# jargon that a wet-lab biologist does not know stays out of the page (chimeras, soft-clipping)
+plot_set_test(clarity:wording_plain "${GEN_DIR}/mismatch60.sam"
+  "-DCONTAINS=A few very long reads can dominate a line.|reads joined from two places|aligners usually cut adapters off the alignment"
+  "-DNOT_CONTAINS=himer|oft-clip|soft clip")
 # accessibility of the MAPQ table: the class name only in the row header, the table is not named twice
 plot_set_test(clarity:mapq_table_a11y "${LONGREAD}/ont_like.bam"
   "-DCONTAINS=<table>|<title id=\"samstat-mapq-0-t\">solid blue line</title>"
@@ -232,8 +278,13 @@ plot_set_test(clarity:css "${LONGREAD}/ont_like.bam"
 plot_set_test(clarity:paired_figs "${SAMSTAT_FIXTURE_DIR}/paired_small.sam"
   "-DCONTAINS=<div class=\"figs paired\">")
 # few reads: a note (the masking of thin positions is tested in report_plots_test)
-plot_set_test(clarity:few_reads "${LONGREAD}/ubam_like.sam"
-  "-DCONTAINS=Few reads (6): per-position plots are noisy")
+plot_set_test(clarity:few_reads "${GEN_DIR}/perfect60.sam"
+  "-DCONTAINS=Few reads (60): per-position plots are noisy, and positions covered by fewer than 50 reads are not drawn."
+  "-DNOT_CONTAINS=are hidden|Too few reads")
+# fewer reads than that: the notice says the plots are hidden, and they are
+plot_set_test(clarity:few_reads_hidden "${LONGREAD}/ubam_like.sam"
+  "-DCONTAINS=Only 6 reads: per-position plots (3-5) are not reliable and are hidden."
+  "-DNOT_CONTAINS=Few reads|fewer than 10")
 # an empty file says so and shows nothing else
 plot_set_test(clarity:empty_banner "${REPORT_EMPTY_SAM}"
   "-DCONTAINS=<p class=\"banner\">This file contains no reads.</p>|<footer>"
@@ -247,7 +298,51 @@ plot_set_test(clarity:no_sequence "${SAMSTAT_FIXTURE_DIR}/seq_star_softclip.sam"
 add_test(NAME report:ultralong_exact
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
     -DOUTDIR=${REPORT_OUT}/ultralong_exact -DMODE=ultralong
-    "-DCONTAINS=<dt>N50</dt><dd>1,000.0 kb|median length 1,000.0 kb|N50 1,000.0 kb"
-    "-DNOT_CONTAINS=~"
+    "-DCONTAINS=<dt>N50</dt><dd>1.0 Mb|long reads (median 1.0 Mb)|N50 1.0 Mb"
+    "-DNOT_CONTAINS=~|1,000.0 kb"
     -P ${REPORT_HELPERS}/run_html_size.cmake)
 set_tests_properties(report:ultralong_exact PROPERTIES LABELS report)
+
+# =============================================================================
+# Clarity round 2 (reviewers: biologist and accessibility): per-position plots only where they can be
+# read, a plot 6 that ends at 100 %, plain subtitle and tile captions, whole-number scales
+# =============================================================================
+
+# 49 reads: plots 3-5 are replaced by one line each, the notice and the plots agree, no 10-read rule
+plot_set_test(clarity_r2:hidden_below_50 "${GEN_DIR}/perfect49.sam"
+  "-DTITLES=${TITLES_ALIGNED}"
+  "-DCONTAINS=Only 49 reads: per-position plots (3-5) are not reliable and are hidden.|Too few reads (49) for a per-position plot (needs at least 50).|id=\"samstat-p1-t\"|id=\"samstat-p2-t\"|id=\"samstat-p6-t\""
+  "-DNOT_CONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|Few reads (|fewer than 10|fewer than 50 reads are not drawn")
+# 60 reads: plots 3-5 are drawn; the all-zero error panels say so; the lines carry their colours
+plot_set_test(clarity_r2:drawn_from_50 "${GEN_DIR}/perfect60.sam"
+  "-DTITLES=${TITLES_ALIGNED}"
+  "-DCONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|>none detected<|A panel labelled none detected|Positions covered by fewer than 50 reads are not drawn."
+  "-DNOT_CONTAINS=Too few reads|are hidden|0.5<"
+  "-DSVG_A11Y=1")
+# exactly 50 reads: drawn
+plot_set_test(clarity_r2:drawn_at_50 "${GEN_DIR}/perfect50.sam"
+  "-DCONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|Few reads (50)"
+  "-DNOT_CONTAINS=Too few reads|are hidden")
+plot_set_test(clarity_r2:errors_drawn "${GEN_DIR}/mismatch60.sam"
+  "-DCONTAINS=id=\"samstat-p5-t\""
+  "-DNOT_CONTAINS=Too few reads")
+# the base colours: contrast >= 5:1 on white, no shared hex with the MAPQ lines (stroke attribute of plot 4)
+plot_set_test(clarity_r2:base_colours "${GEN_DIR}/perfect60.sam"
+  "-DCONTAINS=stroke=\"#007A5A\"|stroke=\"#A8467F\"|stroke=\"#1F6FA8\""
+  "-DNOT_CONTAINS=#CC79A7|#2E86C1|#009E73")
+# plot 6 ends at 100: whole-number ticks 95-100 and no tick or bar past 100
+plot_set_test(clarity_r2:identity_axis "${GEN_DIR}/perfect60.sam"
+  "-DCONTAINS=from 95% to 100%, in bins of 1 percentage point|The last bin includes the reads with exactly 100% identity.|>95<|>100<"
+  "-DNOT_CONTAINS=>99.2<|>99.4<|>101<")
+# subtitle and tile captions in plain words
+plot_set_test(clarity_r2:plain_header "${GEN_DIR}/perfect60.sam"
+  "-DCONTAINS=short reads (median 100 bp) &middot;|average base quality (Q30 = 1 error in 1000 bases)|reads placed with high confidence|how closely reads match the reference|ends the aligner trimmed off|Files whose median read length is 1 kb or more"
+  "-DNOT_CONTAINS=layout|(soft-clipped)")
+# one read of 1 Mb: plots 3-5 hidden, a log length axis with three labelled ticks, plot 6 ends at 100
+add_test(NAME report:clarity_r2_ultralong
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${REPORT_OUT}/clarity_r2_ultralong -DMODE=ultralong
+    "-DCONTAINS=Only 1 read: per-position plots (3-5) are not reliable and are hidden.|Too few reads (1) for a per-position plot (needs at least 50).|>200 k<|>1 M<|>5 M<|>95<|>100<"
+    "-DNOT_CONTAINS=>1,000.0 kb<|99.2"
+    -P ${REPORT_HELPERS}/run_html_size.cmake)
+set_tests_properties(report:clarity_r2_ultralong PROPERTIES LABELS report)

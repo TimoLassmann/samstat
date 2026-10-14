@@ -65,7 +65,7 @@ EXTERN const struct report_mapq_help report_mapq_help[REPORT_N_MAPQ];
 /* Labels. */
 EXTERN const char* const report_how_to_read_label;   /* "How to read plot" (the page appends the number) */
 EXTERN const char* const report_note_label;          /* "How it is calculated:" */
-EXTERN const char* const report_good_label;          /* "Good:" */
+EXTERN const char* const report_good_label;          /* "What good looks like:" */
 EXTERN const char* const report_look_label;          /* "Worth a look:" */
 EXTERN const char* const report_benign_label;        /* "Often benign:" */
 EXTERN const char* const report_mapq_title;          /* MAPQ table heading */
@@ -87,16 +87,24 @@ EXTERN const char* const report_note_mismatch_excludes; /* (const char* N, const
 
 /* No sequence (SEQ is * in every read), few reads, and an empty file. */
 EXTERN const char* const report_note_no_sequence;
-EXTERN const char* const report_note_few_reads;      /* (const char* N) */
+EXTERN const char* const report_note_few_reads;      /* (const char* N, const char* MIN) */
+EXTERN const char* const report_note_hidden;         /* (const char* N, const char* "s" or ""): fewer than MIN reads, plots 3-5 hidden */
+EXTERN const char* const report_na_too_few;          /* (const char* N, const char* MIN): replaces plots 3-5 */
 EXTERN const char* const report_banner_no_reads;
 /* Sub-labels of two summary tiles. */
 EXTERN const char* const report_tile_n50_sub;
 EXTERN const char* const report_tile_clipped_sub;
+EXTERN const char* const report_tile_meanq_sub;
+EXTERN const char* const report_tile_mapq_sub;
+EXTERN const char* const report_tile_identity_sub;
 
-/* Reads below this count get the "few reads" note; positions backed by fewer than
-   REPORT_MIN_POS_BASES bases are gaps in plots 3-5. */
+/* Reads below REPORT_FEW_READS get the "few reads" note. A position backed by fewer than
+   REPORT_MIN_POS_BASES bases (on the absolute axis about one base per read) is a gap in plots 3-5,
+   and an input with fewer reads than that gets no per-position plots at all (plots 3-5 show
+   report_na_too_few): the rule that is stated is the rule that is applied. */
 #define REPORT_FEW_READS 100
-#define REPORT_MIN_POS_BASES 10
+#define REPORT_MIN_POS_BASES 50
+#define REPORT_MIN_POS_BASES_STR "50"
 
 /* Header line suffix under -p. */
 EXTERN const char* const report_header_partial;      /* (const char* N) */

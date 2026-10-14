@@ -29,8 +29,6 @@ struct samstat_param {
         int n_infile;
         int n_threads;
         int verbose;
-        uint8_t collect_end;
-        uint8_t norm_len_plot;
         uint8_t json;
         uint8_t multiqc;
         uint64_t top_n;

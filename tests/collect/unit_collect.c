@@ -18,7 +18,6 @@
 #include "seq/tld-seq.h"
 #include "../../src/htsinterface/htsglue.h"
 #include "../../src/sambamparse/sam_bam_parse.h"
-#include "../../src/plot/plot.h"
 #include "../../src/collect/collect.h"
 #include <math.h>
 #include <stdio.h>
@@ -161,28 +160,6 @@ static int same_double(double a, double b)
         return a == b;
 }
 
-/* legacy matrices may differ in width (each is as wide as the longest read it saw) */
-static int same_plot(const struct plot_data *a, const struct plot_data *b)
-{
-        if(a == NULL || b == NULL){
-                return a == b;
-        }
-        if(a->L != b->L){
-                return 0;
-        }
-        for(int i = 0; i < a->L; i++){
-                int w = (a->len > b->len) ? a->len : b->len;
-                for(int j = 0; j < w; j++){
-                        uint64_t x = (j < a->len) ? a->data[i][j] : 0;
-                        uint64_t y = (j < b->len) ? b->data[i][j] : 0;
-                        if(x != y){
-                                return 0;
-                        }
-                }
-        }
-        return 1;
-}
-
 /* both finalised */
 static int same_collection(const struct stat_collection *a, const struct stat_collection *b, const char *ctx)
 {
@@ -216,11 +193,6 @@ static int same_collection(const struct stat_collection *a, const struct stat_co
                 fprintf(stderr, "  %s: accumulators differ\n", ctx);
                 ok = 0;
         }
-#define SAMEP(F) if(!same_plot(a->F, b->F)){ fprintf(stderr, "  %s: legacy matrix %s differs\n", ctx, #F); ok = 0; }
-        SAMEP(base_comp_R1) SAMEP(base_comp_R2) SAMEP(qual_comp_R1) SAMEP(qual_comp_R2)
-        SAMEP(mis_R1) SAMEP(mis_R2) SAMEP(ins_R1) SAMEP(ins_R2) SAMEP(del_R1) SAMEP(del_R2)
-        SAMEP(len_dist_R1) SAMEP(len_dist_R2)
-#undef SAMEP
         return ok;
 }
 

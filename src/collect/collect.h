@@ -10,8 +10,6 @@
 #endif
 struct tl_seq_buffer;
 
-struct plot_data;
-
 /* MAPQ classes (m). The ids are frozen: they are the JSON ids mapq_ge30, mapq_10_29,
  * mapq_lt10 and unmapped. MAPQ 255 ("unavailable") counts as >= 30, as in 2.3. */
 #define COLLECT_MAPQ_GE30 0
@@ -43,13 +41,6 @@ struct plot_data;
 #define COLLECT_LAYOUT_SHORT 0
 #define COLLECT_LAYOUT_LONG 1
 #define COLLECT_LAYOUT_MIN_LONG_MEDIAN 1000
-
-/* Legacy 2.3 matrices (position matrices and the length histogram) that the 2.3 report
- * still renders until WP4.2a. Position matrices stop at 1000 columns; the length histogram
- * at 65536, with longer reads counted in the last column. Both used to grow with the
- * longest read. */
-#define COLLECT_LEGACY_POS_COLS 1000
-#define COLLECT_LEGACY_LEN_COLS 65536
 
 /* 128-bit unsigned integer (GCC and Clang; __extension__ keeps -pedantic quiet) */
 __extension__ typedef unsigned __int128 collect_u128;
@@ -91,40 +82,6 @@ struct collect_acc {
 };
 
 struct stat_collection {
-        /* Legacy 2.3 matrices, one struct per plot. base_comp, ins and del are filled from
-         * the accumulators in stat_collection_finalise(); the others while reading. */
-        struct plot_data* base_comp_R1;
-        struct plot_data* base_comp_R2;
-
-        struct plot_data* qual_comp_R1;
-        struct plot_data* qual_comp_R2;
-
-        struct plot_data* mis_R1;
-        struct plot_data* mis_R2;
-
-        struct plot_data* ins_R1;
-        struct plot_data* ins_R2;
-
-        struct plot_data* del_R1;
-        struct plot_data* del_R2;
-
-        struct plot_data* len_dist_R1;
-        struct plot_data* len_dist_R2;
-
-        /* Optional plots  */
-        struct plot_data* base_comp_R1_end;
-        struct plot_data* base_comp_R2_end;
-
-        struct plot_data* qual_comp_R1_end;
-        struct plot_data* qual_comp_R2_end;
-
-        /* Norm Len plots  */
-        struct plot_data* base_comp_len_norm_R1;
-        struct plot_data* qual_comp_len_norm_R1;
-
-        struct plot_data* base_comp_len_norm_R2;
-        struct plot_data* qual_comp_len_norm_R2;
-
         struct mapqual_bins* mapq_map;
 
         /* v2 accumulators (standard-plots.md section 3) */
@@ -166,13 +123,8 @@ struct stat_collection {
         double pct_mapq_ge30;
         double pct_clipped;
         double median_identity;
-
-        uint8_t collect_end;
-        uint8_t norm_len_plot;
-        uint8_t titles_done;       /* finalise has added " Read 1" / " Read 2" to the titles */
 };
 
-struct samstat_param;
 /* Add the records of <sb> to <s>. Every decision is made per record. */
 EXTERN int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s);
 /* Add all counts of <src> to <dst> (sum; has_sq and is_partial_report OR-ed; min_length
@@ -181,7 +133,6 @@ EXTERN int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s);
 EXTERN int stat_collection_merge(struct stat_collection *dst, const struct stat_collection *src);
 /* Derive every summary value from the accumulators (3.7). May be called more than once. */
 EXTERN int stat_collection_finalise(struct stat_collection *s);
-EXTERN int stat_collection_config_additional_plot(struct stat_collection *s,struct samstat_param *p);
 EXTERN int stat_collection_alloc(struct stat_collection **stats);
 EXTERN void stat_collection_free(struct stat_collection *s);
 

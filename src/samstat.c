@@ -227,7 +227,6 @@ static int file_worker_init(struct file_worker *w, struct samstat_param *p, int 
         if(!w->s){
                 w->own_s = 1;
                 RUN(stat_collection_alloc(&w->s));
-                RUN(stat_collection_config_additional_plot(w->s,p));
         }
         RUN(work_buffer_alloc(&w->sb, p->buffer_size, is_fastx));
         return OK;
@@ -565,7 +564,6 @@ int process_reads_file(struct samstat_param* p, int id)
         }
 
         RUN(stat_collection_alloc(&s));
-        RUN(stat_collection_config_additional_plot(s,p));
 
         /* is_aligned is derived in stat_collection_finalise from has_sq / mapped reads */
         s->has_sq = f_handle->has_sq;

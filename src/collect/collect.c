@@ -57,6 +57,9 @@ static inline int get_base_qual(const struct tl_seq *itm, int pos, int offset)
                 return -1;
         }
         q = (int)((uint8_t) itm->qual->str[pos]) - offset;
+        if(q < 0){
+                q = 0;
+        }
         if(q > QUAL_MAX_BIN){
                 q = QUAL_MAX_BIN;
         }

@@ -127,21 +127,31 @@ set_tests_properties(json:off PROPERTIES LABELS json)
 
 # check_json.cmake must fail on a wrong value, a missing path, a wrong length, a wrong boolean
 set(JSON_BAD_CHECKS
-  wrong_value "summary.total_reads=7"
-  missing_path "summary.nope=1"
-  wrong_len "a_list#len=5"
-  wrong_bool "flag=false")
+  wrong_value "summary.total_reads=7" "mismatch for 'summary.total_reads': expected '7', got '6'"
+  missing_path "summary.nope=1" "cannot resolve path 'summary.nope'"
+  wrong_len "a_list#len=5" "mismatch for 'a_list': expected '5', got '3'"
+  wrong_bool "flag=false" "mismatch for 'flag'")
 list(LENGTH JSON_BAD_CHECKS n_bad)
 math(EXPR last_bad "${n_bad}-1")
-foreach(i RANGE 0 ${last_bad} 2)
+# PASS_REGULAR_EXPRESSION makes the test pass only when check_json fails for the
+# stated reason (a missing mini.json or a syntax error in the script does not match).
+foreach(i RANGE 0 ${last_bad} 3)
   math(EXPR j "${i}+1")
+  math(EXPR k "${i}+2")
   list(GET JSON_BAD_CHECKS ${i} cname)
   list(GET JSON_BAD_CHECKS ${j} cchecks)
+  list(GET JSON_BAD_CHECKS ${k} cregex)
   add_test(NAME json:helper:check_json_${cname}
     COMMAND ${CMAKE_COMMAND} -DJSON=${JSON_HELPER_FIXTURE}/mini.json "-DCHECKS=${cchecks}"
       -P ${JSON_HELPERS}/check_json.cmake)
-  set_tests_properties(json:helper:check_json_${cname} PROPERTIES LABELS json WILL_FAIL TRUE)
+  set_tests_properties(json:helper:check_json_${cname} PROPERTIES LABELS json PASS_REGULAR_EXPRESSION "${cregex}")
 endforeach()
+
+# an empty CHECKS list must fail instead of silently checking nothing
+add_test(NAME json:helper:check_json_empty
+  COMMAND ${CMAKE_COMMAND} -DJSON=${JSON_HELPER_FIXTURE}/mini.json "-DCHECKS=" -P ${JSON_HELPERS}/check_json.cmake)
+set_tests_properties(json:helper:check_json_empty PROPERTIES LABELS json
+  PASS_REGULAR_EXPRESSION "CHECKS contains no check")
 
 string(REPLACE ";" "\\;" mini_ok "summary.total_reads=6;a_list#len=3;a_list.2=c;flag=true;summary.name=x y")
 add_test(NAME json:helper:check_json_ok
@@ -161,3 +171,23 @@ set_tests_properties(json:helper:golden_ignores_meta json:helper:golden_detects_
 # checks the message names the first differing top-level key.
 set_tests_properties(json:helper:golden_detects_diff PROPERTIES
   PASS_REGULAR_EXPRESSION "first differing top-level key: summary")
+
+# --- schema ------------------------------------------------------------------
+# json:schema_keys:<input>  member names of the report match docs/samstat.schema.json
+foreach(input small.sam paired_small.sam empty.sam qual.fq supplementary.sam)
+  add_test(NAME json:schema_keys:${input}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${SAMSTAT_FIXTURE_DIR}/${input}
+      -DOUTDIR=${JSON_OUT}/schema_${input} -DSCHEMA=${PROJECT_SOURCE_DIR}/docs/samstat.schema.json
+      -P ${JSON_HELPERS}/check_schema_keys.cmake)
+  set_tests_properties(json:schema_keys:${input} PROPERTIES LABELS json)
+endforeach()
+
+# the version in meta is SAMStat's, not htslib's (config.h include order)
+add_test(NAME json:meta_version
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> "-DARGS=--json\;-d\;@OUTDIR@\;${SAMSTAT_FIXTURE_DIR}/small.sam"
+    -DOUTDIR=${JSON_OUT}/meta_version -DJSON=small.sam.samstat.json
+    "-DCHECKS=meta.samstat_version=${PROJECT_VERSION}"
+    -P ${JSON_HELPERS}/run_expect.cmake)
+set_tests_properties(json:meta_version PROPERTIES LABELS json)

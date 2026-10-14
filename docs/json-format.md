@@ -40,7 +40,7 @@ Properties of the file:
 | `properly_paired` | Reads flagged as properly paired (0x2). |
 | `secondary` | Secondary alignments (0x100) seen. They are excluded from all per-read statistics and `total_reads`. |
 | `supplementary` | Supplementary alignments (0x800) seen. Excluded from per-read statistics and `total_reads`, like secondary alignments. |
-| `is_aligned` | `true` for SAM/BAM input, `false` for FASTA/FASTQ. When `false` the mapq bins carry no meaning: every read is in `unmapped`, and `mismatches`, `insertions` and `deletions` are empty. |
+| `is_aligned` | `true` for SAM/BAM input, `false` for FASTA/FASTQ. It reflects the file type only, so it is also `true` for a SAM/BAM without reads; check `total_reads` for that. When `false` the mapq bins carry no meaning: every read is in `unmapped`, and `mismatches`, `insertions` and `deletions` are empty. |
 | `is_partial_report` | `true` if reading stopped early because of `-p/--peek`; counts then cover only the reads seen. |
 | `mapq_counts` | `{"read1": {...}, "read2": {...}}`, reads per mapq bin (keys below). `read2` only if present. |
 

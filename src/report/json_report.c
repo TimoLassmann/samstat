@@ -7,7 +7,7 @@
 #include "../plot/plot.h"
 #include "../param/param.h"
 #include "../collect/collect.h"
-#include "../config.h"
+#include "config.h"
 #define  JSON_REPORT_IMPORT
 #include "json_report.h"
 

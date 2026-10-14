@@ -7,7 +7,7 @@
 #include "../plot/plot.h"
 #include "../param/param.h"
 #include "../collect/collect.h"
-#include "../config.h"
+#include "config.h"
 #define  MQC_REPORT_IMPORT
 #include "mqc_report.h"
 

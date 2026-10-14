@@ -7,6 +7,8 @@
 "read2_reads": 1,
 "paired": 5,
 "properly_paired": 5,
+"secondary": 0,
+"supplementary": 0,
 "is_aligned": true,
 "is_partial_report": false,
 "mapq_counts": {

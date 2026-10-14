@@ -7,6 +7,8 @@
 "read2_reads": 0,
 "paired": 0,
 "properly_paired": 0,
+"secondary": 0,
+"supplementary": 0,
 "is_aligned": true,
 "is_partial_report": false,
 "mapq_counts": {
@@ -21,7 +23,7 @@
 ],
 "read1": {
 "n_reads": 1,
-"length": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []},
+"length": {"mapq_ge30": [1], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []},
 "base_composition": {
 "mapq_ge30": {"A": [], "C": [], "G": [], "T": [], "N": []},
 "mapq_10_29": {"A": [], "C": [], "G": [], "T": [], "N": []},

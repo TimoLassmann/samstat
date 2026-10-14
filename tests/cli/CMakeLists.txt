@@ -6,6 +6,8 @@
 
 set(CLI_HELPERS ${PROJECT_SOURCE_DIR}/tests/cmake)
 set(CLI_OUT ${SAMSTAT_TEST_OUT_DIR}/cli)
+set(CLI_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
+file(MAKE_DIRECTORY ${CLI_GEN})
 
 # cli_test(<name> ARGS <args...> [RC n] [REGEX re] [NO_REGEX re] [FILES f...]
 #          [NO_FILES f...] [GEN_SAM n] [JSON file CHECKS c...] [NO_NAN])
@@ -93,16 +95,21 @@ cli_test(dir_created
   FILES new/deeper/small.sam.samstat.html)
 
 # --- file type detection --------------------------------------------------------
-cli_test(ext_unknown_only ARGS -d ${D} ${FX}/unknown.xyz RC 2 REGEX "unknown\\.xyz")
-# an unrecognised extension is an error even when other inputs are valid
+# The type comes from the content, never from the extension (WP3.2). An input whose
+# content nothing recognises fails only that input: exit 1, a message naming it, and
+# the other inputs still get their report.
+file(WRITE ${CLI_GEN}/garbage.xyz "this is not a sequence file\nat all\n")
+cli_test(ext_unknown_only ARGS -d ${D} ${CLI_GEN}/garbage.xyz RC 1 REGEX "garbage\\.xyz"
+  NO_FILES garbage.xyz.samstat.html)
 cli_test(ext_unknown_with_good
-  ARGS -d ${D} ${FX}/small.sam ${FX}/unknown.xyz
-  RC 2 REGEX "unknown\\.xyz" NO_FILES small.sam.samstat.html)
+  ARGS -d ${D} ${FX}/small.sam ${CLI_GEN}/garbage.xyz
+  RC 1 REGEX "garbage\\.xyz" FILES small.sam.samstat.html NO_FILES garbage.xyz.samstat.html)
 cli_test(ext_fq_gz ARGS -d ${D} ${FX}/reads.fq.gz FILES reads.fq.gz.samstat.html)
 cli_test(ext_fa_gz ARGS -d ${D} ${FX}/reads.fa.gz FILES reads.fa.gz.samstat.html)
 cli_test(ext_upper_case ARGS -d ${D} ${FX}/READS.FQ FILES READS.FQ.samstat.html)
+# a file that does not exist fails that input (exit 1) whatever its name
 cli_test(ext_not_a_suffix_only
-  ARGS -d ${D} ${FX}/small.sam.txt RC 2 REGEX "small\\.sam\\.txt")
+  ARGS -d ${D} ${FX}/small.sam.txt RC 1 REGEX "small\\.sam\\.txt")
 
 # upper/mixed case and the .gz variants of every fasta/fastq extension, via copies
 set(EXT_COPY_DIR ${CLI_OUT}/ext_copies)
@@ -144,7 +151,7 @@ cli_test(badnum_t_zero ARGS -t 0 ${FX}/small.sam RC 2 REGEX "-t")
 cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
 cli_test(num_ok ARGS -d ${D} -t 3 -p 100 ${FX}/small.sam FILES small.sam.samstat.html)
 
-# --- -p/--peek analyses exactly N reads (chunk size is 10000) --------------------------
+# --- -p/--peek analyses exactly N reads (reader batch is 4096 records) --------------------------
 # peek_test(<name> <kind> <n_reads> <peek> <expected total> <partial true|false>)
 function(peek_test name kind n_reads peek expected partial)
   if(kind STREQUAL "sam")
@@ -169,11 +176,17 @@ peek_test(sam_10_of_30   sam 30 10 10 true)
 peek_test(sam_1_of_30    sam 30 1 1 true)
 peek_test(sam_all        sam 30 30 30 false)
 peek_test(sam_more_than  sam 30 1000 30 false)
+peek_test(sam_batch_edge sam 4100 4096 4096 true)
+peek_test(sam_batch_plus sam 4100 4097 4097 true)
+peek_test(sam_batch_all  sam 4100 4100 4100 false)
 peek_test(sam_chunk_edge sam 10050 10000 10000 true)
 peek_test(sam_chunk_plus sam 10050 10010 10010 true)
 peek_test(sam_exact_two_chunks sam 10050 10050 10050 false)
 peek_test(fq_10_of_30    fq 30 10 10 true)
 peek_test(fq_all         fq 30 30 30 false)
+peek_test(fq_batch_edge  fq 4100 4096 4096 true)
+peek_test(fq_batch_plus  fq 4100 4097 4097 true)
+peek_test(fq_batch_all   fq 4100 4100 4100 false)
 peek_test(fq_chunk_edge  fq 10050 10000 10000 true)
 peek_test(fq_chunk_plus  fq 10050 10010 10010 true)
 peek_test(fq_exact_two_chunks fq 10050 10050 10050 false)
@@ -215,8 +228,6 @@ set_tests_properties(cli:threads_many_inputs PROPERTIES LABELS cli)
 
 # --- WP1.4: deprecated options, up-front output checks, version and help -------------
 # The scripts are generated into the build tree so that tests/cmake/ stays untouched.
-set(CLI_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
-file(MAKE_DIRECTORY ${CLI_GEN})
 
 # deprecated option: exit 0, exactly one warning line, JSON identical to a run without it
 file(WRITE ${CLI_GEN}/run_deprecated.cmake [=[
@@ -375,12 +386,13 @@ file(WRITE ${CLI_GEN}/run_stdin.cmake [=[
 # -DSAMSTAT -DOUTDIR -DSTDIN_FILE=<file fed to stdin> -DCHECKS=<check_json list>
 # -DCHECK_JSON=<path of check_json.cmake>
 # optional: -DEXPECT_RC=<n> (default 0); with a nonzero code only the exit code is checked
+#           -DEXTRA_ARGS=<more arguments after the first "-">
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 if(NOT DEFINED EXPECT_RC)
   set(EXPECT_RC 0)
 endif()
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} -
+execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} - ${EXTRA_ARGS}
   INPUT_FILE ${STDIN_FILE}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "${EXPECT_RC}")
@@ -409,7 +421,7 @@ function(stdin_test name input)
     COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
       -DOUTDIR=${CLI_OUT}/stdin_${name} -DSTDIN_FILE=${input} -DCHECK_JSON=${CLI_HELPERS}/check_json.cmake "-DCHECKS=${checks}"
       -P ${CLI_GEN}/run_stdin.cmake)
-  set_tests_properties(cli:stdin_${name} PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP3.2
+  set_tests_properties(cli:stdin_${name} PROPERTIES LABELS cli)
 endfunction()
 stdin_test(sam ${FX}/small.sam "summary.total_reads=20" "summary.is_aligned=true")
 stdin_test(bam ${FX}/small.bam "summary.total_reads=20" "summary.is_aligned=true")
@@ -423,7 +435,7 @@ add_test(NAME cli:stdin_empty
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
     -DOUTDIR=${CLI_OUT}/stdin_empty -DSTDIN_FILE=${FX}/zero_bytes.sam -DCHECK_JSON=${CLI_HELPERS}/check_json.cmake
     "-DCHECKS=summary.total_reads=0" -P ${CLI_GEN}/run_stdin.cmake)
-set_tests_properties(cli:stdin_empty PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP3.2
+set_tests_properties(cli:stdin_empty PROPERTIES LABELS cli)
 
 # stdin with content nothing recognises fails that input: exit 1, no report
 file(WRITE ${CLI_GEN}/garbage.txt "this is not a sequence file\nat all\n")
@@ -431,18 +443,22 @@ add_test(NAME cli:stdin_garbage
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
     -DOUTDIR=${CLI_OUT}/stdin_garbage -DSTDIN_FILE=${CLI_GEN}/garbage.txt
     -DEXPECT_RC=1 -P ${CLI_GEN}/run_stdin.cmake)
-set_tests_properties(cli:stdin_garbage PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP3.2
+set_tests_properties(cli:stdin_garbage PROPERTIES LABELS cli)
 
 # an input whose content is not recognised fails only that input (exit 1), whatever its
 # extension; the other inputs still get their report. (unknown.xyz is a valid SAM, so it
-# would now be accepted by content: see cli:unknown_input_sniffed.)
-file(WRITE ${CLI_GEN}/garbage.xyz "this is not a sequence file\nat all\n")
+# is accepted by content: see cli:unknown_input_sniffed.)
 cli_test(unknown_input_per_file
   ARGS -d ${D} ${FX}/small.sam ${CLI_GEN}/garbage.xyz
   RC 1 REGEX "garbage\\.xyz"
   FILES small.sam.samstat.html NO_FILES garbage.xyz.samstat.html)
-set_tests_properties(cli:unknown_input_per_file PROPERTIES DISABLED TRUE)   # enabled by WP3.2
 cli_test(unknown_input_sniffed
   ARGS -d ${D} ${FX}/unknown.xyz
   FILES unknown.xyz.samstat.html)
-set_tests_properties(cli:unknown_input_sniffed PROPERTIES DISABLED TRUE)   # enabled by WP3.2
+
+# standard input may be given only once: usage error, exit 2, nothing is read
+add_test(NAME cli:stdin_double_dash
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${CLI_OUT}/stdin_double_dash -DSTDIN_FILE=${FX}/small.sam
+    -DEXPECT_RC=2 -DEXTRA_ARGS=- -P ${CLI_GEN}/run_stdin.cmake)
+set_tests_properties(cli:stdin_double_dash PROPERTIES LABELS cli)

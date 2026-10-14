@@ -49,7 +49,10 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
 
         RUN(samstat_title(out, p, id));
 
-        RUN(samstat_file_stat_section(out, p->infile[id]));
+        if(strcmp(p->infile[id], SAMSTAT_STDIN) != 0){
+                /* standard input has no file to stat */
+                RUN(samstat_file_stat_section(out, p->infile[id]));
+        }
         RUN(samstat_version_section(out));
 
         /* LOG_MSG("add mapping stat"); */

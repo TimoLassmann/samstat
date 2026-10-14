@@ -4,6 +4,7 @@
 #include "tld.h"
 #include "sam.h"
 #include "hts.h"
+#include <htslib/thread_pool.h>
 #include <stdint.h>
 
 #ifdef HTSGLUE_IMPORT
@@ -44,13 +45,34 @@ struct aln_data {
         uint8_t has_md_or_x;    /* 1 if the record has an MD tag or X ops (mismatches are known) */
 };
 
+/* Reader options. The batch limits and the -p cutoff are applied by the reader. */
+struct reader_opts {
+        int pool_threads;        /* decompression threads (0: none), one pool per file */
+        uint64_t batch_records;  /* a chunk ends after this many records ... */
+        uint64_t batch_bases;    /* ... or when it holds this many bases, whichever is first */
+        uint64_t max_primary;    /* -p: stop after exactly this many primary records */
+};
+
+/* One reader for every input: SAM, BAM, FASTA and FASTQ, plain or compressed, from a
+ * file or from standard input ("-"). The type is taken from the content. */
 struct sam_bam_file {
         samFile *in;
-        bam_hdr_t* header;
+        bam_hdr_t* header;       /* NULL for an empty input */
         bam1_t *b;
         char* filename;
+        hts_tpool *pool;
+        struct htsThreadPool tp;
         uint64_t n_secondary;     /* skipped secondary alignments (0x100) */
         uint64_t n_supplementary; /* skipped supplementary alignments (0x800) */
+        uint64_t n_primary;       /* primary records handed out so far */
+        uint64_t batch_records;
+        uint64_t batch_bases;
+        uint64_t max_primary;
+        uint8_t is_fastx;         /* FASTA or FASTQ: records carry no aln_data */
+        uint8_t is_empty;         /* zero-byte or whitespace-only input */
+        uint8_t has_sq;           /* the header has at least one @SQ line */
+        uint8_t at_end;           /* nothing more to hand out */
+        uint8_t partial;          /* -p cutoff reached and more primary records follow */
 };
 
 
@@ -59,7 +81,8 @@ EXTERN int clear_aln_data(struct tl_seq_buffer *sb);
 EXTERN int free_aln_data(struct tl_seq_buffer *sb);
 
 EXTERN int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb);
-EXTERN int open_bam(struct sam_bam_file **file, char *filename);
+EXTERN int open_reads(struct sam_bam_file **file, char *filename, const struct reader_opts *opts);
+EXTERN int open_bam(struct sam_bam_file **file, char *filename); /* defaults: no pool, no cutoff */
 EXTERN int close_bam(struct sam_bam_file* f_handle);
 
 #undef HTSGLUE_IMPORT

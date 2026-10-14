@@ -30,7 +30,7 @@ static int make_dir_p(const char *path);
 static int check_outputs(struct samstat_param *p);
 static void deprecated_option(const char *opt);
 static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out);
-int detect_file_type(char *filename, int* type);
+static void batch_limits_from_env(struct samstat_param *p);
 
 int print_help(char **argv);
 
@@ -150,14 +150,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         }
         p->n_infile = c;
 
-        galloc(&p->file_type, p->n_infile);
+        galloc(&p->no_output, p->n_infile);
         for(int i = 0; i < p->n_infile;i++){
-                p->file_type[i] = FILE_TYPE_UNKNOWN;
-        }
-        for(int i = 0 ; i < p->n_infile;i++){
-                int t = -1;
-                RUN(detect_file_type(p->infile[i], &t));
-                p->file_type[i] = t;
+                p->no_output[i] = 0;
         }
 
         RUN(sanity_check_param(p));
@@ -220,33 +215,18 @@ int sanity_check_param(struct samstat_param *p)
                 ERROR_MSG("Option -sub: has to be smaller than 1.0");
         }
 
-        /* check input files  */
-
-        int n_unknown = 0;
-        int n_sam = 0;
-        int n_fasta = 0;
-        for(int i = 0; i < p->n_infile;i++){
-                if(p->file_type[i] == FILE_TYPE_UNKNOWN){
-                        n_unknown++;
-                }else if(p->file_type[i] == FILE_TYPE_FASTAQ){
-                        n_fasta++;
-                }else if(p->file_type[i] == FILE_TYPE_SAMBAM){
-                        n_sam++;
-                }else {
-                        ERROR_MSG("File type %d not recognized - this should never happen", (int) p->file_type[i]);
-                }
-        }
-
-        if(n_unknown){
+        /* check input files: the type is taken from the content when the file is opened,
+         * so an unrecognised input fails only that input */
+        {
+                int n_stdin = 0;
                 for(int i = 0; i < p->n_infile;i++){
-                        if(p->file_type[i] == FILE_TYPE_UNKNOWN){
-                                LOG_MSG("   unrecognized file name extension: %s", p->infile[i]);
+                        if(strcmp(p->infile[i], SAMSTAT_STDIN) == 0){
+                                n_stdin++;
                         }
                 }
-                ERROR_MSG("Could not recognize the type of %d input file(s) by their extension (supported: .sam .bam .fa .fasta .fna .fq .fastq, and .gz variants of the fasta/fastq ones).", n_unknown);
-        }
-        if(n_fasta && n_sam){
-                WARNING_MSG("Found both fasta/fastq and sam/bam files.");
+                if(n_stdin > 1){
+                        ERROR_MSG("Standard input (-) can be given only once.");
+                }
         }
         /* check for identical files */
         for(int i = 0; i < p->n_infile;i++){
@@ -330,7 +310,7 @@ static int check_outputs(struct samstat_param *p)
                 key[i] = NULL;
         }
         for(int i = 0; i < p->n_infile; i++){
-                const char *in = p->infile[i];
+                const char *in = samstat_output_stem(p, i);
                 const char *slash = strrchr(in, '/');
                 const char *base = slash ? slash + 1 : in;
                 char *dir = NULL;
@@ -349,7 +329,7 @@ static int check_outputs(struct samstat_param *p)
                 if(access(dir, W_OK | X_OK) != 0){
                         fprintf(stderr, "samstat: error: cannot write %s/%s.samstat.html: %s; use -d DIR to write elsewhere.\n",
                                 dir, base, strerror(errno));
-                        p->file_type[i] = FILE_TYPE_NOOUT;
+                        p->no_output[i] = 1;
                 }
                 rdir = realpath(dir, NULL);
                 len = strlen(rdir ? rdir : dir) + strlen(base) + 2;
@@ -378,39 +358,56 @@ ERROR:
         return ret;
 }
 
-static int has_suffix_nocase(const char *name, const char *suffix)
+/* The only place the reader batch limits are read. SAMSTAT_BATCH_RECORDS and
+ * SAMSTAT_BATCH_BASES lower them for tests (they are not a user option and are not
+ * documented); anything but a positive integer is ignored. */
+static uint64_t env_positive(const char *name)
 {
-        size_t n = strlen(name);
-        size_t m = strlen(suffix);
-        if(n <= m){
+        const char *e = getenv(name);
+        char *end = NULL;
+        unsigned long long v;
+
+        if(!e || e[0] < '0' || e[0] > '9'){
                 return 0;
         }
-        return strcasecmp(name + n - m, suffix) == 0;
+        errno = 0;
+        v = strtoull(e, &end, 10);
+        if(*end != 0 || errno == ERANGE || v > INT32_MAX){
+                return 0;
+        }
+        return (uint64_t) v;
 }
 
-int detect_file_type(char *filename, int* type)
+static void batch_limits_from_env(struct samstat_param *p)
 {
-        static const char* sambam_suffix[] = {".sam", ".bam", NULL};
-        static const char* fastaq_suffix[] = {
-                ".fa", ".fasta", ".fna", ".fq", ".fastq",
-                ".fa.gz", ".fasta.gz", ".fna.gz", ".fq.gz", ".fastq.gz",
-                NULL};
+        uint64_t v;
 
-        *type = FILE_TYPE_UNKNOWN;
-        for(int i = 0; sambam_suffix[i]; i++){
-                if(has_suffix_nocase(filename, sambam_suffix[i])){
-                        *type = FILE_TYPE_SAMBAM;
-                        return OK;
-                }
+        v = env_positive("SAMSTAT_BATCH_RECORDS");
+        if(v){
+                p->buffer_size = (int) v;
         }
-        for(int i = 0; fastaq_suffix[i]; i++){
-                if(has_suffix_nocase(filename, fastaq_suffix[i])){
-                        *type = FILE_TYPE_FASTAQ;
-                        return OK;
-                }
+        v = env_positive("SAMSTAT_BATCH_BASES");
+        if(v){
+                p->batch_bases = v;
         }
-        /* a missing file is reported when the file is processed (exit code 1) */
-        return OK;
+}
+
+const char *samstat_output_stem(const struct samstat_param *p, int id)
+{
+        if(strcmp(p->infile[id], SAMSTAT_STDIN) == 0){
+                return "stdin";
+        }
+        return p->infile[id];
+}
+
+int samstat_pool_threads(const struct samstat_param *p)
+{
+        /* -t is the total thread budget: 1 or 2 threads leave nothing for decompression;
+         * files that fill all threads on their own run without a pool */
+        if(p->n_threads < 3 || p->n_infile >= p->n_threads){
+                return 0;
+        }
+        return MACRO_MAX(1, p->n_threads / 4);
 }
 
 int print_help(char **argv )
@@ -420,7 +417,7 @@ int print_help(char **argv )
 
         fprintf(stdout,"%s %s - quality control for SAM/BAM and FASTA/FASTQ files\n", PACKAGE_NAME, PACKAGE_VERSION);
         fprintf(stdout,"\n");
-        fprintf(stdout,"Usage: %s [options] <file> [file ...]\n\n", tmp);
+        fprintf(stdout,"Usage: %s [options] <file|-> [file ...]\n\n", tmp);
         fprintf(stdout,"  -d, --dir DIR      write reports to DIR (created if missing) [next to input]\n");
         fprintf(stdout,"  -p, --peek N       analyse only the first N reads (not random) [all]\n");
         fprintf(stdout,"  -t, --threads N    threads; one input file per thread [4]\n");
@@ -429,8 +426,9 @@ int print_help(char **argv )
         fprintf(stdout,"      --verbose      debug output\n");
         fprintf(stdout,"  -h, --help / -v, --version\n");
         fprintf(stdout,"\n");
-        fprintf(stdout,"Input type is taken from the file name: .sam .bam .fa .fasta .fna .fq .fastq,\n");
-        fprintf(stdout,"plus .gz for the FASTA/FASTQ ones.\n");
+        fprintf(stdout,"Input type (SAM, BAM, FASTA or FASTQ, plain or gzip) is detected from the\n");
+        fprintf(stdout,"content. A file name of - reads standard input (once); its reports are\n");
+        fprintf(stdout,"named stdin.samstat.*.\n");
         fprintf(stdout,"Exit codes: 0 ok, 1 one or more inputs failed, 2 usage error.\n");
         fprintf(stdout,"\n");
         fprintf(stdout,"Examples:\n");
@@ -453,7 +451,9 @@ int param_init(struct samstat_param **param)
         struct samstat_param* p = NULL;
 
         MMALLOC(p, sizeof(struct samstat_param));
-        p->buffer_size = 10000;
+        p->buffer_size = SAMSTAT_BATCH_RECORDS;
+        p->batch_bases = SAMSTAT_BATCH_BASES;
+        batch_limits_from_env(p);
         p->verbose = 0;
         p->n_infile = 0;
         p->n_threads = 4;
@@ -464,7 +464,7 @@ int param_init(struct samstat_param **param)
         p->infile = NULL;
         p->outfile = NULL;
         p->outdir = NULL;
-        p->file_type = NULL;
+        p->no_output = NULL;
         p->top_n = UINT64_MAX;
         p->subsample = 1.0;
         /* p->pst = 0; */
@@ -482,8 +482,8 @@ void param_free(struct samstat_param *p)
 {
 
         if(p){
-                if(p->file_type){
-                        gfree(p->file_type);
+                if(p->no_output){
+                        gfree(p->no_output);
                 }
                 if(p->infile){
                         MFREE(p->infile);

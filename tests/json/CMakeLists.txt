@@ -95,10 +95,11 @@ json_value_test(fasta "xx.fa"
   "read1.base_composition.unmapped.T.19=2"
   "read1.base_quality.unmapped#len=0")
 
-# ce#unmap.sam: six unmapped reads (flag 4).
+# ce#unmap.sam: six unmapped reads (flag 4), no @SQ: is_aligned is false (has_sq or a mapped
+# primary read; standard-plots.md 3.6).
 json_value_test(unmapped "ce#unmap.sam"
   "summary.total_reads=6"
-  "summary.is_aligned=true"
+  "summary.is_aligned=false"
   "summary.mapq_counts.read1.unmapped=6"
   "summary.mapq_counts.read1.mapq_ge30=0"
   "read1.n_reads=6")

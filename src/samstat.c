@@ -182,8 +182,8 @@ int process_reads_file(struct samstat_param* p, int id)
 
         sb->data = a;
 
-        /* NOTE: replaced by has_sq / mapped reads in the collector's finalise (WP3.1a) */
-        s->is_aligned = f_handle->is_fastx ? 0 : 1;
+        /* is_aligned is derived in stat_collection_finalise from has_sq / mapped reads */
+        s->has_sq = f_handle->has_sq;
 
         while(1){
                 RUN(read_bam_chunk(f_handle, sb));

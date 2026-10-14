@@ -178,15 +178,13 @@ lr_value_test(ubam_like.sam
   PCT1 n50=750 median_length=600
   NEAR mean_q=12.1286:0.1)
 
-# is_aligned=false for a uBAM without @SQ needs the reader to supply has_sq (WP3.2 removes
-# the input-type assignment in samstat.c). Until WP3.2 is merged (gate G3) this check stays
-# disabled; the collector side is covered by collect:unit.
+# is_aligned=false for a uBAM without @SQ: samstat.c passes the reader's has_sq to the collector.
 add_test(NAME longread:is_aligned:ubam_like.sam
   COMMAND ${CMAKE_COMMAND}
     -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_DIR}/ubam_like.sam
     -DOUTDIR=${LR_OUT}/is_aligned_ubam_like "-DCHECKS=${LR_P}summary.is_aligned=false"
     -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_json.cmake)
-set_tests_properties(longread:is_aligned:ubam_like.sam PROPERTIES LABELS longread DISABLED TRUE)   # enable at G3, after WP3.2
+set_tests_properties(longread:is_aligned:ubam_like.sam PROPERTIES LABELS longread)
 
 # --- sq_nomap.sam: @SQ present, no mapped read: aligned layout, 100% unmapped ---------------------
 lr_mq(mq 0 0 0 6)

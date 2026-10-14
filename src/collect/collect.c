@@ -880,11 +880,8 @@ int stat_collection_finalise(struct stat_collection *s)
         n_unmapped = s->basic_nums[0][MAPQUALBIN_UNMAP] + s->basic_nums[1][MAPQUALBIN_UNMAP];
         n_mapped = s->n_total - n_unmapped;
 
-        /* is_aligned = has_sq || at least one primary record is mapped (3.6). The caller still
-         * sets is_aligned from the input type before reading; that value is kept as a third
-         * term until samstat.c passes has_sq (then delete the last term).
-         * TODO(samstat.c owner): s->has_sq = f_handle->has_sq, remove "s->is_aligned". */
-        s->is_aligned = (s->has_sq || n_mapped > 0 || s->is_aligned) ? 1 : 0;
+        /* is_aligned = has_sq || at least one primary record is mapped (3.6) */
+        s->is_aligned = (s->has_sq || n_mapped > 0) ? 1 : 0;
 
         /* length: N50 from the longest end, median from the shortest end, both as the lower
          * edge of the storage bin (exact below 1000 bp) */

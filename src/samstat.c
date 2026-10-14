@@ -149,71 +149,307 @@ ERROR:
 }
 #endif
 
+/* ----------------------------------------------------------------------------------
+ * One input file (WP4.1). The thread that processes the file is the reader: it takes
+ * records from htslib into batches (counting secondary/supplementary records and applying
+ * the -p cutoff), and hands them over a bounded queue to W workers. Each worker converts,
+ * parses and collects into a collection of its own; the collections are added up after the
+ * workers have joined. Every count is an integer sum (or a min/max), so the result does not
+ * depend on which worker saw which batch: the output is the same for any -t.
+ * ---------------------------------------------------------------------------------- */
+
+/* Everything one thread needs to turn batches into counts. */
+struct file_worker {
+        struct batch_queue *q;          /* NULL: the batches are processed by the caller */
+        struct tl_seq_buffer *sb;
+        struct stat_collection *s;
+        int own_s;                      /* the worker allocated s and frees it */
+        int is_fastx;
+        int ok;
+};
+
+/* A sequence buffer with its alignment data and alphabet. */
+static int work_buffer_alloc(struct tl_seq_buffer **buf, int size, int is_fastx)
+{
+        struct tl_seq_buffer *sb = NULL;
+        struct alphabet *a = NULL;
+
+        RUN(alloc_tl_seq_buffer(&sb, size));
+        if(!is_fastx){
+                RUN(add_aln_data(sb));
+        }
+        RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
+        sb->data = a;
+        *buf = sb;
+        return OK;
+ERROR:
+        if(sb){
+                free_aln_data(sb);
+                free_tl_seq_buffer(sb);
+        }
+        return FAIL;
+}
+
+static void work_buffer_free(struct tl_seq_buffer *sb)
+{
+        if(sb){
+                if(sb->data){
+                        free_alphabet((struct alphabet*) sb->data);
+                        sb->data = NULL;
+                }
+                free_aln_data(sb);
+                free_tl_seq_buffer(sb);
+        }
+}
+
+static void file_worker_free(struct file_worker *w)
+{
+        work_buffer_free(w->sb);
+        w->sb = NULL;
+        if(w->own_s){
+                stat_collection_free(w->s);
+        }
+        w->s = NULL;
+}
+
+/* <s>: the collection to fill, or NULL for a private one. */
+static int file_worker_init(struct file_worker *w, struct samstat_param *p, int is_fastx, struct stat_collection *s)
+{
+        w->q = NULL;
+        w->sb = NULL;
+        w->s = s;
+        w->own_s = 0;
+        w->is_fastx = is_fastx;
+        w->ok = 1;
+        if(!w->s){
+                w->own_s = 1;
+                RUN(stat_collection_alloc(&w->s));
+                RUN(stat_collection_config_additional_plot(w->s,p));
+        }
+        RUN(work_buffer_alloc(&w->sb, p->buffer_size, is_fastx));
+        return OK;
+ERROR:
+        file_worker_free(w);
+        return FAIL;
+}
+
+/* Convert, parse and collect one batch. Touches only the worker's own state. */
+static int process_batch(struct file_worker *w, const struct bam_batch *b)
+{
+        struct tl_seq_buffer *sb = w->sb;
+
+        RUN(convert_bam_batch(b, w->is_fastx, sb));
+        sb->L = TL_SEQ_BUFFER_DNA;
+        sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
+        if(!w->is_fastx){
+                for(int i = 0; i < sb->num_seq;i++){
+                        parse_alignment(sb->sequences[i]);
+                        fix_orientation(sb->sequences[i]);
+                }
+        }
+        RUN(collect_stats(sb, w->s));
+        if(!w->is_fastx){
+                clear_aln_data(sb);
+        }
+        reset_tl_seq_buffer(sb);
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+static void log_progress(struct samstat_param *p, uint64_t n_read, uint64_t *old_n_read)
+{
+        if(p->verbose && n_read >= *old_n_read + 1000000){
+                LOG_MSG("Processed %"PRId64" sequences", n_read);
+                *old_n_read = n_read;
+        }
+}
+
+/* The calling thread does everything: -t 1, one input per thread, or no thread could be
+ * started. <w> collects directly. */
+static int run_inline(struct samstat_param *p, struct sam_bam_file *f, struct file_worker *w, uint64_t *n_read)
+{
+        struct bam_batch *b = NULL;
+        uint64_t old_n_read = 0;
+
+        RUN(bam_batch_alloc(&b, p->buffer_size));
+        while(1){
+                bam_batch_reset(b);
+                RUN(read_bam_batch(f, b));
+                if(b->n == 0){
+                        break;
+                }
+                RUN(process_batch(w, b));
+                *n_read += (uint64_t) b->n;
+                log_progress(p, *n_read, &old_n_read);
+        }
+        bam_batch_free(b);
+        return OK;
+ERROR:
+        bam_batch_free(b);
+        return FAIL;
+}
+
+#if HAVE_PTHREADS
+static void *file_worker_main(void *data)
+{
+        struct file_worker *w = (struct file_worker *) data;
+        struct bam_batch *b = NULL;
+
+        while((b = (struct bam_batch *) batch_queue_get_filled(w->q)) != NULL){
+                if(process_batch(w, b) != OK){
+                        w->ok = 0;
+                        batch_queue_abort(w->q);
+                        break;
+                }
+                bam_batch_reset(b);
+                batch_queue_put_free(w->q, b);
+        }
+        return NULL;
+}
+
+/* The calling thread reads, <n_workers> threads process. Their collections are added to
+ * <s> after they have joined. */
+static int run_pipeline(struct samstat_param *p, struct sam_bam_file *f, struct stat_collection *s, int n_workers, uint64_t *n_read)
+{
+        struct file_worker *w = NULL;
+        struct bam_batch **batches = NULL;
+        pthread_t *threads = NULL;
+        struct batch_queue *q = NULL;
+        uint64_t old_n_read = 0;
+        int n_batches = n_workers + 2;  /* one being filled, one waiting, W being processed */
+        int n_workers_init = 0;
+        int n_batches_init = 0;
+        int n_created = 0;
+        int reader_ok = 1;
+        int ret = FAIL;
+
+        MMALLOC(w, sizeof(struct file_worker) * (size_t) n_workers);
+        MMALLOC(threads, sizeof(pthread_t) * (size_t) n_workers);
+        MMALLOC(batches, sizeof(struct bam_batch *) * (size_t) n_batches);
+        for(n_workers_init = 0; n_workers_init < n_workers; n_workers_init++){
+                RUN(file_worker_init(&w[n_workers_init], p, f->is_fastx, NULL));
+        }
+        for(n_batches_init = 0; n_batches_init < n_batches; n_batches_init++){
+                RUN(bam_batch_alloc(&batches[n_batches_init], p->buffer_size));
+        }
+        RUN(batch_queue_alloc(&q, n_batches, (void **) batches));
+
+        for(int i = 0; i < n_workers; i++){
+                /* the workers that run are w[0 .. n_created - 1] */
+                int rc;
+
+                w[n_created].q = q;
+                rc = pthread_create(&threads[n_created], NULL, file_worker_main, &w[n_created]);
+                if(rc){
+                        WARNING_MSG("pthread_create() failed with return code %d.", rc);
+                        w[n_created].q = NULL;
+                }else{
+                        n_created++;
+                }
+        }
+        if(n_created == 0){
+                /* no thread at all: do the work here */
+                RUN(run_inline(p, f, &w[0], n_read));
+                RUN(stat_collection_merge(s, w[0].s));
+                ret = OK;
+                goto ERROR;
+        }
+
+        while(1){
+                struct bam_batch *b = (struct bam_batch *) batch_queue_get_free(q);
+
+                if(b == NULL){
+                        break;          /* a worker failed */
+                }
+                if(read_bam_batch(f, b) != OK){
+                        reader_ok = 0;
+                        batch_queue_abort(q);
+                        break;
+                }
+                if(b->n == 0){
+                        break;          /* end of the input (or of the -p cutoff) */
+                }
+                *n_read += (uint64_t) b->n;
+                log_progress(p, *n_read, &old_n_read);
+                batch_queue_put_filled(q, b);
+        }
+        batch_queue_finish(q);
+        for(int i = 0; i < n_created; i++){
+                pthread_join(threads[i], NULL);
+        }
+        if(reader_ok && !batch_queue_aborted(q)){
+                for(int i = 0; i < n_created; i++){
+                        RUN(stat_collection_merge(s, w[i].s));
+                }
+                ret = OK;
+        }
+ERROR:
+        /* shared by the success and the error path: every thread has been joined */
+        batch_queue_free(q);
+        for(int i = 0; i < n_batches_init; i++){
+                bam_batch_free(batches[i]);
+        }
+        for(int i = 0; i < n_workers_init; i++){
+                file_worker_free(&w[i]);
+        }
+        if(batches){
+                MFREE(batches);
+        }
+        if(threads){
+                MFREE(threads);
+        }
+        if(w){
+                MFREE(w);
+        }
+        return ret;
+}
+#endif
+
 int process_reads_file(struct samstat_param* p, int id)
 {
         struct sam_bam_file* f_handle = NULL;
-        struct tl_seq_buffer* sb = NULL;
-        struct alphabet* a = NULL;
         struct stat_collection* s = NULL;
         struct reader_opts opts;
+        struct file_worker inline_worker;
         uint64_t n_read = 0;
-        uint64_t old_n_read = 0;
+        int n_workers = 0;
         int is_stdin = (strcmp(p->infile[id], SAMSTAT_STDIN) == 0);
+        int have_inline_worker = 0;
         int ret = FAIL;
 
         if(!is_stdin){
                 ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
         }
 
+#if HAVE_PTHREADS
+        n_workers = samstat_worker_threads(p);
+#endif
         opts.pool_threads = samstat_pool_threads(p);
         opts.batch_records = (uint64_t) p->buffer_size;
         opts.batch_bases = p->batch_bases;
         opts.max_primary = p->top_n;
 
         RUN(open_reads(&f_handle, p->infile[id], &opts));
+        if(p->verbose){
+                LOG_MSG("%s: workers: %d, decompression threads: %d", p->infile[id], MACRO_MAX(n_workers, 1), opts.pool_threads);
+        }
 
         RUN(stat_collection_alloc(&s));
         RUN(stat_collection_config_additional_plot(s,p));
-        RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
-        if(!f_handle->is_fastx){
-                add_aln_data(sb);
-        }
-        RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
-
-        sb->data = a;
 
         /* is_aligned is derived in stat_collection_finalise from has_sq / mapped reads */
         s->has_sq = f_handle->has_sq;
 
-        while(1){
-                RUN(read_bam_chunk(f_handle, sb));
-                sb->L = TL_SEQ_BUFFER_DNA;
-                sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
-
-                if(sb->num_seq == 0){
-                        break;
-                }
-
-                if(!f_handle->is_fastx){
-                        for(int i = 0; i < sb->num_seq;i++){
-                                parse_alignment(sb->sequences[i]);
-                                fix_orientation(sb->sequences[i]);
-                        }
-                }
-
-                RUN(collect_stats(sb, s));
-
-                n_read += sb->num_seq;
-                if(p->verbose){
-                        if(n_read >= old_n_read + 1000000){
-                                LOG_MSG("Processed %"PRId64" sequences", n_read);
-                                old_n_read = n_read;
-                        }
-                }
-                if(!f_handle->is_fastx){
-                        clear_aln_data(sb);
-                }
-                reset_tl_seq_buffer(sb);
+        if(n_workers > 0){
+#if HAVE_PTHREADS
+                RUN(run_pipeline(p, f_handle, s, n_workers, &n_read));
+#endif
+        }else{
+                /* the one collection is filled directly */
+                RUN(file_worker_init(&inline_worker, p, f_handle->is_fastx, s));
+                have_inline_worker = 1;
+                RUN(run_inline(p, f_handle, &inline_worker, &n_read));
         }
         s->n_secondary = f_handle->n_secondary;
         s->n_supplementary = f_handle->n_supplementary;
@@ -236,15 +472,10 @@ ERROR:
         if(f_handle){
                 close_bam(f_handle);
         }
-        stat_collection_free(s);
-        if(sb){
-                if(sb->data){
-                        free_alphabet((struct alphabet*) sb->data);
-                        sb->data = NULL;
-                }
-                free_aln_data(sb);
-                free_tl_seq_buffer(sb);
+        if(have_inline_worker){
+                file_worker_free(&inline_worker);
         }
+        stat_collection_free(s);
         return ret;
 }
 

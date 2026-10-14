@@ -57,3 +57,10 @@ report_html_test(escape_filename "${REPORT_SAM}"
 # Footer citations: SAMStat 2 (2023) and the original 2011 paper.
 report_html_test(citation "${REPORT_SAM}"
   "-DCONTAINS=10.1093/bioinformatics/btad019|10.1093/bioinformatics/btq614")
+
+# No NaN/inf from divisions by zero (empty input) or anywhere else.
+foreach(input "${SAMSTAT_FIXTURE_DIR}/empty.sam" "${SAMSTAT_TEST_DATA_DIR}/xx#minimal.sam" "${SAMSTAT_TEST_DATA_DIR}/xx#pair.sam")
+  get_filename_component(iname "${input}" NAME)
+  report_html_test(no_nan:${iname} "${input}"
+    "-DNOT_MATCHES=NaN|[^A-Za-z]nan[^A-Za-z]|[^A-Za-z]-?inf[^A-Za-z]")
+endforeach()

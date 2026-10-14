@@ -19,6 +19,7 @@ static int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_c
 static int samstat_footer(tld_strbuf *out_buffer);
 
 static int samstat_add_large_number(tld_strbuf *o, uint64_t n);
+static double samstat_ratio(uint64_t num, uint64_t den);
 
 static int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id);
 
@@ -356,6 +357,15 @@ ERROR:
         return FAIL;
 }
 
+/* num / den, or 0 if den is 0 (empty input) so that no NaN/inf reaches the report */
+double samstat_ratio(uint64_t num, uint64_t den)
+{
+        if(!den){
+                return 0.0;
+        }
+        return (double) num / (double) den;
+}
+
 int samstat_add_large_number(tld_strbuf *o, uint64_t n)
 {
         char buf[256];
@@ -436,7 +446,7 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
                         samstat_add_large_number(o, s->n_paired);
                         /* RUN(tld_append(o, buf)); */
                         RUN(tld_append(o, " - paired in sequencing ("));
-                        snprintf(buf, 256,"%0.1f", (double)s->n_paired / (double) (total ) * 100.0);
+                        snprintf(buf, 256,"%0.1f", samstat_ratio(s->n_paired, total) * 100.0);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, "%)<br>"));
 
@@ -444,7 +454,7 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
                         samstat_add_large_number(o, s->n_proper_paired);
                         /* RUN(tld_append(o, buf)); */
                         RUN(tld_append(o, " - properly paired ("));
-                        snprintf(buf, 256,"%0.1f", (double)s->n_proper_paired / (double) s->n_paired * 100.0);
+                        snprintf(buf, 256,"%0.1f", samstat_ratio(s->n_proper_paired, s->n_paired) * 100.0);
                         RUN(tld_append(o, buf));
                         RUN(tld_append(o, "%)<br>"));
                         RUN(tld_append(o, "(Stats below are based on all reads)<br>"));
@@ -481,10 +491,10 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
         RUN(tld_append(o, "],"));
         RUN(tld_append(o, "["));
         for(int i = 0; i < s->mapq_map->n_bin;i++){
-                snprintf(buf, 256, "%.5f,", (double) s->basic_nums[0][i] / (double)total);
+                snprintf(buf, 256, "%.5f,", samstat_ratio(s->basic_nums[0][i], total));
                 RUN(tld_append(o,buf));
         }
-        snprintf(buf, 256, "%.5f,", (double) total / (double )total);
+        snprintf(buf, 256, "%.5f,", samstat_ratio(total, total));
         RUN(tld_append(o,buf));
         o->len--;
         RUN(tld_append(o, "]\n"));
@@ -504,10 +514,10 @@ int samstat_mapping_quality_overview_section(tld_strbuf *o, struct stat_collecti
                 RUN(tld_append(o, "],"));
                 RUN(tld_append(o, "["));
                 for(int i = 0; i < s->mapq_map->n_bin;i++){
-                        snprintf(buf, 256, "%.5f,", (double) s->basic_nums[1][i] / (double)total);
+                        snprintf(buf, 256, "%.5f,", samstat_ratio(s->basic_nums[1][i], total));
                         RUN(tld_append(o,buf));
                 }
-                snprintf(buf, 256, "%.5f,", (double) total / (double )total);
+                snprintf(buf, 256, "%.5f,", samstat_ratio(total, total));
                 RUN(tld_append(o,buf));
                 o->len--;
                 RUN(tld_append(o, "]\n"));

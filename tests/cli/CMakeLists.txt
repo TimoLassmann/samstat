@@ -345,3 +345,104 @@ foreach(o IN LISTS opts)
   endif()
 endforeach()
 ]=])
+
+# =============================================================================
+# WP2.1: pending feature tests. Every test below is DISABLED until the package named
+# in its comment enables it (removes the DISABLED property); a disabled test shows as
+# "Not Run (Disabled)" and keeps ctest green.
+# =============================================================================
+
+# --- WP4.1 (intra-file threading): one file, -t 1/3/8 give identical JSON -------------
+# SAMSTAT_BATCH_RECORDS=8 and SAMSTAT_BATCH_BASES=20000 (test-only) cut the input into
+# at least 5 batches. paired_small.sam has only 4 records, so its records are repeated
+# 40 times (160 records, 20 batches). ont_like.bam: 25 reads, 89 kb, 5 or more batches.
+add_test(NAME cli:threads_one_file:paired_small
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/paired_small.sam
+    -DOUTDIR=${CLI_OUT}/threads_one_file_paired -DMODE=one_file -DREPLICATE=40
+    -P ${CLI_HELPERS}/run_threads.cmake)
+add_test(NAME cli:threads_one_file:ont_like
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/longread/ont_like.bam
+    -DOUTDIR=${CLI_OUT}/threads_one_file_ont -DMODE=one_file
+    -P ${CLI_HELPERS}/run_threads.cmake)
+set_tests_properties(cli:threads_one_file:paired_small cli:threads_one_file:ont_like
+  PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP4.1
+
+# --- WP3.2 (htslib reader, content detection, stdin) -----------------------------------
+# stdin: the input is fed through standard input with `-` as the file name. Report file
+# names switch to the 'stdin' stem only in wave 4, so the tests glob for the one JSON
+# report in -d DIR and assert on its content (summary.* paths exist in format 1 and 2).
+file(WRITE ${CLI_GEN}/run_stdin.cmake [=[
+# -DSAMSTAT -DOUTDIR -DSTDIN_FILE=<file fed to stdin> -DCHECKS=<check_json list>
+# -DCHECK_JSON=<path of check_json.cmake>
+# optional: -DEXPECT_RC=<n> (default 0); with a nonzero code only the exit code is checked
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+if(NOT DEFINED EXPECT_RC)
+  set(EXPECT_RC 0)
+endif()
+execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} -
+  INPUT_FILE ${STDIN_FILE}
+  RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT "${rc}" STREQUAL "${EXPECT_RC}")
+  message(FATAL_ERROR "samstat - < ${STDIN_FILE}: exit ${rc}, expected ${EXPECT_RC}\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+if(NOT EXPECT_RC EQUAL 0)
+  return()
+endif()
+file(GLOB reports ${OUTDIR}/*.json)
+list(LENGTH reports n)
+if(NOT n EQUAL 1)
+  message(FATAL_ERROR "expected exactly one JSON report in ${OUTDIR}, found ${n}: ${reports}\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+execute_process(
+  COMMAND ${CMAKE_COMMAND} -DJSON=${reports} "-DCHECKS=${CHECKS}"
+    -P ${CHECK_JSON}
+  RESULT_VARIABLE rc2 OUTPUT_VARIABLE out2 ERROR_VARIABLE err2)
+if(NOT rc2 EQUAL 0)
+  message(FATAL_ERROR "${out2}${err2}")
+endif()
+]=])
+# stdin_test(<name> <fixture> <checks...>)
+function(stdin_test name input)
+  string(REPLACE ";" "\;" checks "${ARGN}")
+  add_test(NAME cli:stdin_${name}
+    COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+      -DOUTDIR=${CLI_OUT}/stdin_${name} -DSTDIN_FILE=${input} -DCHECK_JSON=${CLI_HELPERS}/check_json.cmake "-DCHECKS=${checks}"
+      -P ${CLI_GEN}/run_stdin.cmake)
+  set_tests_properties(cli:stdin_${name} PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP3.2
+endfunction()
+stdin_test(sam ${FX}/small.sam "summary.total_reads=20" "summary.is_aligned=true")
+stdin_test(bam ${FX}/small.bam "summary.total_reads=20" "summary.is_aligned=true")
+stdin_test(fastq ${FX}/READS.FQ "summary.total_reads=3" "summary.is_aligned=false")
+stdin_test(fastq_gz ${FX}/reads.fq.gz "summary.is_aligned=false" "summary.total_reads=3")
+stdin_test(paired_sam ${FX}/paired_small.sam
+  "summary.total_reads=4" "summary.read1_reads=2" "summary.read2_reads=2")
+
+# empty standard input is a valid empty input (3.0): exit 0, total_reads 0
+add_test(NAME cli:stdin_empty
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${CLI_OUT}/stdin_empty -DSTDIN_FILE=${FX}/zero_bytes.sam -DCHECK_JSON=${CLI_HELPERS}/check_json.cmake
+    "-DCHECKS=summary.total_reads=0" -P ${CLI_GEN}/run_stdin.cmake)
+set_tests_properties(cli:stdin_empty PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP3.2
+
+# stdin with content nothing recognises fails that input: exit 1, no report
+file(WRITE ${CLI_GEN}/garbage.txt "this is not a sequence file\nat all\n")
+add_test(NAME cli:stdin_garbage
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${CLI_OUT}/stdin_garbage -DSTDIN_FILE=${CLI_GEN}/garbage.txt
+    -DEXPECT_RC=1 -P ${CLI_GEN}/run_stdin.cmake)
+set_tests_properties(cli:stdin_garbage PROPERTIES LABELS cli DISABLED TRUE)   # enabled by WP3.2
+
+# an input whose content is not recognised fails only that input (exit 1), whatever its
+# extension; the other inputs still get their report. (unknown.xyz is a valid SAM, so it
+# would now be accepted by content: see cli:unknown_input_sniffed.)
+file(WRITE ${CLI_GEN}/garbage.xyz "this is not a sequence file\nat all\n")
+cli_test(unknown_input_per_file
+  ARGS -d ${D} ${FX}/small.sam ${CLI_GEN}/garbage.xyz
+  RC 1 REGEX "garbage\\.xyz"
+  FILES small.sam.samstat.html NO_FILES garbage.xyz.samstat.html)
+set_tests_properties(cli:unknown_input_per_file PROPERTIES DISABLED TRUE)   # enabled by WP3.2
+cli_test(unknown_input_sniffed
+  ARGS -d ${D} ${FX}/unknown.xyz
+  FILES unknown.xyz.samstat.html)
+set_tests_properties(cli:unknown_input_sniffed PROPERTIES DISABLED TRUE)   # enabled by WP3.2

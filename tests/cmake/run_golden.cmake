@@ -1,14 +1,29 @@
 # Run samstat --json on one input and compare the report with a golden file.
 # Required: -DSAMSTAT=<binary> -DINPUT=<file> -DOUTDIR=<dir> -DEXPECTED=<file>
 # Optional: -DUPDATE=ON  overwrite EXPECTED with the new report instead of comparing.
-#                        Inputs on which samstat fails or whose report exceeds
-#                        MAX_BYTES (default 4000000) are skipped silently.
+#                        Inputs on which samstat fails are skipped silently.
 
 cmake_minimum_required(VERSION 3.19)
 get_filename_component(here "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-if(NOT MAX_BYTES)
-  set(MAX_BYTES 4000000)
-endif()
+
+# Transitional (WP3.1b to gate G3): the report carries a "v2" object that goldens captured
+# before G3 do not have. Compare without it when the golden has none; once the golden has "v2"
+# (after regeneration) it is compared in full.
+function(golden_without_v2 report expected out)
+  file(READ ${expected} exp)
+  string(JSON ignored ERROR_VARIABLE err GET "${exp}" v2)
+  set(${out} ${report} PARENT_SCOPE)
+  if(err STREQUAL "NOTFOUND")
+    return()
+  endif()
+  file(READ ${report} act)
+  string(JSON act ERROR_VARIABLE err REMOVE "${act}" v2)
+  if(NOT err STREQUAL "NOTFOUND")
+    return()
+  endif()
+  file(WRITE ${report}.nov2 "${act}")
+  set(${out} ${report}.nov2 PARENT_SCOPE)
+endfunction()
 
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
@@ -24,11 +39,6 @@ if(UPDATE)
     message(STATUS "skip ${name}: samstat exit ${rc} / no JSON report")
     return()
   endif()
-  file(SIZE ${report} sz)
-  if(sz GREATER MAX_BYTES)
-    message(STATUS "skip ${name}: report is ${sz} bytes")
-    return()
-  endif()
 else()
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "samstat exited with ${rc} on ${INPUT}\n${out}\n${err}")
@@ -38,8 +48,13 @@ else()
   endif()
 endif()
 
+if(NOT UPDATE)
+  golden_without_v2(${report} ${EXPECTED} compare_report)
+else()
+  set(compare_report ${report})
+endif()
 execute_process(
-  COMMAND ${CMAKE_COMMAND} -DACTUAL=${report} -DEXPECTED=${EXPECTED} -DUPDATE=${UPDATE}
+  COMMAND ${CMAKE_COMMAND} -DACTUAL=${compare_report} -DEXPECTED=${EXPECTED} -DUPDATE=${UPDATE}
     -P ${here}/compare_golden.cmake
   RESULT_VARIABLE rc ERROR_VARIABLE err OUTPUT_VARIABLE out)
 if(NOT rc EQUAL 0)

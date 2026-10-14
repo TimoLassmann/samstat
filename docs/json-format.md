@@ -22,6 +22,7 @@ Properties of the file:
 | `mapq_bins` | array | The four mapping-quality bins, in fixed order, with stable ids. |
 | `read1` | object | Per-position statistics for read 1 (all reads of unpaired data). |
 | `read2` | object | Same layout as `read1`. Present only if the input has read 2 records (`summary.read2_reads > 0`). |
+| `v2` | object | Optional, transitional. Preview of the `format_version` 2 layout, see [`v2`](#v2-transitional-preview). Always written by 2.4 development builds. |
 
 ### `meta`
 
@@ -116,6 +117,34 @@ dominates the size: the quality matrix has 42 rows per position, so one read of
 ```
 
 (The real file is not abridged and has one object per line, as above.)
+
+## `v2` (transitional preview)
+
+During the 2.4 development the new layout of `format_version` 2 is written under the
+top-level key `v2`; the v1 keys above are unchanged. `v2` is an optional property in the
+schema. A later release promotes its members to the top level and drops the v1 blocks.
+The contents of `v2` follow the rules of the new layout: deterministic, fixed key order,
+trailing zeros trimmed (an index past the end means 0), every key present. Floating point
+values appear only in `summary`, printed with four decimals, and are `null` when they do not apply.
+
+| key | description |
+|---|---|
+| `format_version` | `2`. |
+| `meta` | As above. |
+| `summary` | The counts of the v1 `summary`, plus `total_bases`, `min_length`, `max_length`, `n50`, `median_length` (lower edge of the length bin, exact below 1000 bp), `mean_q` (mean over error probabilities, not over Phred values), `pct_mapped`, `pct_mapq_ge30`, `pct_clipped`, `median_identity`, `layout` (`"short"` or `"long"`, from the median length), `reads_without_md`, `identity_reads`, `identity_na`, `bases_beyond_position_axis`, `mapq_counts`. |
+| `mapq_bins` | As above. |
+| `axes` | `length_edges` (lower edge of each of the 1922 length bins), `absolute` and `relative` (number of bins and label of the two position axes: 1000 bp, and 100 steps of % of read length), `identity_bins` (1001), `quality_error_scale` (2^30, the fixed-point scale of `qual_error_sum`). |
+| `read1`, `read2` | `n_reads`; `length.reads` and `length.bases` per mapq id, indexed by length bin; `read_mean_q` per mapq id, indexed by Q 0 to 93; `identity` per mapq id, indexed by 0.1% bin; `absolute` and `relative` position blocks. |
+
+A position block holds, per mapq id and position bin: `composition` (`A`, `C`, `G`, `T`, `N`), `qual_bases`,
+`qual_error_sum`, `aligned`, `aligned_md`, `mismatches`, `insertions`, `deletions`. Position axes cover the aligned
+part of the read (clipped bases excluded). Array length bounds: absolute-axis arrays at most 1000,
+relative-axis arrays at most 100, identity arrays at most 1001, `read_mean_q` at most 94.
+Because of these bounds the size of `v2` does not depend on the read length.
+
+In this preview the v1 `length`, `base_composition`, `base_quality`, `mismatches`, `insertions` and `deletions`
+blocks are still written, with position arrays capped at 1000 columns (read lengths up to 65536 in `length`;
+longer reads are counted in the last column).
 
 ## Testing and regeneration
 

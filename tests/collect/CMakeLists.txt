@@ -145,3 +145,107 @@ foreach(input ${COLLECT_DEV_SAM})
   get_filename_component(name ${input} NAME)
   collect_test(plots:${name} ${input} ARGS --plotend --norm)
 endforeach()
+
+# --- v2 preview (WP3.1b) ----------------------------------------------------
+# collect:mapq_sum:<input>  v2.summary.mapq_counts add up to the primary reads, and so do the
+#                           per-class length histograms of the v2 read blocks
+# collect:axis_rule:<len>   reads of <len> bp: layout short (median < 1000) or long, both
+#                           position axes present
+file(MAKE_DIRECTORY ${COLLECT_GEN_DIR}/scripts)
+file(WRITE ${COLLECT_GEN_DIR}/scripts/check_v2_mapq_sum.cmake [=[
+# -DSAMSTAT -DINPUT -DOUTDIR
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
+  RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "samstat exited with ${rc} on ${INPUT}\n${out}\n${err}")
+endif()
+get_filename_component(name ${INPUT} NAME)
+file(READ ${OUTDIR}/${name}.samstat.json doc)
+string(JSON total GET "${doc}" v2 summary total_reads)
+string(JSON r2 GET "${doc}" v2 summary read2_reads)
+set(mates read1)
+if(r2 GREATER 0)
+  list(APPEND mates read2)
+endif()
+set(sum 0)
+set(len_sum 0)
+foreach(m IN LISTS mates)
+  foreach(c mapq_ge30 mapq_10_29 mapq_lt10 unmapped)
+    string(JSON v GET "${doc}" v2 summary mapq_counts ${m} ${c})
+    math(EXPR sum "${sum}+${v}")
+    string(JSON n LENGTH "${doc}" v2 ${m} length reads ${c})
+    if(n GREATER 0)
+      math(EXPR last "${n}-1")
+      foreach(i RANGE ${last})
+        string(JSON v GET "${doc}" v2 ${m} length reads ${c} ${i})
+        math(EXPR len_sum "${len_sum}+${v}")
+      endforeach()
+    endif()
+  endforeach()
+endforeach()
+if(NOT sum EQUAL total)
+  message(FATAL_ERROR "${name}: MAPQ class counts add up to ${sum}, total_reads is ${total}")
+endif()
+if(NOT len_sum EQUAL total)
+  message(FATAL_ERROR "${name}: length histograms add up to ${len_sum}, total_reads is ${total}")
+endif()
+]=])
+foreach(input ${SAMSTAT_FIXTURE_DIR}/small.sam ${SAMSTAT_FIXTURE_DIR}/paired_small.sam
+    ${SAMSTAT_FIXTURE_DIR}/longread/ont_like.sam ${SAMSTAT_FIXTURE_DIR}/longread/single_len.sam
+    ${SAMSTAT_FIXTURE_DIR}/longread/supp_chain.sam ${SAMSTAT_FIXTURE_DIR}/longread/sq_nomap.sam)
+  get_filename_component(name ${input} NAME)
+  add_test(NAME collect:mapq_sum:${name}
+    COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${input}
+      -DOUTDIR=${COLLECT_OUT}/mapq_sum_${name}
+      -P ${COLLECT_GEN_DIR}/scripts/check_v2_mapq_sum.cmake)
+  set_tests_properties(collect:mapq_sum:${name} PROPERTIES LABELS collect)
+endforeach()
+
+file(WRITE ${COLLECT_GEN_DIR}/scripts/check_axis_rule.cmake [=[
+# -DSAMSTAT -DOUTDIR -DLEN=<read length> -DLAYOUT=short|long
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+math(EXPR quarter "${LEN}/4+1")
+string(REPEAT "ACGT" ${quarter} seq)
+string(SUBSTRING "${seq}" 0 ${LEN} seq)
+string(REPEAT "I" ${LEN} qual)
+set(sam ${OUTDIR}/axis.sam)
+file(WRITE ${sam} "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:100000\n")
+foreach(i 1 2 3)
+  file(APPEND ${sam} "r${i}\t0\tchr1\t${i}\t60\t${LEN}M\t*\t0\t0\t${seq}\t${qual}\tNM:i:0\tMD:Z:${LEN}\n")
+endforeach()
+execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${sam}
+  RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "samstat exited with ${rc}\n${out}\n${err}")
+endif()
+file(READ ${OUTDIR}/axis.sam.samstat.json doc)
+string(JSON layout GET "${doc}" v2 summary layout)
+if(NOT layout STREQUAL LAYOUT)
+  message(FATAL_ERROR "reads of ${LEN} bp: layout '${layout}', expected '${LAYOUT}'")
+endif()
+# both axes are filled whatever the layout; the first read base of every read is an A
+# (the relative axis has 1% bins, so bin 0 holds the first bases of several positions)
+foreach(axis absolute relative)
+  string(JSON n LENGTH "${doc}" v2 read1 ${axis} composition mapq_ge30 A)
+  if(n LESS 1)
+    message(FATAL_ERROR "reads of ${LEN} bp: v2.read1.${axis} is empty")
+  endif()
+  string(JSON a0 GET "${doc}" v2 read1 ${axis} composition mapq_ge30 A 0)
+  if(axis STREQUAL "absolute" AND NOT a0 EQUAL 3)
+    message(FATAL_ERROR "reads of ${LEN} bp: v2.read1.${axis} bin 0 has ${a0} A, expected 3")
+  elseif(a0 LESS 3)
+    message(FATAL_ERROR "reads of ${LEN} bp: v2.read1.${axis} bin 0 has ${a0} A, expected at least 3")
+  endif()
+endforeach()
+]=])
+foreach(spec "150;short" "999;short" "1000;long" "10000;long")
+  list(GET spec 0 len)
+  list(GET spec 1 layout)
+  add_test(NAME collect:axis_rule:${len}
+    COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${COLLECT_OUT}/axis_rule_${len}
+      -DLEN=${len} -DLAYOUT=${layout} -P ${COLLECT_GEN_DIR}/scripts/check_axis_rule.cmake)
+  set_tests_properties(collect:axis_rule:${len} PROPERTIES LABELS collect)
+endforeach()

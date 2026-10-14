@@ -11,11 +11,11 @@
 # This is the only golden mechanism: json:golden:* tests (tests/json) compare against
 # the same tests/golden/expected/<input>.json files.
 #
-# Inputs whose report exceeds 4 MB (long reads) are not golden-tested.
+# There is no size limit: the v2 collector keeps reports small for any read length.
 #
-# The long-read fixtures (tests/data/longread) have no golden yet: a golden test is
-# registered only when tests/golden/expected/<input>.json exists, and those files are
-# created at gate G2 by the gate verifier (new files, not a diff).
+# A golden test is registered only when tests/golden/expected/<input>.json exists. Goldens
+# written before the "v2" object existed are compared without it (run_golden.cmake) until
+# gate G3 regenerates them.
 
 set(GOLDEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/expected)
 set(GOLDEN_OUT ${SAMSTAT_TEST_OUT_DIR}/golden)

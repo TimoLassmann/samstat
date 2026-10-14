@@ -199,6 +199,9 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                         }
                 }
         }
+        if(r != -1 && hts_get_format(f_handle->in)->format == cram){
+                ERROR_MSG("%s: cannot read the CRAM records (reference sequence not found or file corrupt): set REF_PATH or REF_CACHE to a location holding the reference", f_handle->filename);
+        }
         ASSERT(r == -1,"Error reading alignments from %s (truncated or corrupt input?)", f_handle->filename);
         f_handle->at_end = 1;
         return OK;
@@ -430,6 +433,10 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
         case sam:
         case bam:
                 break;
+        case cram:
+                /* the reference comes from REF_PATH / REF_CACHE only (libcurl is off, so no download) */
+                ASSERT(hts_set_opt(f_handle->in, CRAM_OPT_DECODE_MD, 1) == 0, "Cannot enable MD decoding for %s", f_handle->filename);
+                break;
         case fasta_format:
         case fastq_format:
                 f_handle->is_fastx = 1;
@@ -446,9 +453,6 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
                 }
                 ASSERT(r == 1, "%s: unrecognised input (not SAM, BAM, FASTA or FASTQ)", f_handle->filename);
                 f_handle->is_empty = 1;
-                break;
-        case cram:
-                ERROR_MSG("%s: CRAM input is not supported yet", f_handle->filename);
                 break;
         default:
                 ERROR_MSG("%s: unrecognised input (not SAM, BAM, FASTA or FASTQ)", f_handle->filename);

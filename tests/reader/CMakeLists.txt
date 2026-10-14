@@ -296,3 +296,55 @@ add_test(NAME reader:p_cutoff_counts
     -DCHECK_JSON=${READER_HELPERS}/check_json.cmake -DTHREADS=1 "-DCASES=${p_cutoff_cases}"
     -P ${READER_GEN}/run_p_cutoff.cmake)
 set_tests_properties(reader:p_cutoff_counts PROPERTIES LABELS reader)
+
+# --- CRAM (WP5.2) --------------------------------------------------------------------------
+# The reference comes from REF_PATH / REF_CACHE only; the fixtures (tests/data/cram, see its
+# README) carry M5 but no UR. REF_PATH=<dir>/%s finds the reference as <dir>/<md5>.
+set(CRAM_DIR ${SAMSTAT_FIXTURE_DIR}/cram)
+set(CRAM_REF_PATH "REF_PATH=${CRAM_DIR}/ref/%s")
+
+# cram:with_ref  the same 20 reads as small.bam: the whole report equals the BAM golden (meta ignored)
+add_test(NAME cram:with_ref
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${CRAM_DIR}/small.cram
+    -DOUTDIR=${READER_OUT}/cram_with_ref
+    -DGOLDEN=${PROJECT_SOURCE_DIR}/tests/golden/expected/small.bam.json
+    "-DCHECKS=summary.total_reads=20\;summary.is_aligned=true"
+    -P ${READER_HELPERS}/run_json.cmake)
+set_tests_properties(cram:with_ref PROPERTIES LABELS reader ENVIRONMENT "${CRAM_REF_PATH}")
+
+# cram:lzma_codec  a CRAM whose blocks are LZMA coded (needs the lzma library in htslib);
+# 300 reads of 100 bp, 109 with MAPQ >= 30
+add_test(NAME cram:lzma_codec
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${CRAM_DIR}/lzma.cram
+    -DOUTDIR=${READER_OUT}/cram_lzma_codec
+    "-DCHECKS=summary.total_reads=300\;summary.mapq_counts.read1.mapq_ge30=109\;summary.total_bases=30000\;read1.length.reads.mapq_ge30.100=109"
+    -P ${READER_HELPERS}/run_json.cmake)
+set_tests_properties(cram:lzma_codec PROPERTIES LABELS reader ENVIRONMENT "${CRAM_REF_PATH}")
+
+# cram:no_ref  no reference reachable: exit 1, one message naming both variables, no report
+# and no network access (libcurl is off in the bundled htslib); under a timeout
+file(WRITE ${READER_GEN}/run_cram_no_ref.cmake [=[
+# -DSAMSTAT -DINPUT=<cram> -DOUTDIR
+cmake_minimum_required(VERSION 3.19)
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR})
+execute_process(COMMAND ${SAMSTAT} -d ${OUTDIR} ${INPUT}
+  RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 1)
+  message(FATAL_ERROR "expected exit 1, got ${rc}\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+if(NOT "${out}${err}" MATCHES "REF_PATH[^\n]*REF_CACHE")
+  message(FATAL_ERROR "the message does not name REF_PATH and REF_CACHE\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+file(GLOB reports ${OUTDIR}/*)
+if(reports)
+  message(FATAL_ERROR "report written without a reference: ${reports}")
+endif()
+]=])
+add_test(NAME cram:no_ref
+  COMMAND ${CMAKE_COMMAND} -E env --unset=REF_PATH --unset=REF_CACHE
+    ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${CRAM_DIR}/small.cram
+    -DOUTDIR=${READER_OUT}/cram_no_ref -P ${READER_GEN}/run_cram_no_ref.cmake)
+set_tests_properties(cram:no_ref PROPERTIES LABELS reader TIMEOUT 60)

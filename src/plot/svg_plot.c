@@ -11,7 +11,7 @@
 #define SVG_GRID_COLOR "#e4e4e4"   /* decorative */
 #define SVG_FONT_STACK "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
 #define SVG_LINE_WIDTH 2.0
-#define SVG_MIN_BAR 2.0           /* an isolated histogram bin is drawn at least this wide (user units) */
+#define SVG_MIN_BAR 6.0           /* an isolated histogram bin is drawn at least this wide (user units) */
 
 /*
  * Like tld's RUN, but silent: RUN prints the stringified expression through a
@@ -256,25 +256,37 @@ int svg_ticks(const svg_axis* in, int target, double* v, int* major, int max, do
         if (step_out) {
                 *step_out = 0.0;
         }
-        for (int e = e0; e <= e1 && n < max; e++) {
-                for (int m = 0; m < 3 && n < max; m++) {
-                        double val = mant[m] * pow(10.0, e);
-                        if (val < a.lo * (1.0 - 1e-9) || val > a.hi * (1.0 + 1e-9)) {
-                                continue;
-                        }
-                        if (mode == 0) {
-                                major[n] = 1;
-                        } else if (m == 0) {
-                                if (mode == 2 && ((e % stride) + stride) % stride != 0) {
+        /* A short axis (a lone bin: one or two decades) with fewer than 3 labelled ticks is hard to
+         * read: label the 2 and the 5 as well. */
+        for (int pass = 0; pass < 2; pass++) {
+                int labelled = 0;
+                n = 0;
+                for (int e = e0; e <= e1 && n < max; e++) {
+                        for (int m = 0; m < 3 && n < max; m++) {
+                                double val = mant[m] * pow(10.0, e);
+                                if (val < a.lo * (1.0 - 1e-9) || val > a.hi * (1.0 + 1e-9)) {
                                         continue;
                                 }
-                                major[n] = 1;
-                        } else if (mode == 1 && span <= 6.0) {
-                                major[n] = 0;
-                        } else {
-                                continue;
+                                if (mode == 0) {
+                                        major[n] = 1;
+                                } else if (m == 0) {
+                                        if (mode == 2 && ((e % stride) + stride) % stride != 0) {
+                                                continue;
+                                        }
+                                        major[n] = 1;
+                                } else if (mode == 1 && span <= 6.0) {
+                                        major[n] = 0;
+                                } else {
+                                        continue;
+                                }
+                                labelled += major[n];
+                                v[n++] = val;
                         }
-                        v[n++] = val;
+                }
+                if (pass == 0 && mode == 1 && span <= 2.0 && labelled < 3) {
+                        mode = 0;
+                } else {
+                        break;
                 }
         }
         return n;
@@ -675,6 +687,15 @@ int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s)
         return series_close(o, s);
 ERROR:
         return FAIL;
+}
+
+int svg_panel_note(tld_strbuf* o, const svg_panel* p, const char* text)
+{
+        if (!text || !*text) {
+                return OK;
+        }
+        return pf(o, "<text x=\"%f\" y=\"%f\" text-anchor=\"middle\" fill=\"" SVG_AXIS_COLOR "\">%e</text>",
+                  p->left + p->w / 2.0, p->top + p->h / 2.0 + 0.35 * p->font, text);
 }
 
 int svg_vline(tld_strbuf* o, const svg_panel* p, double x, const char* label)

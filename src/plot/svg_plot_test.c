@@ -131,6 +131,14 @@ static void test_ticks(void)
         n = svg_ticks(&lg2, 12, v, major, SVG_MAX_TICKS, &step);
         CHECK(n == 5 && v[0] == 100 && v[1] == 200 && v[2] == 500 && v[3] == 1000 && v[4] == 2000 &&
               major[1] == 1, "n=%d", n);
+        /* a short log axis (a lone bin: 1.4 decades) still has at least three labelled ticks */
+        svg_axis lg1 = {200000, 5e6, 1, NULL};
+        n = svg_ticks(&lg1, 4, v, major, SVG_MAX_TICKS, &step);
+        nmaj = 0;
+        for (int i = 0; i < n; i++) {
+                nmaj += major[i];
+        }
+        CHECK(n == 5 && nmaj == 5 && v[0] == 2e5 && v[2] == 1e6 && v[4] == 5e6, "short log axis: n=%d major=%d", n, nmaj);
         /* too many decades for the room: every third decade */
         svg_axis lg3 = {1, 1e12, 1, NULL};
         n = svg_ticks(&lg3, 5, v, major, SVG_MAX_TICKS, &step);
@@ -226,7 +234,7 @@ static void test_series_paths(void)
               strcmp(d, "M0,100V80H20V100M40,100V60H60H80V40H100V100") == 0, "%s", d);
         tld_strbuf_clear(o);
 
-        /* a lone, very narrow bin (0.1 px wide, 0.5 px high) is drawn at least 2 px wide and 1 px high,
+        /* a lone, very narrow bin (0.1 px wide, 0.5 px high) is drawn at least 6 px wide and 1 px high,
          * so a single read on a log axis is not a hairline; bins with neighbours keep their own edges */
         {
                 static double lone[1000];
@@ -237,7 +245,7 @@ static void test_series_paths(void)
                 CHECK(svg_step(o, &p, &ln1) == OK, "lone step");
                 CHECK(path_d_of(TLD_STR(o), "lone", d, sizeof(d)) &&
                       sscanf(d, "M%lf,%lfV%lfH%lfV", &xl, &base, &top, &xr) == 4, "lone path: %s", d);
-                CHECK(xr - xl >= 1.99, "lone bin is %g px wide: %s", xr - xl, d);
+                CHECK(xr - xl >= 5.99, "lone bin is %g px wide: %s", xr - xl, d);
                 CHECK(base - top >= 0.99, "lone bin is %g px high: %s", base - top, d);
                 CHECK((xl + xr) / 2.0 > 49.9 && (xl + xr) / 2.0 < 50.2, "lone bin stays centred: %s", d);
                 tld_strbuf_clear(o);
@@ -551,6 +559,13 @@ static void test_grid(void)
         CHECK(count_of(TLD_STR(o), ">XLAB<") == 1, "x title only under the bottom row's first call (%d)", count_of(TLD_STR(o), ">XLAB<"));
         CHECK(count_of(TLD_STR(o), ">YLAB<") == 2, "y title in column 0 only (%d)", count_of(TLD_STR(o), ">YLAB<"));
         CHECK(count_of(TLD_STR(o), ">Read 1<") == 1, "panel title");
+        /* a note inside a panel: centred in the plotting area, dark enough to read, nothing for NULL or "" */
+        tld_strbuf_clear(o);
+        CHECK(svg_panel_note(o, &p10, "none detected") == OK && svg_panel_note(o, &p10, "") == OK &&
+              svg_panel_note(o, &p10, NULL) == OK, "panel note");
+        CHECK(count_of(TLD_STR(o), "<text") == 1 && count_of(TLD_STR(o), ">none detected<") == 1 &&
+              strstr(TLD_STR(o), "fill=\"#595959\"") != NULL && strstr(TLD_STR(o), "text-anchor=\"middle\"") != NULL,
+              "%s", TLD_STR(o));
         tld_strbuf_free(o);
 }
 

@@ -40,6 +40,29 @@ static int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_colle
 
 static int collect_stats_norm_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s);
 
+#define QUAL_MAX_BIN 41
+#define QUAL_MISSING 0xFF
+
+/* Phred value of base 'pos' of 'itm' as a plot bin in [0, 41].
+   Returns -1 if there is no quality for this base (QUAL '*' is stored as
+   0xFF, or the quality string is shorter than the sequence): such bases must
+   not contribute to any quality plot. */
+static inline int get_base_qual(const struct tl_seq *itm, int pos, int offset)
+{
+        int q;
+        if(pos < 0 || pos >= (int) itm->qual->len){
+                return -1;
+        }
+        if((uint8_t) itm->qual->str[pos] == QUAL_MISSING){
+                return -1;
+        }
+        q = (int)((uint8_t) itm->qual->str[pos]) - offset;
+        if(q > QUAL_MAX_BIN){
+                q = QUAL_MAX_BIN;
+        }
+        return q;
+}
+
 int collect_stats(struct tl_seq_buffer *sb, struct stat_collection *s)
 {
         /* uint64_t** t= NULL; */
@@ -279,7 +302,6 @@ int collect_stats_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
         q_idx = MAPQUALBIN_UNMAP;
         for(int i = 0; i < sb->num_seq;i++){
                 uint8_t* seq = NULL;
-                uint8_t* qual = NULL;
                 struct tl_seq *itm = sb->sequences[i];
 
                 t = s->len_dist_R1->data;// + q_idx;
@@ -289,7 +311,6 @@ int collect_stats_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
                 t[q_idx][itm->len]++;
 
                 seq = itm->seq->str;
-                qual = itm->qual->str;
 
                 /* start collecting...  */
                 t = s->base_comp_R1->data  + s->base_comp_R1->group_size * q_idx;
@@ -297,11 +318,10 @@ int collect_stats_seqqual(struct tl_seq_buffer *sb, struct stat_collection *s)
                 int len = itm->len;
                 for(int i = 0;i < len;i++){
                         t[nuc_to_internal[seq[i]]][i]++;
-                        int q = (int)qual[i] - sb->base_quality_offset;
-                        if(q > 41){
-                                q = 41;
+                        int q = get_base_qual(itm, i, sb->base_quality_offset);
+                        if(q >= 0){
+                                t_q[q][i]++;
                         }
-                        t_q[q][i]++;
                 }
         }
         return OK;
@@ -383,26 +403,18 @@ int collect_stats_all(struct tl_seq_buffer *sb, struct stat_collection *s)
                         idx++;
                 }
                 /* Quality  */
-                if(itm->qual->len){
-                        if(itm->qual->str[0] != 0xFF){
-                                if(read == 1){
-                                        t = s->qual_comp_R1->data  + s->qual_comp_R1->group_size * q_idx;
-                                }else{
-                                        t = s->qual_comp_R2->data  + s->qual_comp_R2->group_size * q_idx;
-                                }
-                                seq = itm->qual->str;
-                                idx = 0;
-                                for(int i = clip_start;i < len;i++){
-                                        int q = (int)seq[i] - sb->base_quality_offset;
-                                        if(q > 41){
-                                                q = 41;
-                                        }
-                                        /* LOG_MSG("%d %d", q, idx); */
-                                        t[q][idx]++;
-                                        /* data[idx][q]++; */
-                                        idx++;
-                                }
+                if(read == 1){
+                        t = s->qual_comp_R1->data  + s->qual_comp_R1->group_size * q_idx;
+                }else{
+                        t = s->qual_comp_R2->data  + s->qual_comp_R2->group_size * q_idx;
+                }
+                idx = 0;
+                for(int i = clip_start;i < len;i++){
+                        int q = get_base_qual(itm, i, sb->base_quality_offset);
+                        if(q >= 0){
+                                t[q][idx]++;
                         }
+                        idx++;
                 }
         }
         return OK;
@@ -417,7 +429,6 @@ int collect_stats_norm_seqqual(struct tl_seq_buffer *sb, struct stat_collection 
         q_idx = MAPQUALBIN_UNMAP;
         for(int i = 0; i < sb->num_seq;i++){
                 uint8_t* seq = NULL;
-                uint8_t* qual = NULL;
                 struct tl_seq *itm = sb->sequences[i];
                 int clip_start = 0;
                 int clip_end = 0;
@@ -441,7 +452,6 @@ int collect_stats_norm_seqqual(struct tl_seq_buffer *sb, struct stat_collection 
                         }
                 }
                 seq = itm->seq->str;
-                qual = itm->qual->str;
 
                 /* start collecting...  */
                 if(read == 1){
@@ -464,11 +474,10 @@ int collect_stats_norm_seqqual(struct tl_seq_buffer *sb, struct stat_collection 
                         /* LOG_MSG("%d %d -> idx: %d", j,p,idx); */
                         t[nuc_to_internal[seq[j]]][idx]++;
 
-                        int q = (int)qual[j] - sb->base_quality_offset;
-                        if(q > 41){
-                                q = 41;
+                        int q = get_base_qual(itm, j, sb->base_quality_offset);
+                        if(q >= 0){
+                                t_q[q][idx]++;
                         }
-                        t_q[q][idx]++;
                         p++;
                 }
         }
@@ -485,7 +494,6 @@ int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *
         q_idx = MAPQUALBIN_UNMAP;
         for(int i = 0; i < sb->num_seq;i++){
                 uint8_t* seq = NULL;
-                uint8_t* qual = NULL;
                 struct tl_seq *itm = sb->sequences[i];
 
                 q_idx = MAPQUALBIN_UNMAP;
@@ -504,7 +512,6 @@ int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *
                         }
                 }
                 seq = itm->seq->str;
-                qual = itm->qual->str;
 
                 /* start collecting...  */
                 if(read == 1){
@@ -523,11 +530,10 @@ int collect_stats_end_seqqual(struct tl_seq_buffer *sb, struct stat_collection *
                 while(len >= 0 && idx < plot_len){
                         /* LOG_MSG("idx = %d", idx); */
                         t[nuc_to_internal[seq[len]]][idx]++;
-                        int q = (int)qual[len] - sb->base_quality_offset;
-                        if(q > 41){
-                                q = 41;
+                        int q = get_base_qual(itm, len, sb->base_quality_offset);
+                        if(q >= 0){
+                                t_q[q][idx]++;
                         }
-                        t_q[q][idx]++;
                         idx++;
                         len--;
                 }

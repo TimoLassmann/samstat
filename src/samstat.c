@@ -182,6 +182,16 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         break;
                 }
 
+                /* -p/--peek: analyse exactly top_n reads */
+                if(n_read >= p->top_n){
+                        s->is_partial_report = 1;
+                        break;
+                }
+                if((uint64_t) sb->num_seq > p->top_n - n_read){
+                        sb->num_seq = (int) (p->top_n - n_read);
+                        s->is_partial_report = 1;
+                }
+
                 for(int i = 0; i < sb->num_seq;i++){
                         parse_alignment(sb->sequences[i]);
                         fix_orientation(sb->sequences[i]);
@@ -196,11 +206,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                                 old_n_read = n_read;
                         }
                 }
-                if(n_read > p->top_n && sb->num_seq == sb->malloc_num){
-                        if(p->verbose){
-                                LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
-                        }
-                        s->is_partial_report = 1;
+                if(s->is_partial_report){
                         break;
                 }
                 clear_aln_data(sb);
@@ -208,6 +214,9 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         }
         RUN(close_bam(f_handle));
 
+        if(s->is_partial_report){
+                WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
+        }
         RUN(stat_report(s,p, id));
         stat_collection_free(s);
 
@@ -256,22 +265,31 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         break;
                 }
 
+                /* -p/--peek: analyse exactly top_n reads */
+                if(n_read >= p->top_n){
+                        s->is_partial_report = 1;
+                        break;
+                }
+                if((uint64_t) sb->num_seq > p->top_n - n_read){
+                        sb->num_seq = (int) (p->top_n - n_read);
+                        s->is_partial_report = 1;
+                }
+
                 RUN(collect_stats(sb, s));
 
                 n_read += sb->num_seq;
                 if(p->verbose){
                         LOG_MSG("Processed %"PRId64" sequences", n_read);
                 }
-                if(n_read > p->top_n){
-                        if(p->verbose){
-                                LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
-                        }
-                        s->is_partial_report = 1;
+                if(s->is_partial_report){
                         break;
                 }
                 reset_tl_seq_buffer(sb);
         }
 
+        if(s->is_partial_report){
+                WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
+        }
         RUN(stat_report(s,p, id));
         stat_collection_free(s);
         if(sb->data){

@@ -9,6 +9,7 @@
 #   -DEXPECT_FILES=<list>         files (relative to OUTDIR) that must exist and be non-empty
 #   -DEXPECT_NO_FILES=<list>      files (relative to OUTDIR) that must not exist
 #   -DGEN_SAM=<n>                 first write OUTDIR/gen_<n>.sam with n reads, available as @GEN@
+#   -DGEN_FASTQ=<n>               likewise OUTDIR/gen_<n>.fq with n reads, available as @GENFQ@
 #   -DJSON=<file rel. OUTDIR> -DCHECKS=<list>   forwarded to check_json.cmake
 #   -DNO_NAN=ON                   no 'nan' / 'inf' token in the files listed in EXPECT_FILES
 
@@ -41,11 +42,29 @@ if(GEN_SAM)
   set(GEN ${gen})
 endif()
 
+if(GEN_FASTQ)
+  set(content "")
+  set(chunk "")
+  math(EXPR last "${GEN_FASTQ}-1")
+  foreach(i RANGE 0 ${last})
+    string(APPEND chunk "@q${i}\nACGTACGTACGTACGTACGT\n+\nIIIIIIIIIIIIIIIIIIII\n")
+    math(EXPR m "${i}%1000")
+    if(m EQUAL 999)
+      string(APPEND content "${chunk}")
+      set(chunk "")
+    endif()
+  endforeach()
+  string(APPEND content "${chunk}")
+  set(GENFQ ${OUTDIR}/gen_${GEN_FASTQ}.fq)
+  file(WRITE ${GENFQ} "${content}")
+endif()
+
 string(REPLACE "\;" ";" ARGS "${ARGS}")
 set(run_args "")
 foreach(a IN LISTS ARGS)
   string(REPLACE "@OUTDIR@" "${OUTDIR}" a "${a}")
   string(REPLACE "@GEN@" "${GEN}" a "${a}")
+  string(REPLACE "@GENFQ@" "${GENFQ}" a "${a}")
   list(APPEND run_args "${a}")
 endforeach()
 

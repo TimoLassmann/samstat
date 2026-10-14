@@ -27,7 +27,8 @@ const struct report_plot_help report_plot_help[REPORT_N_PLOTS] = {
         },
         [REPORT_PLOT_POSQ] = {
                 .title = "Where along the read does quality drop?",
-                .caption = "Mean base quality at each position along the read, one line per MAPQ class (see the table above).",
+                .caption = "Mean base quality at each position along the read, one line per MAPQ class (see the table above). "
+                           "A class is drawn only where at least " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
                 .caption_unaligned = "Mean base quality at each position along the read.",
                 .good = "A flat line or a slow decline towards the end of the read.",
                 .look = "A sudden drop at one position (a failed cycle) or a steep decline that suggests trimming.",
@@ -44,7 +45,8 @@ const struct report_plot_help report_plot_help[REPORT_N_PLOTS] = {
         },
         [REPORT_PLOT_ERRORS] = {
                 .title = "Where along the read do errors occur?",
-                .caption = "Mismatches, insertions and deletions per aligned base at each position, one line per MAPQ class. Each panel has its own vertical scale.",
+                .caption = "Mismatches, insertions and deletions per aligned base at each position, one line per MAPQ class. "
+                           "A class is drawn only where at least " REPORT_MIN_POS_BASES_STR " of its reads cover the position. Each panel has its own vertical scale.",
                 .good = "Low, flat lines, with MAPQ >= 30 the lowest.",
                 .look = "Rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, reads joined from two places); high mismatch rates in well-mapped reads (wrong reference or contamination).",
                 .benign = "Low-MAPQ reads are often ambiguous (repeats, reads that fit several places), not necessarily wrong. Long reads carry more insertions and deletions than short reads. A few very long reads can dominate a line.",

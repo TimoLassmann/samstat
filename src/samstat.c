@@ -5,7 +5,6 @@
 #include "param/param.h"
 #include "collect/collect.h"
 #include "report/stat_report.h"
-#include "tools/tools.h"
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/stat.h>
@@ -18,6 +17,8 @@
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
 #endif
+
+_Static_assert(SAMSTAT_MAX_READ_LEN == READER_MAX_READ_LEN, "one read length limit");
 
 /* Read input <id> (SAM, BAM, FASTA or FASTQ, from a file or standard input) and report. */
 int process_reads_file(struct samstat_param *p, int id);
@@ -250,6 +251,7 @@ static int process_batch(struct file_worker *w, const struct bam_batch *b)
                 }
         }
         RUN(collect_stats(sb, w->s));
+        RUN(trim_seq_buffer(sb, sb->num_seq));
         if(!w->is_fastx){
                 clear_aln_data(sb);
         }
@@ -259,13 +261,11 @@ ERROR:
         return FAIL;
 }
 
-/* A counter on standard error every ~1 M reads, only for a person watching: standard error
- * must be a terminal. With -v the log lines are written instead. */
-#define PROGRESS_STEP 1000000
-
+/* A counter on standard error every ~1 M reads (p->progress_step), only for a person
+ * watching: standard error must be a terminal. With -v the log lines are written instead. */
 static void log_progress(struct samstat_param *p, const char *name, uint64_t n_read, uint64_t *old_n_read)
 {
-        if(n_read < *old_n_read + PROGRESS_STEP){
+        if(n_read < *old_n_read + p->progress_step){
                 return;
         }
         if(p->verbose){
@@ -555,6 +555,7 @@ int process_reads_file(struct samstat_param* p, int id)
         opts.batch_records = (uint64_t) p->buffer_size;
         opts.batch_bases = p->batch_bases;
         opts.max_primary = p->top_n;
+        opts.max_read_len = p->max_read_len;
 
         clock_gettime(CLOCK_MONOTONIC, &t0);
         RUN(open_reads(&f_handle, p->infile[id], &opts));

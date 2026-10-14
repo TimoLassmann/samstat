@@ -480,7 +480,25 @@ static void test_long_unpaired(void)
                 }
                 if (id == 6) {
                         CHECK(strstr(d, "median 9") != NULL, "median label");
-                        CHECK(strstr(d, "0.1 percentage points") != NULL, "long layout identity bins");
+                        /* long layout: the narrowest of 0.1, 0.2, 0.5 and 1 point that gives at most 50 bins */
+                        {
+                                const char* f = strstr(d, "from ");
+                                int lo = -1;
+                                double bw = 0.0;
+                                CHECK(f && sscanf(f, "from %d%% to 100%%, in bins of %lf percentage point", &lo, &bw) == 2,
+                                      "long layout identity bins: %.200s", f ? f : "(none)");
+                                if (lo >= 0 && bw > 0.0) {
+                                        static const double widths[4] = {0.1, 0.2, 0.5, 1.0};
+                                        double want = 1.0;
+                                        for (int w = 0; w < 4; w++) {
+                                                if ((100.0 - lo) / widths[w] <= 50.0 + 1e-9) {
+                                                        want = widths[w];
+                                                        break;
+                                                }
+                                        }
+                                        CHECK(fabs(bw - want) < 1e-9, "long layout identity bins: %g for %d-100%%, expected %g", bw, lo, want);
+                                }
+                        }
                 }
                 free(d);
         }

@@ -19,7 +19,7 @@ set(json "${OUTDIR}/${name}.samstat.json")
 set(html "${OUTDIR}/${name}.samstat.html")
 
 execute_process(
-  COMMAND ${SAMSTAT} ${ARGS} --json -d "${OUTDIR}" "${INPUT}"
+  TIMEOUT 120 COMMAND ${SAMSTAT} ${ARGS} --json -d "${OUTDIR}" "${INPUT}"
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat ${ARGS} exited with ${rc} on ${INPUT}\nstdout:\n${out}\nstderr:\n${err}")

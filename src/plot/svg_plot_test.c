@@ -99,18 +99,18 @@ static void test_ticks(void)
         CHECK(svg_nice_ceil(100, 5) == 100.0, "%g", svg_nice_ceil(100, 5));
         CHECK(svg_nice_ceil(0, 5) == 1.0, "max 0");
 
-        svg_axis lin = {0, 150, 0, NULL};
+        svg_axis lin = {0, 150, 0, NULL, 0};
         int n = svg_ticks(&lin, 6, v, major, SVG_MAX_TICKS, &step);
         CHECK(n == 8 && step == 20.0 && v[0] == 0.0 && v[7] == 140.0, "n=%d step=%g", n, step);
 
-        svg_axis unit = {0, 1, 0, NULL};
+        svg_axis unit = {0, 1, 0, NULL, 0};
         n = svg_ticks(&unit, 5, v, major, SVG_MAX_TICKS, &step);
         CHECK(n == 6 && v[5] == 1.0 && step == 0.2, "n=%d step=%g", n, step);
         svg_tick_label(&unit, step, v[1], lab, sizeof(lab));
         CHECK(strcmp(lab, "0.2") == 0, "%s", lab);
 
         /* many decades: decades labelled, 2 and 5 as unlabelled ticks */
-        svg_axis lg = {100, 1e6, 1, NULL};
+        svg_axis lg = {100, 1e6, 1, NULL, 0};
         n = svg_ticks(&lg, 8, v, major, SVG_MAX_TICKS, &step);
         int nmaj = 0;
         for (int i = 0; i < n; i++) {
@@ -127,12 +127,12 @@ static void test_ticks(void)
                 }
         }
         /* few decades: 1, 2, 5 all labelled */
-        svg_axis lg2 = {100, 3000, 1, NULL};
+        svg_axis lg2 = {100, 3000, 1, NULL, 0};
         n = svg_ticks(&lg2, 12, v, major, SVG_MAX_TICKS, &step);
         CHECK(n == 5 && v[0] == 100 && v[1] == 200 && v[2] == 500 && v[3] == 1000 && v[4] == 2000 &&
               major[1] == 1, "n=%d", n);
         /* a short log axis (a lone bin: 1.4 decades) still has at least three labelled ticks */
-        svg_axis lg1 = {200000, 5e6, 1, NULL};
+        svg_axis lg1 = {200000, 5e6, 1, NULL, 0};
         n = svg_ticks(&lg1, 4, v, major, SVG_MAX_TICKS, &step);
         nmaj = 0;
         for (int i = 0; i < n; i++) {
@@ -140,32 +140,32 @@ static void test_ticks(void)
         }
         CHECK(n == 5 && nmaj == 5 && v[0] == 2e5 && v[2] == 1e6 && v[4] == 5e6, "short log axis: n=%d major=%d", n, nmaj);
         /* too many decades for the room: every third decade */
-        svg_axis lg3 = {1, 1e12, 1, NULL};
+        svg_axis lg3 = {1, 1e12, 1, NULL, 0};
         n = svg_ticks(&lg3, 5, v, major, SVG_MAX_TICKS, &step);
         CHECK(n == 5 && v[1] == 1e3 && v[4] == 1e12, "n=%d", n);
         /* degenerate input is repaired, never crashes */
-        svg_axis bad = {5, 5, 1, NULL};
+        svg_axis bad = {5, 5, 1, NULL, 0};
         CHECK(svg_ticks(&bad, 5, v, major, SVG_MAX_TICKS, &step) > 0, "degenerate log");
         CHECK(svg_ticks(NULL, 5, v, major, SVG_MAX_TICKS, &step) == -1, "null axis");
 
         /* linear label units */
-        svg_axis a4 = {0, 40000, 0, NULL};
+        svg_axis a4 = {0, 40000, 0, NULL, 0};
         svg_tick_label(&a4, 10000, 20000, lab, sizeof(lab));
         CHECK(strcmp(lab, "20 k") == 0, "%s", lab);
         svg_tick_label(&a4, 10000, 0, lab, sizeof(lab));
         CHECK(strcmp(lab, "0") == 0, "zero has no unit: %s", lab);
-        svg_axis a6 = {0, 1.8e6, 0, NULL};
+        svg_axis a6 = {0, 1.8e6, 0, NULL, 0};
         svg_tick_label(&a6, 5e5, 1.5e6, lab, sizeof(lab));
         CHECK(strcmp(lab, "1.5 M") == 0, "%s", lab);
-        svg_axis a1 = {0, 1000, 0, NULL};
+        svg_axis a1 = {0, 1000, 0, NULL, 0};
         svg_tick_label(&a1, 200, 400, lab, sizeof(lab));
         CHECK(strcmp(lab, "400") == 0, "%s", lab);
         svg_tick_label(&a1, 200, -1e-15, lab, sizeof(lab));
         CHECK(strcmp(lab, "0") == 0, "negative zero: %s", lab);
 }
 
-static const svg_axis AX_X5 = {0, 5, 0, NULL};
-static const svg_axis AX_Y10 = {0, 10, 0, NULL};
+static const svg_axis AX_X5 = {0, 5, 0, NULL, 0};
+static const svg_axis AX_Y10 = {0, 10, 0, NULL, 0};
 
 static svg_panel unit_panel(void)
 {
@@ -257,7 +257,7 @@ static void test_series_paths(void)
         }
 
         /* log x axis (plot 1): edge 0 clamps to the axis start, decades are equally spaced */
-        svg_panel lp = {0, 0, 300, 100, 12, {1, 1000, 1, NULL}, AX_Y10};
+        svg_panel lp = {0, 0, 300, 100, 12, {1, 1000, 1, NULL, 0}, AX_Y10};
         double lx2[] = {1, 10, 100, 1000};
         double ly[] = {0, 5, 10, 0};
         svg_series ll = {"ll", "#000000", NULL, lx2, 0, 0, ly, 4};
@@ -312,7 +312,7 @@ static void test_escaping_and_errors(void)
         svg_grid g;
         svg_grid_init(&g, 1, 1, 30, 30, 12, 0);
         svg_panel p;
-        svg_axis ax = {0, 1, 0, NULL};
+        svg_axis ax = {0, 1, 0, NULL, 0};
         CHECK(svg_grid_panel(o, &g, 0, 0, NULL, &ax, &ax, &p) == FAIL, "a panel that does not fit is refused");
         svg_grid_init(&g, 1, 1, 400, 200, 12, 0);
         CHECK(svg_grid_panel(o, &g, 1, 0, NULL, &ax, &ax, &p) == FAIL, "row out of range");
@@ -380,8 +380,8 @@ static int fig_length(tld_strbuf* o)
                 }
                 s[c] = (svg_series){MAPQ_NAME[c], MAPQ_COLOR[c], MAPQ_DASH[c], edges, 0, 0, y[c], N};
         }
-        svg_axis xa = {100, 1e5, 1, "read length (bp)"};
-        svg_axis ya = {0, svg_nice_ceil(top, 5), 0, "reads per bin"};
+        svg_axis xa = {100, 1e5, 1, "read length (bp)", 0};
+        svg_axis ya = {0, svg_nice_ceil(top, 5), 0, "reads per bin", 0};
         svg_grid_init(&g, 1, 1, 640, 300, 12, 1);
         RUN(svg_begin(o, "p1", 640, 300, 12, "How long are the reads?",
                       "Reads per length bin on a log scale, one line per mapping-quality class; N50 is marked."));
@@ -406,8 +406,8 @@ static int fig_quality(tld_strbuf* o, int paired)
         svg_grid_init(&g, 1, cols, paired ? 640 : 480, 280, 12, 1);
         RUN(svg_begin(o, paired ? "p3b" : "p3", g.width, g.height, 12, "Where along the read does quality drop?",
                       "Mean base quality by position, one line per mapping-quality class."));
-        svg_axis xa = {1, 150, 0, "position in read (bp), aligned part"};
-        svg_axis ya = {0, 40, 0, "mean Q"};
+        svg_axis xa = {1, 150, 0, "position in read (bp), aligned part", 0};
+        svg_axis ya = {0, 40, 0, "mean Q", 0};
         for (int m = 0; m < cols; m++) {
                 RUN(svg_grid_panel(o, &g, 0, m, m ? "Read 2" : (paired ? "Read 1" : "All reads"), &xa, &ya, &p));
                 for (int c = 0; c < 3; c++) {
@@ -439,8 +439,8 @@ static int fig_composition(tld_strbuf* o)
         svg_grid_init(&g, 1, 2, 640, 280, 12, 1);
         RUN(svg_begin(o, "p4", 640, 280, 12, "Is base composition even along the read?",
                       "Percentage of A, C, G, T and N by position, for read 1 and read 2."));
-        svg_axis xa = {1, 150, 0, "position in read (bp), aligned part"};
-        svg_axis ya = {0, 100, 0, "% of bases"};
+        svg_axis xa = {1, 150, 0, "position in read (bp), aligned part", 0};
+        svg_axis ya = {0, 100, 0, "% of bases", 0};
         for (int m = 0; m < 2; m++) {
                 RUN(svg_grid_panel(o, &g, 0, m, m ? "Read 2" : "Read 1", &xa, &ya, &p));
                 for (int b = 0; b < 5; b++) {
@@ -468,8 +468,8 @@ static int fig_errors(tld_strbuf* o)
         RUN(svg_begin(o, "p5", 640, 520, 12, "Where along the read do errors occur?",
                       "Mismatch, insertion and deletion rates per aligned base by position, for read 1 and read 2."));
         for (int r = 0; r < 3; r++) {
-                svg_axis xa = {1, 150, 0, "position in read (bp), aligned part"};
-                svg_axis ya = {0, row_max[r], 0, row_label[r]};
+                svg_axis xa = {1, 150, 0, "position in read (bp), aligned part", 0};
+                svg_axis ya = {0, row_max[r], 0, row_label[r], 0};
                 for (int m = 0; m < 2; m++) {
                         RUN(svg_grid_panel(o, &g, r, m, r == 0 ? (m ? "Read 2" : "Read 1") : NULL, &xa, &ya, &p));
                         for (int c = 0; c < 3; c++) {
@@ -505,8 +505,8 @@ static int fig_identity(tld_strbuf* o)
                         top = fmax(top, y[c][i]);
                 }
         }
-        svg_axis xa = {88, 100, 0, "identity (%)"};
-        svg_axis ya = {0, svg_nice_ceil(top, 5), 0, "reads"};
+        svg_axis xa = {88, 100, 0, "identity (%)", 0};
+        svg_axis ya = {0, svg_nice_ceil(top, 5), 0, "reads", 0};
         RUN(svg_grid_panel(o, &g, 0, 0, NULL, &xa, &ya, &p));
         for (int c = 0; c < 3; c++) {
                 s = (svg_series){MAPQ_NAME[c], MAPQ_COLOR[c], MAPQ_DASH[c], NULL, 88, 0.2, y[c], N};
@@ -542,7 +542,7 @@ static void test_grid(void)
         tld_strbuf* o = NULL;
         svg_grid g;
         svg_panel p00, p21, p10;
-        svg_axis xa = {1, 150, 0, "XLAB"}, ya = {0, 1, 0, "YLAB"};
+        svg_axis xa = {1, 150, 0, "XLAB", 0}, ya = {0, 1, 0, "YLAB", 0};
         tld_strbuf_alloc(&o, 1024);
 
         svg_grid_init(&g, 3, 2, 640, 520, 12, 1);
@@ -575,7 +575,7 @@ static void test_tick_max(void)
         tld_strbuf* o = NULL;
         svg_grid g;
         svg_panel p;
-        svg_axis xa = {98, 101, 0, NULL}, ya = {0, 1, 0, NULL};
+        svg_axis xa = {98, 101, 0, NULL, 0}, ya = {0, 1, 0, NULL, 0};
         char err[200];
         tld_strbuf_alloc(&o, 1024);
         svg_grid_init(&g, 1, 1, 420, 300, 14, 0);
@@ -647,7 +647,7 @@ static void test_locale_and_size(void)
         }
         tld_strbuf* o = NULL;
         tld_strbuf_alloc(&o, 1024);
-        svg_axis xa = {0, 1.5, 0, "x"}, ya = {0, 0.5, 0, "y"};
+        svg_axis xa = {0, 1.5, 0, "x", 0}, ya = {0, 0.5, 0, "y", 0};
         svg_grid g;
         svg_panel p;
         double y[3] = {0.25, 0.5, 0.125};
@@ -675,7 +675,7 @@ static void test_locale_and_size(void)
                 he[i] = 1.0 + i * 0.5;
         }
         tld_strbuf_alloc(&o, 1024);
-        svg_axis xb = {1, 1000, 0, NULL}, yb = {0, 40, 0, NULL}, xc = {1, 617, 0, NULL}, yc = {0, 1000, 0, NULL};
+        svg_axis xb = {1, 1000, 0, NULL, 0}, yb = {0, 40, 0, NULL, 0}, xc = {1, 617, 0, NULL, 0}, yc = {0, 1000, 0, NULL, 0};
         svg_grid_init(&g, 1, 1, 640, 300, 12, 0);
         svg_grid_panel(o, &g, 0, 0, NULL, &xb, &yb, &p);
         size_t before = (size_t)TLD_STRLEN(o);

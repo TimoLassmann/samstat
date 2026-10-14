@@ -12,7 +12,7 @@ get_filename_component(name ${INPUT} NAME)
 set(report ${OUTDIR}/${name}.samstat.json)
 
 execute_process(
-  COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
+  TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 
 if(UPDATE)

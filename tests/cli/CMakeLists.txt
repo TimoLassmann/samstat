@@ -5,6 +5,13 @@
 # All tests use tests/cmake/run_expect.cmake.
 
 set(CLI_HELPERS ${PROJECT_SOURCE_DIR}/tests/cmake)
+
+# the test-only environment limits can only lower the built-in values (param.c)
+add_executable(unit_param unit_param.c ${PROJECT_SOURCE_DIR}/src/param/param.c)
+target_include_directories(unit_param PRIVATE ${PROJECT_BINARY_DIR})
+target_link_libraries(unit_param PRIVATE tld-dev)
+add_test(NAME cli:unit_param COMMAND unit_param)
+set_tests_properties(cli:unit_param PROPERTIES LABELS cli)
 set(CLI_OUT ${SAMSTAT_TEST_OUT_DIR}/cli)
 set(CLI_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
 file(MAKE_DIRECTORY ${CLI_GEN})
@@ -13,7 +20,7 @@ file(MAKE_DIRECTORY ${CLI_GEN})
 #          [NO_FILES f...] [GEN_SAM n] [JSON file CHECKS c...] [NO_NAN])
 # Arguments may use @OUTDIR@ (scratch dir of the test) and @GEN@ (generated SAM) and @GENFQ@ (generated FASTQ).
 function(cli_test name)
-  cmake_parse_arguments(T "NO_NAN" "RC;REGEX;NO_REGEX;GEN_SAM;GEN_FASTQ;JSON" "ARGS;FILES;NO_FILES;CHECKS" ${ARGN})
+  cmake_parse_arguments(T "NO_NAN" "RC;REGEX;NO_REGEX;GEN_SAM;GEN_FASTQ;GEN_BLOB;JSON" "ARGS;FILES;NO_FILES;CHECKS;ENV" ${ARGN})
   if(NOT DEFINED T_RC)
     set(T_RC 0)
   endif()
@@ -21,7 +28,12 @@ function(cli_test name)
   string(REPLACE ";" "\;" files "${T_FILES}")
   string(REPLACE ";" "\;" nofiles "${T_NO_FILES}")
   string(REPLACE ";" "\;" checks "${T_CHECKS}")
-  set(cmd ${CMAKE_COMMAND}
+  # ENV: test-only variables for samstat (they can only lower built-in limits, see param.c)
+  set(cmd ${CMAKE_COMMAND})
+  if(T_ENV)
+    list(APPEND cmd -E env ${T_ENV} ${CMAKE_COMMAND})
+  endif()
+  list(APPEND cmd
     -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${CLI_OUT}/${name}
     "-DARGS=${args}" -DEXPECT_RC=${T_RC})
   if(T_REGEX)
@@ -41,6 +53,9 @@ function(cli_test name)
   endif()
   if(T_GEN_FASTQ)
     list(APPEND cmd -DGEN_FASTQ=${T_GEN_FASTQ})
+  endif()
+  if(T_GEN_BLOB)
+    list(APPEND cmd -DGEN_BLOB=${T_GEN_BLOB})
   endif()
   if(T_JSON)
     list(APPEND cmd "-DJSON=${T_JSON}" "-DCHECKS=${checks}")
@@ -149,12 +164,32 @@ foreach(opt -t -p)
 endforeach()
 cli_test(badnum_t_zero ARGS -t 0 ${FX}/small.sam RC 2 REGEX "-t")
 cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
-# -t is capped at 64: larger values are rejected before any thread or buffer is created
+# -t is capped at 64: larger values are rejected before any thread or buffer is created.
+# Never test with a large accepted-looking value (e.g. -t 100000): if the cap ever broke, the
+# test itself would start that many threads. 65 is just over the cap; a value beyond 32 bits
+# is rejected by the number parser, independently of the cap.
 cli_test(threads_max_ok ARGS -d ${D} -t 64 ${FX}/small.sam FILES small.sam.samstat.html)
-foreach(n 65 100000)
-  cli_test(threads_over_max_${n} ARGS -d ${D} -t ${n} ${FX}/small.sam
-    RC 2 REGEX "at most 64 threads" NO_FILES small.sam.samstat.html)
-endforeach()
+cli_test(threads_over_max_65 ARGS -d ${D} -t 65 ${FX}/small.sam
+  RC 2 REGEX "at most 64 threads" NO_FILES small.sam.samstat.html)
+cli_test(threads_not_a_32bit_number ARGS -d ${D} -t 99999999999 ${FX}/small.sam
+  RC 2 REGEX "too large" NO_FILES small.sam.samstat.html)
+
+# --- resource limits (memory must not grow with a setting or a malformed input) ---------------
+# a record longer than the read length limit fails its input (built-in 50 Mb; lowered here so that
+# the test input stays tiny)
+# (limit 30: the 20 bp reads of the generated FASTQ pass, the 40 bp reads of small.sam fail)
+cli_test(read_longer_than_limit ENV SAMSTAT_MAX_READ_LEN=30
+  GEN_FASTQ 3 ARGS -d ${D} @GENFQ@ ${FX}/small.sam
+  RC 1 REGEX "record small00 has 40 bases, more than the 30 a read may have"
+  FILES gen_3.fq.samstat.html NO_FILES small.sam.samstat.html)
+cli_test(read_at_limit ENV SAMSTAT_MAX_READ_LEN=20
+  GEN_FASTQ 3 ARGS -d ${D} @GENFQ@ FILES gen_3.fq.samstat.html)
+# (that the test-only limits can only lower the built-in values is checked by cli:unit_param,
+# which calls param_init() directly and never allocates by the values)
+# 1 MB without a newline that is not SAM/FASTA/FASTQ: rejected after reading a fixed chunk,
+# never loaded as one line
+cli_test(blob_without_newline GEN_BLOB 1000000 ARGS -d ${D} @GENBLOB@
+  RC 1 REGEX "unrecognised input")
 cli_test(num_ok ARGS -d ${D} -t 3 -p 100 ${FX}/small.sam FILES small.sam.samstat.html)
 
 # --- -p/--peek analyses exactly N reads (reader batch is 4096 records) --------------------------
@@ -240,13 +275,13 @@ file(WRITE ${CLI_GEN}/run_deprecated.cmake [=[
 # -DSAMSTAT -DOUTDIR -DINPUT -DOPT=<name> -DOPTARG=<value or empty>
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR}/a ${OUTDIR}/b)
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR}/a ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR}/a ${INPUT}
   RESULT_VARIABLE rc_a OUTPUT_VARIABLE out_a ERROR_VARIABLE err_a)
 set(flag ${OPT})
 if(OPTARG)
   list(APPEND flag ${OPTARG})
 endif()
-execute_process(COMMAND ${SAMSTAT} ${flag} --json -d ${OUTDIR}/b ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} ${flag} --json -d ${OUTDIR}/b ${INPUT}
   RESULT_VARIABLE rc_b OUTPUT_VARIABLE out_b ERROR_VARIABLE err_b)
 if(NOT rc_a EQUAL 0 OR NOT rc_b EQUAL 0)
   message(FATAL_ERROR "exit codes ${rc_a} / ${rc_b}\n${out_b}\n${err_b}")
@@ -298,7 +333,7 @@ if(uid STREQUAL "0")
   return()
 endif()
 string(TIMESTAMP t0 "%s")
-execute_process(COMMAND ${SAMSTAT} ${args} RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} ${args} RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 string(TIMESTAMP t1 "%s")
 file(CHMOD ${OUTDIR}/ro PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 math(EXPR dt "${t1}-${t0}")
@@ -349,7 +384,7 @@ add_test(NAME cli:help_matches_readme
     -P ${CLI_GEN}/check_help.cmake)
 set_tests_properties(cli:help_matches_readme PROPERTIES LABELS cli)
 file(WRITE ${CLI_GEN}/check_help.cmake [=[
-execute_process(COMMAND ${SAMSTAT} -h OUTPUT_VARIABLE help RESULT_VARIABLE rc)
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -h OUTPUT_VARIABLE help RESULT_VARIABLE rc)
 file(READ ${README} readme)
 string(REGEX MATCHALL "--[a-z]+" opts "${help}")
 if(NOT opts)
@@ -443,7 +478,7 @@ file(MAKE_DIRECTORY ${OUTDIR})
 if(NOT DEFINED EXPECT_RC)
   set(EXPECT_RC 0)
 endif()
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} - ${EXTRA_ARGS}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} - ${EXTRA_ARGS}
   INPUT_FILE ${STDIN_FILE}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "${EXPECT_RC}")
@@ -553,9 +588,10 @@ cli_test(stderr_summary_line_partial
   GEN_FASTQ 50 ARGS -d ${D} -p 10 @GENFQ@
   REGEX "FASTQ, 10 reads, N50 20 bp, mean Q 40\\.0, short layout, partial: first 10 reads, [0-9]+ s\\)")
 # a pipe is not a terminal: no counter ("N reads processed" + CR)
-cli_test(no_progress_without_tty
-  GEN_FASTQ 1100000 ARGS -d ${D} @GENFQ@
-  REGEX "FASTQ, 1\\.1M reads"
+# (the progress step is lowered to 100 reads, so a small file crosses it many times)
+cli_test(no_progress_without_tty ENV SAMSTAT_PROGRESS_STEP=100
+  GEN_FASTQ 1100 ARGS -d ${D} @GENFQ@
+  REGEX "FASTQ, 1\\.1k reads"
   NO_REGEX "reads processed|Processed")
 
 # --- final review fixes ------------------------------------------------------------------

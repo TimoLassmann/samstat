@@ -43,6 +43,7 @@ typedef struct svg_axis {
         double hi;
         int log;                /* 0 = linear, 1 = log10 */
         const char* label;      /* axis title, may be NULL */
+        int whole;              /* 1: a count, length or position - linear ticks are whole numbers */
 } svg_axis;
 
 /*

@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.19)
 
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc}\n${out}\n${err}")

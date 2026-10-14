@@ -201,7 +201,7 @@ foreach(cut IN LISTS cuts)
   if(NOT hrc EQUAL 0)
     message(FATAL_ERROR "head -c ${len} failed (${hrc})")
   endif()
-  execute_process(COMMAND ${SAMSTAT} --json -d ${dir} ${bam}
+  execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${dir} ${bam}
     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
   if(NOT rc MATCHES "^[0-9]+$")
     string(APPEND failed "  cut at ${len}: crashed (${rc})\n")
@@ -266,7 +266,7 @@ foreach(batch default 7)
     list(GET f 4 partial)
     set(dir ${OUTDIR}/b${batch}_p${n})
     file(MAKE_DIRECTORY ${dir})
-    execute_process(COMMAND ${SAMSTAT} --json -t ${THREADS} -p ${n} -d ${dir} ${input}
+    execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -t ${THREADS} -p ${n} -d ${dir} ${input}
       RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
     if(NOT rc EQUAL 0)
       message(FATAL_ERROR "-p ${n} (batch ${batch}): exit ${rc}\n${out}${err}")
@@ -330,7 +330,7 @@ file(WRITE ${READER_GEN}/run_cram_no_ref.cmake [=[
 cmake_minimum_required(VERSION 3.19)
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
-execute_process(COMMAND ${SAMSTAT} -d ${OUTDIR} ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 1)
   message(FATAL_ERROR "expected exit 1, got ${rc}\nstdout:\n${out}\nstderr:\n${err}")

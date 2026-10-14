@@ -58,6 +58,8 @@ int parse_alignment(struct tl_seq *s)
         char Op;
         int Oplen;
         int aln_len;
+        int64_t aln_len64;
+        uint64_t d_sum;
 
         a = s->data;
         a->n_clip5 = 0;
@@ -74,8 +76,15 @@ int parse_alignment(struct tl_seq *s)
                 a->aln_len = 0;
                 return OK;
         }
-        aln_len = 0;
-        int q_len = 0;  /* number of query bases consumed by the CIGAR (M, I, S, =, X) */
+        /*
+         * 64-bit sums: a CIGAR operation can be 268 million bases long and a record can have many.
+         * The alignment strings get one column per read base in M, =, X and I, and ONE column per
+         * D operation, however long: their length is bounded by the read length plus the number of
+         * operations, never by the reference span (a 100 Mb deletion must not need 200 Mb).
+         */
+        aln_len64 = 0;
+        d_sum = 0;
+        int64_t q_len = 0;  /* number of query bases consumed by the CIGAR (M, I, S, =, X) */
 
         for(int i = 0;i < a->n_cigar;i++){
                 Op = bam_cigar_opchr(a->cigar[i]);
@@ -99,24 +108,31 @@ int parse_alignment(struct tl_seq *s)
                 case '=':
                         a->m_bases += bam_cigar_oplen(a->cigar[i]);
                         q_len += bam_cigar_oplen(a->cigar[i]);
-                        aln_len += bam_cigar_oplen(a->cigar[i]);
+                        aln_len64 += bam_cigar_oplen(a->cigar[i]);
                         break;
                 case 'I':
                         a->i_ev++;
                         a->i_bases += bam_cigar_oplen(a->cigar[i]);
                         q_len += bam_cigar_oplen(a->cigar[i]);
-                        aln_len += bam_cigar_oplen(a->cigar[i]);
+                        aln_len64 += bam_cigar_oplen(a->cigar[i]);
                         break;
                 case 'D':
-                        Oplen = bam_cigar_oplen(a->cigar[i]);
                         a->d_ev++;
-                        a->d_bases += (uint32_t)Oplen;
-                        aln_len += Oplen;
+                        d_sum += bam_cigar_oplen(a->cigar[i]);
+                        aln_len64 += 1;
                         break;
                 default:
                         break;
                 }
         }
+        /* saturated: a larger sum makes the NM-based identity negative, i.e. not available */
+        a->d_bases = (d_sum > UINT32_MAX) ? UINT32_MAX : (uint32_t) d_sum;
+        if(q_len != (int64_t) s->len || aln_len64 > INT32_MAX){
+                /* treated below as a CIGAR that does not fit SEQ */
+                q_len = -1;
+                aln_len64 = 0;
+        }
+        aln_len = (int) aln_len64;
         /* SEQ '*' (no bases) or a CIGAR that does not fit SEQ: nothing to align. */
         if(s->len == 0 || q_len != s->len){
                 a->aln_len = 0;
@@ -222,11 +238,10 @@ int parse_alignment(struct tl_seq *s)
                         }
                         break;
                 case 'D':
-                        for(int j = 0; j < Oplen;j++){
-                                read[rp] = '-';
-                                genome[rp] = 'N';
-                                rp++;
-                        }
+                        /* one column per deletion, whatever its length (see above) */
+                        read[rp] = '-';
+                        genome[rp] = 'N';
+                        rp++;
                         break;
                 default:
                         break;
@@ -256,6 +271,23 @@ int parse_alignment(struct tl_seq *s)
                                         if(genome[pos] != '-'){
                                                 genome[pos] = read[pos];
                                                 c--;
+                                        }
+                                        pos++;
+                                }
+                        }else if(md[i] == '^'){
+                                /* deleted reference bases: all of them belong to the one column of
+                                 * the deletion, which shows the first of them */
+                                int first_del = 0;
+                                i++;
+                                while(i < l && isalpha((int)md[i])){
+                                        if(!first_del){
+                                                first_del = md[i];
+                                        }
+                                        i++;
+                                }
+                                if(read[pos] == '-'){
+                                        if(first_del){
+                                                genome[pos] = first_del;
                                         }
                                         pos++;
                                 }

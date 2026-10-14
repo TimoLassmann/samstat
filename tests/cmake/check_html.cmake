@@ -18,7 +18,7 @@ endif()
 get_filename_component(name ${run_input} NAME)
 
 execute_process(
-  COMMAND ${SAMSTAT} -d ${OUTDIR} ${run_input}
+  TIMEOUT 120 COMMAND ${SAMSTAT} -d ${OUTDIR} ${run_input}
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)

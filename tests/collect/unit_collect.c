@@ -79,6 +79,7 @@ static int read_into(const char *path, struct stat_collection **cols, int n, int
         o.batch_records = (uint64_t) batch_records;
         o.batch_bases = 8000000;
         o.max_primary = UINT64_MAX;
+        o.max_read_len = 0;
 
         for(int i = 0; i < n; i++){
                 cols[i] = NULL;

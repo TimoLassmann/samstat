@@ -16,6 +16,14 @@
 #define SAMSTAT_BATCH_RECORDS 4096
 #define SAMSTAT_BATCH_BASES 8000000
 
+/* A record longer than this fails its input: it is not a read (a chromosome of a genome
+ * FASTA, a corrupt record), and holding several of them at once would need many GB. The
+ * longest sequencing reads are a few Mb. */
+#define SAMSTAT_MAX_READ_LEN 50000000
+
+/* The progress counter on a terminal is updated every this many reads. */
+#define SAMSTAT_PROGRESS_STEP 1000000
+
 /* name of the input that stands for standard input */
 #define SAMSTAT_STDIN "-"
 
@@ -28,6 +36,8 @@ struct samstat_param {
         uint8_t* no_output;     /* 1: report directory not writable, input is failed up front */
         int buffer_size;        /* reader batch: records */
         uint64_t batch_bases;   /* reader batch: bases */
+        uint64_t max_read_len;  /* longer records fail the input */
+        uint64_t progress_step; /* reads between progress counter updates */
         int n_infile;
         int n_threads;
         int verbose;

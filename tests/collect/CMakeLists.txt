@@ -174,7 +174,7 @@ file(WRITE ${COLLECT_GEN_DIR}/scripts/check_v2_mapq_sum.cmake [=[
 # -DSAMSTAT -DINPUT -DOUTDIR
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc} on ${INPUT}\n${out}\n${err}")
@@ -237,7 +237,7 @@ file(WRITE ${sam} "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:100000\n")
 foreach(i 1 2 3)
   file(APPEND ${sam} "r${i}\t0\tchr1\t${i}\t60\t${LEN}M\t*\t0\t0\t${seq}\t${qual}\tNM:i:0\tMD:Z:${LEN}\n")
 endforeach()
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${sam}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${sam}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc}\n${out}\n${err}")

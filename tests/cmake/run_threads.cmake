@@ -49,7 +49,7 @@ if(MODE STREQUAL "one_file")
   foreach(t 1 2 3 4 8)
     file(MAKE_DIRECTORY ${OUTDIR}/t${t})
     execute_process(
-      COMMAND ${CMAKE_COMMAND} -E env SAMSTAT_BATCH_RECORDS=8 SAMSTAT_BATCH_BASES=20000
+      TIMEOUT 120 COMMAND ${CMAKE_COMMAND} -E env SAMSTAT_BATCH_RECORDS=8 SAMSTAT_BATCH_BASES=20000
         ${SAMSTAT} -t ${t} --verbose --json --multiqc -d ${OUTDIR}/t${t} ${run_input}
       RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
     if(NOT rc EQUAL 0)
@@ -94,7 +94,7 @@ endforeach()
 
 foreach(t 1 4)
   file(MAKE_DIRECTORY ${OUTDIR}/t${t})
-  execute_process(COMMAND ${SAMSTAT} -t ${t} --json -d ${OUTDIR}/t${t} ${copies}
+  execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -t ${t} --json -d ${OUTDIR}/t${t} ${copies}
     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "samstat -t ${t} exited with ${rc}\n${out}\n${err}")
@@ -119,7 +119,7 @@ foreach(i RANGE 1 8)
 endforeach()
 
 # no -d: report next to the input; --verbose is accepted
-execute_process(COMMAND ${SAMSTAT} --verbose ${OUTDIR}/in/s1.sam
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --verbose ${OUTDIR}/in/s1.sam
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0 OR NOT EXISTS ${OUTDIR}/in/s1.sam.samstat.html)
   message(FATAL_ERROR "run without -d failed (rc ${rc})\n${out}\n${err}")

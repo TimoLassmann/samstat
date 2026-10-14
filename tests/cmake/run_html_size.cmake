@@ -72,7 +72,7 @@ else()
   message(FATAL_ERROR "run_html_size: set -DMODE=short or -DMODE=ultralong")
 endif()
 
-execute_process(COMMAND ${SAMSTAT} -d ${OUTDIR} ${sam}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -d ${OUTDIR} ${sam}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc} (${MODE})\nstdout:\n${out}\nstderr:\n${err}")

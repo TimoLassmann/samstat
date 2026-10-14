@@ -23,7 +23,7 @@ if(sam_size LESS ${len})
   message(FATAL_ERROR "generated SAM is only ${sam_size} bytes")
 endif()
 
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${sam}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${sam}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc} on the 1 Mb read\nstdout:\n${out}\nstderr:\n${err}")

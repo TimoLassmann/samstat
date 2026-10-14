@@ -230,6 +230,9 @@ int svg_ticks(const svg_axis* in, int target, double* v, int* major, int max, do
 
         if (!a.log) {
                 double step = svg_nice_step(a.hi - a.lo, target);
+                if (a.whole && step < 1.0) {
+                        step = 1.0;     /* no tick at 0.5 reads or at position 2.5 */
+                }
                 double k0 = ceil(a.lo / step - 1e-9);
                 for (double k = k0; k * step <= a.hi + step * 1e-9 && n < max; k += 1.0) {
                         v[n] = fabs(k) < 0.5 ? 0.0 : k * step;

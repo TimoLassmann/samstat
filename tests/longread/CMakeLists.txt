@@ -222,7 +222,7 @@ file(WRITE ${LR_GEN}/check_mapq_sum.cmake [=[
 # -DSAMSTAT -DINPUT -DOUTDIR -DEXPECT=a,b,c,d
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc} on ${INPUT}\n${out}\n${err}")

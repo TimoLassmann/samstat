@@ -23,7 +23,7 @@ file(WRITE ${OUTDIR}/in/d.fq "${fq}")
 set(inputs ${OUTDIR}/in/a.sam ${OUTDIR}/in/b.sam ${OUTDIR}/in/c.fq ${OUTDIR}/in/d.fq)
 
 file(MAKE_DIRECTORY ${OUTDIR}/ref)
-execute_process(COMMAND ${SAMSTAT} -t 1 -d ${OUTDIR}/ref ${inputs}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -t 1 -d ${OUTDIR}/ref ${inputs}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat -t 1 exited with ${rc}\n${out}\n${err}")
@@ -36,7 +36,7 @@ endif()
 
 foreach(round RANGE 1 10)
   file(MAKE_DIRECTORY ${OUTDIR}/r${round})
-  execute_process(COMMAND ${SAMSTAT} -t 3 -d ${OUTDIR}/r${round} ${inputs}
+  execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -t 3 -d ${OUTDIR}/r${round} ${inputs}
     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "samstat -t 3 exited with ${rc}\n${out}\n${err}")

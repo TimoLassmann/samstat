@@ -46,11 +46,15 @@ struct aln_data {
 };
 
 /* Reader options. The batch limits and the -p cutoff are applied by the reader. */
+/* Default for reader_opts.max_read_len (0): a longer record fails the input. */
+#define READER_MAX_READ_LEN 50000000
+
 struct reader_opts {
         int pool_threads;        /* decompression threads (0: none), one pool per file */
         uint64_t batch_records;  /* a chunk ends after this many records ... */
         uint64_t batch_bases;    /* ... or when it holds this many bases, whichever is first */
         uint64_t max_primary;    /* -p: stop after exactly this many primary records */
+        uint64_t max_read_len;   /* longer records are an error (0: READER_MAX_READ_LEN) */
 };
 
 /* A batch of raw records as read from the file (WP4.1): the reader fills batches, the
@@ -80,6 +84,7 @@ struct sam_bam_file {
         uint64_t batch_records;
         uint64_t batch_bases;
         uint64_t max_primary;
+        uint64_t max_read_len;
         uint8_t is_fastx;         /* FASTA or FASTQ: records carry no aln_data */
         uint8_t is_empty;         /* zero-byte or whitespace-only input */
         uint8_t has_sq;           /* the header has at least one @SQ line */
@@ -104,6 +109,11 @@ EXTERN int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch
 /* Worker side: append the records of <batch> to <sb> (names, bases, qualities and, for
  * SAM/BAM, the alignment data). Touches no reader state, so any thread may call it. */
 EXTERN int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb);
+/* After a batch has been collected, before reset_tl_seq_buffer() and clear_aln_data(): give
+ * back the memory of every slot (of the first <n_used>) that held a long read, so that a slot
+ * never keeps room for the longest read it has seen. Without this a worker's 4096 slots grow,
+ * over a long-read run, towards 4096 times the longest read. */
+EXTERN int trim_seq_buffer(struct tl_seq_buffer *sb, int n_used);
 /* Read and convert in one step (single-threaded callers and tests). */
 EXTERN int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb);
 EXTERN int open_reads(struct sam_bam_file **file, char *filename, const struct reader_opts *opts);

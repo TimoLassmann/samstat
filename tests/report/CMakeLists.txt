@@ -331,7 +331,7 @@ plot_set_test(clarity_r2:base_colours "${GEN_DIR}/perfect60.sam"
   "-DCONTAINS=stroke=\"#007A5A\"|stroke=\"#A8467F\"|stroke=\"#1F6FA8\""
   "-DNOT_CONTAINS=#CC79A7|#2E86C1|#009E73")
 # plot 6 ends at 100: whole-number ticks 95-100 and no tick or bar past 100
-plot_set_test(clarity_r2:identity_axis "${GEN_DIR}/perfect60.sam"
+plot_set_test(clarity_r2:identity_axis "${GEN_DIR}/perfect60.sam" -DSCOPE=samstat-p6
   "-DCONTAINS=from 95% to 100%, in bins of 1 percentage point|The last bin includes the reads with exactly 100% identity.|>95<|>100<"
   "-DNOT_CONTAINS=>99.2<|>99.4<|>101<")
 # subtitle and tile captions in plain words

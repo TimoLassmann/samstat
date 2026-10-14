@@ -359,38 +359,35 @@ ERROR:
         return ret;
 }
 
-/* The only place the reader batch limits are read. SAMSTAT_BATCH_RECORDS and
- * SAMSTAT_BATCH_BASES lower them for tests (they are not a user option and are not
- * documented); anything but a positive integer is ignored. */
-static uint64_t env_positive(const char *name)
+/* The only place the test-only limits are read. SAMSTAT_BATCH_RECORDS, SAMSTAT_BATCH_BASES,
+ * SAMSTAT_MAX_READ_LEN and SAMSTAT_PROGRESS_STEP can LOWER the built-in value (to cut a small
+ * test input into many batches, or to test a limit without a huge input). They can never raise
+ * it: memory is allocated in proportion to these values, so a large value must not get past
+ * here. They are not a user option and are not documented; anything but a positive integer is
+ * ignored. */
+static uint64_t env_lower(const char *name, uint64_t builtin)
 {
         const char *e = getenv(name);
         char *end = NULL;
         unsigned long long v;
 
         if(!e || e[0] < '0' || e[0] > '9'){
-                return 0;
+                return builtin;
         }
         errno = 0;
         v = strtoull(e, &end, 10);
-        if(*end != 0 || errno == ERANGE || v > INT32_MAX){
-                return 0;
+        if(*end != 0 || errno == ERANGE || v == 0 || v >= builtin){
+                return builtin;
         }
         return (uint64_t) v;
 }
 
 static void batch_limits_from_env(struct samstat_param *p)
 {
-        uint64_t v;
-
-        v = env_positive("SAMSTAT_BATCH_RECORDS");
-        if(v){
-                p->buffer_size = (int) v;
-        }
-        v = env_positive("SAMSTAT_BATCH_BASES");
-        if(v){
-                p->batch_bases = v;
-        }
+        p->buffer_size = (int) env_lower("SAMSTAT_BATCH_RECORDS", SAMSTAT_BATCH_RECORDS);
+        p->batch_bases = env_lower("SAMSTAT_BATCH_BASES", SAMSTAT_BATCH_BASES);
+        p->max_read_len = env_lower("SAMSTAT_MAX_READ_LEN", SAMSTAT_MAX_READ_LEN);
+        p->progress_step = env_lower("SAMSTAT_PROGRESS_STEP", SAMSTAT_PROGRESS_STEP);
 }
 
 const char *samstat_output_stem(const struct samstat_param *p, int id)
@@ -473,8 +470,6 @@ int param_init(struct samstat_param **param)
         struct samstat_param* p = NULL;
 
         MMALLOC(p, sizeof(struct samstat_param));
-        p->buffer_size = SAMSTAT_BATCH_RECORDS;
-        p->batch_bases = SAMSTAT_BATCH_BASES;
         batch_limits_from_env(p);
         p->verbose = 0;
         p->n_infile = 0;

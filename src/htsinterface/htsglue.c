@@ -3,7 +3,10 @@
 #include "string/str.h"
 #include "tld.h"
 #include <htslib/sam.h>
+#include <htslib/bgzf.h>
+#include <htslib/hfile.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -181,6 +184,10 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                 if(r < 0){
                         break;
                 }
+                if(b->core.l_qseq < 0 || (uint64_t) b->core.l_qseq > f_handle->max_read_len){
+                        ERROR_MSG("%s: record %s has %" PRId32 " bases, more than the %" PRIu64 " a read may have: this is not a file of sequencing reads (a genome FASTA?)",
+                                  f_handle->filename, bam_get_qname(b), b->core.l_qseq, f_handle->max_read_len);
+                }
                 if(!f_handle->is_fastx && (b->core.flag & BAM_FSECONDARY)){
                         f_handle->n_secondary++;
                 }else if(!f_handle->is_fastx && (b->core.flag & BAM_FSUPPLEMENTARY)){
@@ -222,7 +229,7 @@ int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch)
 int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb)
 {
         char* buffer = NULL;
-        int b_len = 1024;
+        int b_len = 1024;       /* read lengths are at most max_read_len (read_batch), far below INT_MAX */
 
         ASSERT(sb->num_seq + batch->n <= sb->malloc_num, "The sequence buffer is too small for the batch");
         galloc(&buffer, b_len);
@@ -242,10 +249,9 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                 s->len = b->core.l_qseq;
 
                 /* buffer needs room for s->len characters plus the terminating 0 */
+                ASSERT(s->len >= 0 && s->len < INT32_MAX - 1024, "Record %s is too long", bam_get_qname(b));
                 if(s->len >= b_len){
-                        while(b_len <= s->len){
-                                b_len = b_len + 1024;
-                        }
+                        b_len = s->len + 1024;
                         gfree(buffer);
                         buffer = NULL;
                         galloc(&buffer,b_len);
@@ -328,6 +334,60 @@ ERROR:
         return FAIL;
 }
 
+/* A slot whose read was longer than this gives its memory back (see trim_seq_buffer). */
+#define SLOT_KEEP_LEN 32768
+
+static int fresh_strbuf(tld_strbuf **b, int size)
+{
+        tld_strbuf_free(*b);
+        *b = NULL;
+        RUN(tld_strbuf_alloc(b, size));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int trim_seq_buffer(struct tl_seq_buffer *sb, int n_used)
+{
+        ASSERT(sb != NULL, "No sb");
+        ASSERT(n_used >= 0 && n_used <= sb->malloc_num, "Bad slot count");
+        for(int i = 0; i < n_used; i++){
+                struct tl_seq *s = sb->sequences[i];
+                struct aln_data *a = (struct aln_data *) s->data;
+
+                /* tld_strbuf keeps its largest size: replace the buffers of a long read */
+                if(s->seq->len > SLOT_KEEP_LEN || s->qual->len > SLOT_KEEP_LEN){
+                        RUN(fresh_strbuf(&s->seq, 128));
+                        RUN(fresh_strbuf(&s->qual, 128));
+                }
+                if(a){
+                        if(a->md->len > SLOT_KEEP_LEN){
+                                RUN(fresh_strbuf(&a->md, 16));
+                        }
+                        if(a->aln_len_alloc > SLOT_KEEP_LEN){
+                                gfree(a->read);
+                                gfree(a->genome);
+                                a->read = NULL;
+                                a->genome = NULL;
+                                a->aln_len_alloc = 256;
+                                a->aln_len = 0;
+                                galloc(&a->read, a->aln_len_alloc);
+                                galloc(&a->genome, a->aln_len_alloc);
+                        }
+                        if(a->n_alloc_cigar > SLOT_KEEP_LEN / 4){
+                                gfree(a->cigar);
+                                a->cigar = NULL;
+                                a->n_alloc_cigar = 16;
+                                a->n_cigar = 0;
+                                galloc(&a->cigar, a->n_alloc_cigar);
+                        }
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
 {
         if(!f_handle->chunk){
@@ -344,29 +404,41 @@ ERROR:
 
 /* An input that is neither SAM/BAM nor FASTA/FASTQ is acceptable only if it holds nothing
  * but white space after decompression (an empty input). Returns 1 if so, 0 if there is
- * other content (*first is its first character), -1 if it cannot be read to the end (a truncated compressed file looks
- * empty to htslib's format detection). */
+ * other content (*first is its first character, 0 if the input is more than BLANK_SCAN_MAX
+ * bytes of white space), -1 if it cannot be read to the end (a truncated compressed file
+ * looks empty to htslib's format detection). The input is read in fixed chunks, never a
+ * line at a time: a large file without a newline (binary data, a gzip bomb) must not be
+ * loaded into memory. */
+#define BLANK_SCAN_MAX (64 * 1024 * 1024)
+
 static int blank_input(samFile *in, int *first)
 {
-        kstring_t line = {0, 0, NULL};
-        int blank = 1;
-        int r = -1;
+        char buf[65536];
+        uint64_t total = 0;
 
         *first = 0;
-        while(blank && (r = hts_getline(in, '\n', &line)) >= 0){
-                for(size_t i = 0; i < line.l; i++){
-                        if(!isspace((unsigned char) line.s[i])){
-                                blank = 0;
-                                *first = (unsigned char) line.s[i];
-                                break;
+        while(total < BLANK_SCAN_MAX){
+                ssize_t n;
+                if(in->format.compression == no_compression){
+                        n = hread(in->fp.hfile, buf, sizeof(buf));
+                }else{
+                        n = bgzf_read(in->fp.bgzf, buf, sizeof(buf));
+                }
+                if(n < 0){
+                        return -1;
+                }
+                if(n == 0){
+                        return 1;
+                }
+                for(ssize_t i = 0; i < n; i++){
+                        if(!isspace((unsigned char) buf[i])){
+                                *first = (unsigned char) buf[i];
+                                return 0;
                         }
                 }
+                total += (uint64_t) n;
         }
-        free(line.s);
-        if(blank && r != -1){
-                return -1;
-        }
-        return blank;
+        return 0;
 }
 
 static void destroy_reader(struct sam_bam_file *f_handle)
@@ -395,6 +467,7 @@ int open_bam(struct sam_bam_file **file, char *filename)
         o.batch_records = 4096;
         o.batch_bases = 8000000;
         o.max_primary = UINT64_MAX;
+        o.max_read_len = 0;
         return open_reads(file, filename, &o);
 }
 
@@ -424,6 +497,7 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
         f_handle->batch_records = opts->batch_records;
         f_handle->batch_bases = opts->batch_bases;
         f_handle->max_primary = opts->max_primary;
+        f_handle->max_read_len = opts->max_read_len ? opts->max_read_len : READER_MAX_READ_LEN;
         f_handle->is_fastx = 0;
         f_handle->is_empty = 0;
         f_handle->has_sq = 0;

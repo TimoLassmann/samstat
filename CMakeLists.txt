@@ -69,7 +69,10 @@ add_subdirectory(thirdparty)
 add_subdirectory(src)
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-  include(CTest)  
+  # Every test that sets no TIMEOUT of its own is killed after 120 s (the default is 1500 s):
+  # a test that hangs or runs away must not keep running on a developer's machine.
+  set(DART_TESTING_TIMEOUT 120 CACHE STRING "Default per-test timeout (seconds)" FORCE)
+  include(CTest)
   add_subdirectory(tests)
 endif()
 #add_subdirectory(src/tld/tests)

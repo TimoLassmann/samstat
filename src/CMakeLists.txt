@@ -36,8 +36,6 @@ set(source_files
   report/stat_report.c
   report/json_report.c
   report/mqc_report.c
-  report/lst.c
-  tools/tools.c
   ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
   )
 

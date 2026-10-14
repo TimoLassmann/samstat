@@ -20,11 +20,14 @@
 
 #define TRY(EXP) do { if ((EXP) != OK) { goto ERROR; } } while (0)
 
-/* One panel is FIG_W units wide. The page scales a figure to its container (width:100%), up to
- * about 512 px for a single figure and half the column for a pair. Below FIG_W it shrinks with
- * its text: at a 360 px screen (328 px of content) the 15 unit text is 12.3 px. */
-#define FIG_W 400.0
-#define FONT 15.0
+/* A single figure is FIG_W_ONE units wide and fills the page column (about 800 px, so the 14 unit
+ * text is about 17 px); each figure of a Read 1 / Read 2 pair is FIG_W_PAIR units wide and fills half
+ * the column. On a narrow screen a single figure keeps a minimum width and scrolls sideways
+ * (stat_report.c), so that its text stays readable. */
+#define FIG_W_ONE 640.0
+#define FIG_W_PAIR 400.0
+#define FONT 14.0
+#define FONT_PAIR 15.0
 #define PH_ONE 215.0      /* plotting height of a single-row figure */
 #define PH_ROW 96.0       /* plotting height of one row of plot 5 */
 
@@ -313,9 +316,12 @@ static int figure(tld_strbuf* o, const char* id_base, const char* title, const c
         char sertitle[128];
         const int titles = 1;
 
-        svg_grid_init(&g, nrows, 1, FIG_W, 300.0, FONT, titles);
+        const double fw = nm == 2 ? FIG_W_PAIR : FIG_W_ONE;
+        const double font = nm == 2 ? FONT_PAIR : FONT;
+
+        svg_grid_init(&g, nrows, 1, fw, 300.0, font, titles);
         double h = g.mt + g.mb + (nrows - 1) * g.gap_y + nrows * ph;
-        svg_grid_init(&g, nrows, 1, FIG_W, h, FONT, titles);
+        svg_grid_init(&g, nrows, 1, fw, h, font, titles);
 
         if (nm == 2) {
                 snprintf(id, sizeof(id), "%s-r%d", id_base, mate + 1);
@@ -324,7 +330,7 @@ static int figure(tld_strbuf* o, const char* id_base, const char* title, const c
                 snprintf(id, sizeof(id), "%s", id_base);
                 snprintf(ttl, sizeof(ttl), "%s", title);
         }
-        TRY(svg_begin(o, id, FIG_W, h, FONT, ttl, desc));
+        TRY(svg_begin(o, id, fw, h, font, ttl, desc));
         for (int r = 0; r < nrows; r++) {
                 const struct panel_data* d = &rows[r];
                 TRY(svg_grid_panel_ex(o, &g, r, 0, d->title, &d->x, &d->y, d->x_tick_max, &p));
@@ -392,11 +398,30 @@ static uint64_t pos_bin_bases(const struct stat_collection* s, const struct posa
         return t;
 }
 
-/* Is position bin i of mate r backed by enough bases to be drawn? (3.2: fewer than
- * REPORT_MIN_POS_BASES reads on the absolute axis is noise, not a measurement.) */
-static int pos_covered(const struct stat_collection* s, const struct posaxis* a, int r, int i)
+/*
+ * Reads of the classes in <mask> that cover position bin i of mate r. Absolute axis: a read puts at
+ * most one base into a position, so the bases in the bin are the reads. Relative axis: every read
+ * spans all 100 bins, so it is the number of reads in the classes. A line of plots 3 and 5 is drawn
+ * only where its own classes have at least a->min_bases reads: a class of a handful of reads is noise,
+ * and would also set the vertical scale for the classes that are measured.
+ */
+static uint64_t line_support(const struct stat_collection* s, const struct posaxis* a, int r, unsigned mask, int i)
 {
-        return pos_bin_bases(s, a, r, i) >= a->min_bases;
+        uint64_t t = 0;
+        for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                if (!(mask & (1u << m))) {
+                        continue;
+                }
+                if (a->rel) {
+                        t += s->basic_nums[r][m];
+                } else {
+                        const struct collect_pos_bin* b = &s->acc->pos_abs[r][m][i];
+                        for (int c = 0; c < COLLECT_N_BASE; c++) {
+                                t += b->comp[c];
+                        }
+                }
+        }
+        return t;
 }
 
 /*
@@ -418,7 +443,7 @@ static int pos_axis(const struct stat_collection* s, struct posaxis* a)
         a->min_bases = REPORT_MIN_POS_BASES;
         a->nb = 0;
         a->x0 = 1.0;
-        a->x = (svg_axis){0.5, 1.5, 0, a->lab_abs};
+        a->x = (svg_axis){0.5, 1.5, 0, a->lab_abs, 1};
         if (s->n_total < REPORT_MIN_POS_BASES) {
                 return 0;
         }
@@ -433,14 +458,14 @@ static int pos_axis(const struct stat_collection* s, struct posaxis* a)
         if (a->rel) {
                 a->nb = COLLECT_REL_BINS;
                 a->x0 = 0.5;
-                a->x = (svg_axis){0.0, 100.0, 0, a->lab_rel};
+                a->x = (svg_axis){0.0, 100.0, 0, a->lab_rel, 1};
                 return last >= 0;
         }
         a->nb = last + 1;
         a->x0 = 1.0;
         /* positions 1..nb are drawn at x = 1..nb; half a bin of room on each side keeps the lines off the
          * frame and lets the ticks fall on 50, 100, 150 */
-        a->x = (svg_axis){0.5, (double)(a->nb > 0 ? a->nb : 1) + 0.5, 0, a->lab_abs};
+        a->x = (svg_axis){0.5, (double)(a->nb > 0 ? a->nb : 1) + 0.5, 0, a->lab_abs, 1};
         return a->nb > 0;
 }
 
@@ -453,19 +478,52 @@ static const struct collect_pos_bin* pos_bins(const struct stat_collection* s, c
 /* plot 1: how long are the reads?                                      */
 /* ------------------------------------------------------------------ */
 
-static double len_edge(int is_long, int b)
+/*
+ * Long layout: the 1% storage bins are far too fine to draw (about 230 per decade, so a few
+ * thousand reads leave most bins empty and the outline becomes a comb). The figure merges them
+ * into LEN_PER_DECADE bins per decade, each a union of whole storage bins, so the counts stay
+ * exact: storage bin b goes into plot bin floor(LEN_PER_DECADE * log10(lower edge of b)).
+ * Short layout: one bin per length, drawn from length - 0.5 to length + 0.5 so that the bar is
+ * centred on its length.
+ */
+#define LEN_PER_DECADE 20
+
+static int len_plot_bin(int is_long, int b)
 {
-        return (double)(is_long ? collect_display_edge(b) : collect_length_edge(b));
+        if (!is_long) {
+                return b;
+        }
+        uint64_t e = collect_length_edge(b);
+        return e <= 1 ? 0 : (int)floor(LEN_PER_DECADE * log10((double)e) + 1e-9);
 }
 
-/* Upper edge of bin b: the next lower edge; the overflow bin gets one more grid step (1%). */
-static double len_upper(int is_long, int b)
+static int len_n_plot_bins(int is_long)
 {
-        int nb = is_long ? collect_n_display_bins() : COLLECT_N_LEN_BINS;
-        if (b + 1 < nb) {
-                return len_edge(is_long, b + 1);
+        return is_long ? len_plot_bin(1, COLLECT_N_LEN_BINS - 1) + 1 : COLLECT_N_LEN_BINS;
+}
+
+/* Lower edges of the plot bins, n + 1 values: e[d] is the smallest storage edge in plot bin d or
+ * above (a plot bin without a storage bin, possible below 10 bp, has zero width); e[n] is the end
+ * of the overflow bin, one more 1% step. */
+static void len_plot_edges(int is_long, double* e, int n)
+{
+        const double top = (double)collect_length_edge(COLLECT_N_LEN_BINS - 1) * 1.01 + 1.0;
+        const double shift = is_long ? 0.0 : 0.5;
+
+        for (int d = 0; d <= n; d++) {
+                e[d] = top;
         }
-        return len_edge(is_long, b) * 1.01 + 1.0;
+        for (int b = COLLECT_N_LEN_BINS - 1; b >= 0; b--) {
+                e[len_plot_bin(is_long, b)] = (double)collect_length_edge(b);
+        }
+        for (int d = n - 1; d >= 0; d--) {
+                if (e[d] > e[d + 1]) {
+                        e[d] = e[d + 1];
+                }
+        }
+        for (int d = 0; d <= n; d++) {
+                e[d] -= shift;
+        }
 }
 
 
@@ -487,7 +545,7 @@ static const char* mate_title(int nm, int r)
 static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
 {
         const int is_long = (s->layout == COLLECT_LAYOUT_LONG);
-        const int nb = is_long ? collect_n_display_bins() : COLLECT_N_LEN_BINS;
+        const int nb = len_n_plot_bins(is_long);
         const int nm = mates(s);
         struct lineinfo li[MAXL];
         const int nl = get_lines(s, 1, li);
@@ -511,7 +569,7 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                                 for (int b = 0; b < COLLECT_N_LEN_BINS; b++) {
                                         uint64_t v = s->acc->len_reads[r][m][b];
                                         if (v) {
-                                                cnt[r][k][is_long ? collect_display_bin(b) : b] += (double)v;
+                                                cnt[r][k][len_plot_bin(is_long, b)] += (double)v;
                                         }
                                 }
                         }
@@ -529,14 +587,12 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
         }
 
         const int n = bmax - bmin + 1;
-        double* xe = pool_alloc(pl, (size_t)n + 1);
-        if (!xe) {
+        double* edges = pool_alloc(pl, (size_t)nb + 1);
+        if (!edges) {
                 return FAIL;
         }
-        for (int i = 0; i < n; i++) {
-                xe[i] = len_edge(is_long, bmin + i);
-        }
-        xe[n] = len_upper(is_long, bmax);
+        len_plot_edges(is_long, edges, nb);
+        double* xe = edges + bmin;      /* n + 1 edges */
 
         svg_axis xa;
         if (is_long) {
@@ -547,7 +603,7 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                         lo = mid / sqrt(10.0);
                         hi = mid * sqrt(10.0);
                 }
-                xa = (svg_axis){nice125_down(fmax(lo, 1.0)), nice125_up(hi), 1, "read length (bp), log scale"};
+                xa = (svg_axis){nice125_down(fmax(lo, 1.0)), nice125_up(hi), 1, "read length (bp), log scale", 0};
         } else {
                 double lo = xe[0];
                 double hi = xe[n];
@@ -560,9 +616,9 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                                 hi = 10.0;
                         }
                 }
-                xa = (svg_axis){lo, hi, 0, "read length (bp)"};
+                xa = (svg_axis){lo, hi, 0, "read length (bp)", 1};
         }
-        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads"};
+        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads", 1};
 
         char lo_s[48], hi_s[48], n50_s[48], names[200], desc[900];
         fmt_len(lo_s, sizeof(lo_s), s->min_length, 1);
@@ -642,8 +698,9 @@ static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct poo
                 return na_line(o, help_of(2)->na_no_quality);
         }
         const int n = qmax + 1;
-        svg_axis xa = {0.0, (double)n, 0, "average base quality of the read (Q)"};
-        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads"};
+        /* the axis ends at the next multiple of 5 past the last bin, so that the last bar is not the frame */
+        svg_axis xa = {0.0, 5.0 * floor((double)n / 5.0 + 1.0), 0, "average base quality of the read (Q)", 1};
+        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads", 1};
         char names[200], desc[700];
 
         for (int r = 0; r < nm; r++) {
@@ -716,7 +773,8 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                                                 err += (collect_u128)pb->qual_error_sum;
                                         }
                                 }
-                                double q = pos_covered(s, &ax, r, i) ? collect_mean_q(err, bases) : NAN;   /* NaN = gap */
+                                double q = line_support(s, &ax, r, li[k].mask, i) >= ax.min_bases
+                                                   ? collect_mean_q(err, bases) : NAN;   /* NaN = gap */
                                 v[r][k][i] = q;
                                 if (isfinite(q) && q > qmax) {
                                         qmax = q;
@@ -724,7 +782,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                         }
                 }
         }
-        svg_axis ya = {0.0, fmax(10.0, ceil(qmax / 10.0 - 1e-9) * 10.0), 0, "mean base quality (Q)"};
+        svg_axis ya = {0.0, fmax(10.0, ceil(qmax / 10.0 - 1e-9) * 10.0), 0, "mean base quality (Q)", 1};
         char names[200], desc[800], range[96];
         pos_range_text(&ax, range, sizeof(range));
 
@@ -746,7 +804,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                 snprintf(desc, sizeof(desc),
                          "Mean base quality at each position along the read, %s%s. Lines: %s. "
                          "Gaps mean that no base with a quality was seen or that fewer than " REPORT_MIN_POS_BASES_STR
-                         " reads cover the position.",
+                         " reads of that line cover the position.",
                          range, s->is_aligned ? ", aligned part of the read" : "", names);
                 if (figure(o, "samstat-p3", help_of(3)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
@@ -815,7 +873,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                         }
                 }
         }
-        svg_axis ya = {0.0, 100.0, 0, "% of bases"};
+        svg_axis ya = {0.0, 100.0, 0, "% of bases", 0};
         char desc[800], range[96];
         pos_range_text(&ax, range, sizeof(range));
         for (int r = 0; r < nm; r++) {
@@ -849,6 +907,8 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
 /* ------------------------------------------------------------------ */
 
 static const char* const err_row_title[3] = {"Mismatches", "Insertions", "Deletions"};
+
+#define ERR_MIN_TOP 0.5   /* smallest top of a plot 5 rate axis, in percent */
 
 static double err_rate(const struct collect_pos_bin* b, int row)
 {
@@ -927,7 +987,8 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                                         sum.aligned_md += pb->aligned_md;
                                                 }
                                         }
-                                        double x = pos_covered(s, &ax, r, i) ? err_rate(&sum, row) : NAN;
+                                        double x = line_support(s, &ax, r, li[k].mask, i) >= ax.min_bases
+                                                           ? err_rate(&sum, row) : NAN;
                                         v[r][row][k][i] = x;
                                         if (isfinite(x)) {
                                                 seen[r][row] = 1;
@@ -955,8 +1016,10 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                  nm == 2 ? (r ? "Read 2: " : "Read 1: ") : "", err_row_title[row]);
                         pd->title = titles[r][row];
                         pd->x = ax.x;
-                        /* all zero: a whole-number scale (0, 2, 4 %) instead of 0.0-1.0, and a label that says so */
-                        pd->y = (svg_axis){0.0, ymax[row] > 0.0 ? svg_nice_ceil(ymax[row] * 1.04, 3) : 4.0, 0, NULL};
+                        /* all zero: a whole-number scale (0, 2, 4 %) instead of 0.0-1.0, and a label that says so.
+                         * Otherwise the scale reaches at least ERR_MIN_TOP %, so that a handful of events among
+                         * thousands of reads (0.004 %) stays a flat line near zero instead of filling the panel. */
+                        pd->y = (svg_axis){0.0, ymax[row] > 0.0 ? fmax(svg_nice_ceil(ymax[row] * 1.04, 3), ERR_MIN_TOP) : 4.0, 0, NULL, 0};
                         if (seen[r][row] && pmax[r][row] <= 0.0) {
                                 pd->note = "none detected";
                                 n_none++;
@@ -974,7 +1037,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                 snprintf(desc, sizeof(desc),
                          "%s per aligned base at each position along the read, %s, aligned part of the read, "
                          "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. Lines: %s.%s "
-                         "Positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads are not drawn.",
+                         "A line is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
                          md_total ? "Mismatches, insertions and deletions" : "Insertions and deletions", range, names,
                          n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");
                 if (figure(o, "samstat-p5", help_of(5)->title, desc, r, nm, rows, nrows, PH_ROW) != OK) {
@@ -1039,11 +1102,24 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
         }
 
         /*
-         * Long layout: the stored 0.1 % bins. Short layout: 1 % bins (ten stored bins summed). The
-         * axis ends at 100 and the stored exact-100 % bin joins the last bin, [100 - bin width, 100].
+         * Short layout: 1 % bins (a 150 bp read moves in steps of 0.67 %, finer bins would alias).
+         * Long layout: the narrowest of 0.1, 0.2, 0.5 and 1 % that gives at most 50 bins over the
+         * axis, so that a few thousand reads still draw a curve, not a comb. Each bin is a sum of
+         * whole stored 0.1 % bins (k of them). The axis ends at 100 and the stored exact-100 % bin
+         * joins the last bin, [100 - bin width, 100].
          */
-        const double bw = is_long ? 0.1 : 1.0;
-        const int n = is_long ? (COLLECT_N_IDENT - 1) - lo_pct * 10 : 100 - lo_pct;
+        int k10 = 10;
+        if (is_long) {
+                static const int widths[4] = {1, 2, 5, 10};
+                for (int w = 0; w < 4; w++) {
+                        k10 = widths[w];
+                        if ((1000 - lo_pct * 10) / k10 <= 50) {
+                                break;
+                        }
+                }
+        }
+        const double bw = k10 / 10.0;
+        const int n = (1000 - lo_pct * 10) / k10;
         double ymax = 0.0;
         for (int r = 0; r < nm; r++) {
                 for (int k = 0; k < nl; k++) {
@@ -1060,7 +1136,7 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                                         if (!c) {
                                                 continue;
                                         }
-                                        int d = is_long ? b - lo_pct * 10 : b / 10 - lo_pct;
+                                        int d = (b - lo_pct * 10) / k10;
                                         if (d > n - 1) {
                                                 d = n - 1;      /* exactly 100 %: the last bin */
                                         }
@@ -1072,8 +1148,8 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                         }
                 }
         }
-        svg_axis xa = {(double)lo_pct, 100.0, 0, "identity to the reference (%)"};
-        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads"};
+        svg_axis xa = {(double)lo_pct, 100.0, 0, "identity to the reference (%)", 1};
+        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads", 1};
         char names[200], desc[900], med[48];
 
         for (int r = 0; r < nm; r++) {
@@ -1104,7 +1180,8 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                          "Number of aligned reads by identity to the reference, from %d%% to 100%%, in bins of %s. "
                          "Lines: %s. The dashed vertical line marks the median identity, %s%%. "
                          "The last bin includes the reads with exactly 100%% identity.",
-                         lo_pct, is_long ? "0.1 percentage points" : "1 percentage point", names, med);
+                         lo_pct, k10 == 10 ? "1 percentage point" : k10 == 5 ? "0.5 percentage points"
+                                 : k10 == 2 ? "0.2 percentage points" : "0.1 percentage points", names, med);
                 if (figure(o, "samstat-p6", help_of(6)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }

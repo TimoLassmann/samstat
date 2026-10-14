@@ -425,9 +425,11 @@ static const char page_css_1[] =
 static const char page_css_2[] =
         /* plots */
         ".plot h2 .num{display:inline-block;min-width:1.6rem;color:var(--accent)}\n"
-        /* a figure fills its column up to about 512 px; a pair shares the column side by side */
-        ".figs{margin:0 0 .5rem;max-width:32rem}\n"
+        /* a single figure fills the column; on a narrow screen it keeps 30rem and scrolls sideways so that
+           its text stays readable. A pair shares the column side by side, and stacks on a narrow screen. */
+        ".figs{margin:0 0 .5rem;overflow-x:auto}\n"
         ".figs svg{display:block;width:100%;margin:0 0 12px 0}\n"
+        ".figs:not(.paired)>svg{min-width:30rem}\n"
         ".figs .plot-key svg{width:auto}\n"
         ".figs.paired{max-width:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}\n"
         ".figs.paired>p{grid-column:1/-1}\n"

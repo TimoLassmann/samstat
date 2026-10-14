@@ -20,7 +20,7 @@ if(NOT NO_JSON)
 endif()
 
 execute_process(
-  COMMAND ${SAMSTAT} ${args} ${INPUT}
+  TIMEOUT 120 COMMAND ${SAMSTAT} ${args} ${INPUT}
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)

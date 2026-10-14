@@ -84,6 +84,8 @@ static const struct count_case count_cases[] = {
         /* two events of the same kind count as two events */
         {"two_I",       "ACGTGACGTAC",   "2M1I3M1I4M",    "9",      0, 9,  2, 2, 0, 0, 0, 0, 1, NULL},
         {"two_D",       "ACGTAC",        "2M3D2M2D2M",    "2^TTT2^GG2",0,6, 0, 0, 2, 5, 0, 0, 1, NULL},
+        /* a 100 Mb deletion: counted in full, but one column in the alignment strings */
+        {"huge_D",      "ACGTACGT",      "4M100000000D4M","",      0, 8,  0, 0, 1, 100000000, 0, 0, 0, "ACGTNACGT"},
         /* soft clips counted, hard clips and N / P ignored */
         {"soft_clip",   "TTTACGTACGGG",  "3S7M2S",        "7",      0, 7,  0, 0, 0, 0, 5, 0, 1, NULL},
         {"hard_clip",   "TTTACGTACG",    "5H3S7M4H",      "7",      0, 7,  0, 0, 0, 0, 3, 0, 1, NULL},
@@ -227,6 +229,55 @@ ERROR:
         return FAIL;
 }
 
+/* trim_seq_buffer gives back the memory of a slot that held a long read, and only of the
+ * slots in use */
+static int test_trim(void)
+{
+        struct tl_seq_buffer* sb = NULL;
+        char* longseq = NULL;
+        const int L = 40000;
+        char cig[32];
+
+        RUN(alloc_tl_seq_buffer(&sb, 3));
+        RUN(add_aln_data(sb));
+        longseq = malloc((size_t)L + 1);
+        if(!longseq){
+                goto ERROR;
+        }
+        memset(longseq, 'A', (size_t)L);
+        longseq[L] = 0;
+        for(int i = 0; i < 3; i++){
+                struct tl_seq* s = sb->sequences[i];
+                struct aln_data* a = s->data;
+                tld_append(s->seq, longseq);
+                tld_append(s->qual, longseq);
+                s->len = L;
+                a->flag = 0;
+                snprintf(cig, sizeof(cig), "%dM", L);
+                RUN(set_cigar(a, cig));
+                RUN(parse_alignment(s));
+                CHECK(a->aln_len_alloc > 32768, "trim: slot %d alignment buffer %d", i, a->aln_len_alloc);
+        }
+        sb->num_seq = 3;
+        RUN(trim_seq_buffer(sb, 2));
+        for(int i = 0; i < 2; i++){
+                struct tl_seq* s = sb->sequences[i];
+                struct aln_data* a = s->data;
+                CHECK(s->seq->alloc_len == 128 && s->seq->len == 0, "trim: slot %d seq %d/%d", i, s->seq->len, s->seq->alloc_len);
+                CHECK(s->qual->alloc_len == 128 && s->qual->len == 0, "trim: slot %d qual %d/%d", i, s->qual->len, s->qual->alloc_len);
+                CHECK(a->aln_len_alloc == 256, "trim: slot %d alignment buffer %d", i, a->aln_len_alloc);
+        }
+        /* the third slot was not in use: left alone */
+        CHECK(sb->sequences[2]->seq->len == L, "trim: slot 2 touched");
+        free(longseq);
+        RUN(free_aln_data(sb));
+        free_tl_seq_buffer(sb);
+        return OK;
+ERROR:
+        free(longseq);
+        return FAIL;
+}
+
 static int run_case(struct tl_seq_buffer* sb, const struct aln_case* c)
 {
         struct tl_seq* s = NULL;
@@ -289,7 +340,10 @@ static const struct aln_case cases[] = {
         {"M_mismatch", "ACGTACGTAC", "10M",       "4C5",   0, 0,   10, "ACGTACGTAC", "ACGTCCGTAC", 0, 0, NULL},
         {"eq_x",       "ACGTACGTAC", "5=1X4=",    "5G4",   0, 0,   10, "ACGTACGTAC", "ACGTAGGTAC", 0, 0, NULL},
         {"I",          "ACGTGGACGT", "4M2I4M",    "8",     0, 0,   10, "ACGTGGACGT", "ACGT--ACGT", 0, 0, NULL},
-        {"D",          "ACGTACGT",   "4M2D4M",    "4^TT4", 0, 0,   10, "ACGT--ACGT", "ACGTTTACGT", 0, 0, NULL},
+        /* a deletion is one column, however long; it shows the first deleted base */
+        {"D",          "ACGTACGT",   "4M2D4M",    "4^TT4", 0, 0,    9, "ACGT-ACGT",  "ACGTTACGT",  0, 0, NULL},
+        {"D_huge",     "ACGTACGT",   "4M100000000D4M", "", 0, 0,    9, "ACGT-ACGT",  "ACGTNACGT",  0, 0, NULL},
+        {"D_two",      "ACGTACGT",   "2M3D4M2D2M","2^GCA4^TT2", 0, 0, 10, "AC-GTAC-GT", "ACGGTACTGT", 0, 0, NULL},
         {"mismatch_after_I", "ACGTGGACGT", "4M2I4M", "6A1", 0, 0,  10, "ACGTGGACGT", "ACGT--ACAT", 0, 0, NULL},
         {"S5",         "TTTACGTACG", "3S7M",      "7",     0, 0,    7, "ACGTACG",    "ACGTACG",    3, 0, NULL},
         {"S5_mismatch","TTTACGTACG", "3S7M",      "2T4",   0, 0,    7, "ACGTACG",    "ACTTACG",    3, 0, NULL},
@@ -313,7 +367,7 @@ static const struct aln_case cases[] = {
         {"MD_8_digits","ACGTACGTAC", "10M",       "00000010",0, 0, 10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
         {"MD_30_digits","ACGTACGTAC","10M",       "999999999999999999999999999999",0, 0, 10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
         {"MD_letters_long","ACGTACGTAC","10M",    "ACGTACGTACGTACGTACGT",0, 0, 10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
-        {"MD_del_long","ACGTACGT",   "4M2D4M",    "4^TTTTTTTT4",0, 0, 10, "ACGT--ACGT", "ACGTTTTTTT", 0, 0, NULL},
+        {"MD_del_long","ACGTACGT",   "4M2D4M",    "4^TTTTTTTT4",0, 0, 9, "ACGT-ACGT",  "ACGTTACGT",  0, 0, NULL},
         {"MD_garbage", "ACGTACGTAC", "10M",       "4*#5",  0, 0,   10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
 };
 
@@ -335,7 +389,8 @@ int main(void)
         free_tl_seq_buffer(sb);
         sb = NULL;
         RUN(test_nm_reset());
-        n += nc + 1;
+        RUN(test_trim());
+        n += nc + 2;
         fprintf(stdout, "unit_parse_alignment: %d cases, %d checks, %d failed\n", n, n_checks, n_failed);
         return n_failed ? 1 : 0;
 ERROR:

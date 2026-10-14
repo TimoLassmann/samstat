@@ -62,9 +62,18 @@ reader_json_test(seq_star_softclip seq_star_softclip.sam
 # secondary (0x100) and supplementary (0x800) records are not reads
 reader_json_test(supplementary supplementary.sam
   "summary.total_reads=1"
+  "summary.secondary=1"
+  "summary.supplementary=1"
   "summary.mapq_counts.read1.mapq_ge30=1"
   "summary.mapq_counts.read1.mapq_lt10=0"
   "read1.length.mapq_ge30.50=1")
+
+# 3 primary reads, 2x flag 256 + 1x flag 2304 (secondary wins) + 1x flag 2048
+reader_json_test(secondary secondary.sam
+  "summary.total_reads=3"
+  "summary.secondary=3"
+  "summary.supplementary=1"
+  "read1.n_reads=3")
 
 # 5'S: the A->C mismatch is at aligned offset 9 on the forward read; the reverse
 # read is reverse complemented (ref T, read G) so it is at offset 20-1-9 = 10.
@@ -103,6 +112,13 @@ reader_json_test(md_long_number md_long_number.sam
   "summary.total_reads=2"
   "read1.length.mapq_ge30.20=2"
   "read1.mismatches.mapq_ge30.G.10=1")
+
+# 300M reads: the 256 byte slack of the alignment buffers is too small to hide an
+# unbounded MD walk (MD digits 99999 / 300A99999 against 300 aligned bases)
+reader_json_test(md_long_alignment md_long_alignment.sam
+  "summary.total_reads=3"
+  "read1.length.mapq_ge30.300=3"
+  "read1.mismatches.mapq_ge30.A#len=0")
 
 # zero byte file: no header can be read, still a valid empty input
 reader_json_test(zero_bytes zero_bytes.sam

@@ -65,7 +65,8 @@ foreach(input "${SAMSTAT_FIXTURE_DIR}/empty.sam" "${SAMSTAT_TEST_DATA_DIR}/xx#mi
     "-DNOT_MATCHES=NaN|[^A-Za-z]nan[^A-Za-z]|[^A-Za-z]-?inf[^A-Za-z]")
 endforeach()
 
-# secondary/supplementary lines are shown only when non-zero. (Counting is done by
-# another work package; once it lands, add a test on tests/data/supplementary.sam.)
+# secondary/supplementary lines are shown only when non-zero
+report_html_test(secondary_supplementary_lines "${SAMSTAT_FIXTURE_DIR}/secondary.sam"
+  "-DCONTAINS=secondary alignments (not counted)|supplementary alignments (not counted)")
 report_html_test(no_secondary_lines_when_zero "${REPORT_SAM}"
   "-DNOT_CONTAINS=secondary alignments (not counted)|supplementary alignments (not counted)")

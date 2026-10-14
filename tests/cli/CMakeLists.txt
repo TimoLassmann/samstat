@@ -103,22 +103,28 @@ cli_test(ext_not_a_suffix_only
 # upper/mixed case and the .gz variants of every fasta/fastq extension, via copies
 set(EXT_COPY_DIR ${CLI_OUT}/ext_copies)
 file(MAKE_DIRECTORY ${EXT_COPY_DIR})
+# NOTE: macOS file systems are case-insensitive, so every test needs an output
+# directory name that differs by more than case (hence the counter).
+set(n_ext 0)
 foreach(ext SAM Sam BAM Bam)
+  math(EXPR n_ext "${n_ext}+1")
   if(ext MATCHES "^[Ss][Aa][Mm]$")
     set(src ${FX}/small.sam)
   else()
     set(src ${FX}/small.bam)
   endif()
   configure_file(${src} ${EXT_COPY_DIR}/case.${ext} COPYONLY)
-  cli_test(ext_case_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/case.${ext} FILES case.${ext}.samstat.html)
+  cli_test(ext_case_${n_ext}_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/case.${ext} FILES case.${ext}.samstat.html)
 endforeach()
 foreach(ext fa fasta fna fq fastq FA FASTQ)
+  math(EXPR n_ext "${n_ext}+1")
   configure_file(${FX}/READS.FQ ${EXT_COPY_DIR}/plain.${ext} COPYONLY)
-  cli_test(ext_plain_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/plain.${ext} FILES plain.${ext}.samstat.html)
+  cli_test(ext_plain_${n_ext}_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/plain.${ext} FILES plain.${ext}.samstat.html)
 endforeach()
 foreach(ext fa.gz fasta.gz fna.gz fq.gz fastq.gz FQ.GZ Fa.Gz)
+  math(EXPR n_ext "${n_ext}+1")
   configure_file(${FX}/reads.fq.gz ${EXT_COPY_DIR}/gz.${ext} COPYONLY)
-  cli_test(ext_gz_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/gz.${ext} FILES gz.${ext}.samstat.html)
+  cli_test(ext_gz_${n_ext}_${ext} ARGS -d ${D} ${EXT_COPY_DIR}/gz.${ext} FILES gz.${ext}.samstat.html)
 endforeach()
 
 # --- numeric options are validated strictly (exit 2) --------------------------------
@@ -187,3 +193,15 @@ cli_test(empty_fq
 cli_test(empty_with_good_t1
   ARGS -t 1 -d ${D} ${FX}/empty.sam ${FX}/small.sam
   FILES empty.sam.samstat.html small.sam.samstat.html)
+
+# --- error paths free their resources and report failure ----------------------------
+# (run under AddressSanitizer / LeakSanitizer in CI to catch leaks on these paths)
+cli_test(error_fastq_no_sequence
+  ARGS -d ${D} ${CMAKE_CURRENT_SOURCE_DIR}/data/bad_no_seq.fq
+  RC 1 REGEX "bad_no_seq\\.fq")
+cli_test(error_fastq_truncated
+  ARGS -d ${D} ${CMAKE_CURRENT_SOURCE_DIR}/data/bad_truncated.fq ${FX}/small.sam
+  RC 1 REGEX "bad_truncated\\.fq")
+cli_test(error_good_after_bad_fastq
+  ARGS -t 1 -d ${D} ${CMAKE_CURRENT_SOURCE_DIR}/data/bad_no_seq.fq ${FX}/small.sam
+  RC 1 FILES small.sam.samstat.html)

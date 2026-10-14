@@ -118,6 +118,15 @@ struct stat_collection {
         uint8_t layout;            /* COLLECT_LAYOUT_SHORT or COLLECT_LAYOUT_LONG */
         uint64_t n50;              /* lower edge of the storage length bin */
         uint64_t median_length;    /* lower edge of the storage length bin */
+        /* The same two values for display (HTML, MultiQC, stderr line). They equal n50 and
+         * median_length except where the exact scalars say better: a bin that holds one read
+         * gives that read's length, and a bin edge is never shown below min_length. *_exact is
+         * set when the value is the true length (below 1 kb, one read in the bin, or all reads
+         * the same length), so that "~" is left off. JSON keeps the bin edges. */
+        uint64_t n50_best;
+        uint64_t median_best;
+        uint8_t n50_exact;
+        uint8_t median_exact;
         double mean_q;
         double pct_mapped;
         double pct_mapq_ge30;

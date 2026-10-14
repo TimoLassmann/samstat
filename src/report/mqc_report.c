@@ -158,7 +158,7 @@ ERROR:
 
 /* General statistics (standard-plots.md section 8). A column that does not apply to the
    input is left out of both pconfig and data: pct_mapq_ge30 and pct_unmapped for input
-   that is not aligned, pct_proper_pair for unpaired input, n50 without reads, mean_q without
+   that is not aligned, pct_proper_pair for unpaired input, n50 without sequence, mean_q without
    qualities, median_identity without a computable identity. */
 int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, const char *filename, const char *sample)
 {
@@ -166,7 +166,7 @@ int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, cons
         int has_ge30 = !COLLECT_IS_NA(s->pct_mapq_ge30);
         int has_unmapped = !COLLECT_IS_NA(s->pct_mapped);
         int has_pair = s->n_paired > 0;
-        int has_n50 = s->n_total > 0;
+        int has_n50 = s->n_total > 0 && s->total_bases > 0;
         int has_q = !COLLECT_IS_NA(s->mean_q);
         int has_ident = !COLLECT_IS_NA(s->median_identity);
 
@@ -184,7 +184,7 @@ int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, cons
                 fprintf(f, ",\n{\"samstat_pct_proper_pair\": {\"title\": \"Properly paired\", \"description\": \"Percent of reads flagged as properly paired\", \"namespace\": \"SAMStat\", \"suffix\": \"%%\", \"min\": 0, \"max\": 100, \"format\": \"{:,.1f}\", \"scale\": \"RdYlGn\"}}");
         }
         if(has_n50){
-                fprintf(f, ",\n{\"samstat_n50\": {\"title\": \"N50\", \"description\": \"Read length N50 (bp, lower edge of the length bin)\", \"namespace\": \"SAMStat\", \"suffix\": \" bp\", \"min\": 0, \"format\": \"{:,.0f}\", \"scale\": \"Greens\"}}");
+                fprintf(f, ",\n{\"samstat_n50\": {\"title\": \"N50\", \"description\": \"Read length N50 (bp; exact below 1 kb, otherwise within 1%%)\", \"namespace\": \"SAMStat\", \"suffix\": \" bp\", \"min\": 0, \"format\": \"{:,.0f}\", \"scale\": \"Greens\"}}");
         }
         if(has_q){
                 fprintf(f, ",\n{\"samstat_mean_q\": {\"title\": \"Mean Q\", \"description\": \"Mean base quality (Phred, from the mean error probability)\", \"namespace\": \"SAMStat\", \"min\": 0, \"format\": \"{:,.1f}\", \"scale\": \"RdYlGn\"}}");
@@ -205,7 +205,7 @@ int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, cons
                 fprintf(f, ", \"samstat_pct_proper_pair\": %.2f", s->n_total ? 100.0 * (double) s->n_proper_paired / (double) s->n_total : 0.0);
         }
         if(has_n50){
-                fprintf(f, ", \"samstat_n50\": %" PRIu64, s->n50);
+                fprintf(f, ", \"samstat_n50\": %" PRIu64, s->n50_best);
         }
         if(has_q){
                 fprintf(f, ", \"samstat_mean_q\": %.2f", s->mean_q);

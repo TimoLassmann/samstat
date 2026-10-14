@@ -357,8 +357,10 @@ static int print_summary_line(const struct samstat_param *p, int id, const struc
         fmt_count(reads, sizeof(reads), s->n_total);
         extra[0] = 0;
         if(s->n_total){
-                fmt_length(n50, sizeof(n50), s->n50);
-                pos += (size_t) snprintf(extra + pos, sizeof(extra) - pos, ", N50 %s", n50);
+                if(s->total_bases){
+                        fmt_length(n50, sizeof(n50), s->n50_best);
+                        pos += (size_t) snprintf(extra + pos, sizeof(extra) - pos, ", N50 %s", n50);
+                }
                 if(!isnan(s->mean_q)){
                         pos += (size_t) snprintf(extra + pos, sizeof(extra) - pos, ", mean Q %.1f", s->mean_q);
                 }

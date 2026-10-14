@@ -374,7 +374,9 @@ struct posaxis {
         int rel;                /* 1 = relative axis (100 bins), 0 = absolute (1000 bins) */
         int nb;                 /* bins drawn */
         double x0;              /* x of the first bin */
-        svg_axis x;
+        svg_axis x;             /* x.label points into lab_abs/lab_rel: per call, never shared between threads */
+        char lab_abs[64];
+        char lab_rel[64];
         uint64_t min_bases;     /* a bin backed by fewer bases than this (all classes, one mate) is a gap */
 };
 
@@ -405,19 +407,18 @@ static int pos_covered(const struct stat_collection* s, const struct posaxis* a,
  */
 static int pos_axis(const struct stat_collection* s, struct posaxis* a)
 {
-        static char lab_abs[64], lab_rel[64];
         const int nb_max = (s->layout == COLLECT_LAYOUT_LONG) ? COLLECT_REL_BINS : COLLECT_ABS_BINS;
 
         a->rel = (s->layout == COLLECT_LAYOUT_LONG);
-        snprintf(lab_abs, sizeof(lab_abs), "position in read (bp)%s", s->is_aligned ? ", aligned part" : "");
-        snprintf(lab_rel, sizeof(lab_rel), "position in read (%% of length)%s", s->is_aligned ? ", aligned part" : "");
+        snprintf(a->lab_abs, sizeof(a->lab_abs), "position in read (bp)%s", s->is_aligned ? ", aligned part" : "");
+        snprintf(a->lab_rel, sizeof(a->lab_rel), "position in read (%% of length)%s", s->is_aligned ? ", aligned part" : "");
 
         /* last bin that any mate backs with enough bases */
         int last = -1;
         a->min_bases = REPORT_MIN_POS_BASES;
         a->nb = 0;
         a->x0 = 1.0;
-        a->x = (svg_axis){0.5, 1.5, 0, lab_abs};
+        a->x = (svg_axis){0.5, 1.5, 0, a->lab_abs};
         if (s->n_total < REPORT_MIN_POS_BASES) {
                 return 0;
         }
@@ -432,14 +433,14 @@ static int pos_axis(const struct stat_collection* s, struct posaxis* a)
         if (a->rel) {
                 a->nb = COLLECT_REL_BINS;
                 a->x0 = 0.5;
-                a->x = (svg_axis){0.0, 100.0, 0, lab_rel};
+                a->x = (svg_axis){0.0, 100.0, 0, a->lab_rel};
                 return last >= 0;
         }
         a->nb = last + 1;
         a->x0 = 1.0;
         /* positions 1..nb are drawn at x = 1..nb; half a bin of room on each side keeps the lines off the
          * frame and lets the ticks fall on 50, 100, 150 */
-        a->x = (svg_axis){0.5, (double)(a->nb > 0 ? a->nb : 1) + 0.5, 0, lab_abs};
+        a->x = (svg_axis){0.5, (double)(a->nb > 0 ? a->nb : 1) + 0.5, 0, a->lab_abs};
         return a->nb > 0;
 }
 

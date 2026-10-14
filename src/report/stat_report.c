@@ -222,25 +222,18 @@ static uint64_t n_mapped(const struct stat_collection *s)
         return n;
 }
 
-/* Format as detected by htslib ("BAM", "FASTQ, gzip", ...). The reader does not pass it on,
- * so the first bytes of the input are looked at again. Empty for standard input and for
- * anything htslib does not recognise: the header line then leaves the format out. */
-static void input_format_name(const char *path, char *buf, size_t n)
+/* Format as detected by htslib ("BAM", "FASTQ, gzip", ...), taken from the reader's own detection so
+ * that standard input is covered too. Empty when there is none or htslib does not recognise it:
+ * the header line then leaves the format out. */
+static void input_format_name(const htsFormat *f, char *buf, size_t n)
 {
-        htsFile *fp;
-        const htsFormat *f;
         const char *name = NULL;
         int gz;
 
         buf[0] = 0;
-        if(strcmp(path, SAMSTAT_STDIN) == 0){
+        if(!f){
                 return;
         }
-        fp = hts_open(path, "r");
-        if(!fp){
-                return;
-        }
-        f = hts_get_format(fp);
         switch(f->format){
         case sam:
                 name = "SAM";
@@ -268,14 +261,13 @@ static void input_format_name(const char *path, char *buf, size_t n)
                         snprintf(buf, n, "%s", name);
                 }
         }
-        hts_close(fp);
 }
 
 /* ------------------------------------------------------------------ */
 /* the page                                                             */
 /* ------------------------------------------------------------------ */
 
-int stat_report(struct stat_collection *s, struct samstat_param *p, int id)
+int stat_report(struct stat_collection *s, struct samstat_param *p, int id, const htsFormat *fmt)
 {
         char *n = NULL;
         tld_strbuf *out = NULL;
@@ -284,7 +276,7 @@ int stat_report(struct stat_collection *s, struct samstat_param *p, int id)
         RUN(tld_get_filename((char *) samstat_output_stem(p, id), &n));
 
         RUN(stat_collection_finalise(s));
-        input_format_name(p->infile[id], format, sizeof(format));
+        input_format_name(fmt, format, sizeof(format));
 
         RUN(tld_strbuf_alloc(&out, 1 << 16));
 
@@ -359,7 +351,9 @@ int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id)
         }else{
                 ASSERT(snprintf(buffer, (size_t) needed + 1, "%s.samstat.html", stem) == needed, "Output file name was truncated");
         }
-        LOG_MSG("Writing to: %s", buffer);
+        if(p->verbose){
+                LOG_MSG("Writing to: %s", buffer);
+        }
         f_ptr = fopen(buffer, "w");
         ASSERT(f_ptr != NULL,"Failed to open output file: %s", buffer);
 

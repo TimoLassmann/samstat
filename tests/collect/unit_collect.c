@@ -562,6 +562,8 @@ static int test_mean_q_128(void)
         s->qual_error_sum_all = (collect_u128) collect_qual_error(0) * bases;
         CHECK(stat_collection_finalise(s) == OK, "finalise");
         CHECK(fabs(s->mean_q) < 1e-9, "mean_q is %.9f, expected 0", s->mean_q);
+        CHECK(!signbit(s->mean_q), "mean_q of Q0 is -0.0, it prints as \"-0.0\"");
+        CHECK(!signbit(collect_mean_q((collect_u128) collect_qual_error(0) * 1000, 1000)), "collect_mean_q of Q0 is -0.0");
 
         CHECK(fabs(collect_mean_q((collect_u128) collect_qual_error(30) * 1000, 1000) - 30.0) < 1e-6, "collect_mean_q Q30");
         CHECK(COLLECT_IS_NA(collect_mean_q(0, 0)), "collect_mean_q of no bases is NA");

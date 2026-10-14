@@ -539,6 +539,8 @@ int process_reads_file(struct samstat_param* p, int id)
         struct timespec t0;
         const char *fname;
         char format[16];
+        htsFormat hts_fmt;
+        int have_hts_fmt = 0;
         int have_inline_worker = 0;
         int ret = FAIL;
 
@@ -557,7 +559,12 @@ int process_reads_file(struct samstat_param* p, int id)
         clock_gettime(CLOCK_MONOTONIC, &t0);
         RUN(open_reads(&f_handle, p->infile[id], &opts));
         format[0] = 0;
-        fname = f_handle->in ? format_name(hts_get_format(f_handle->in)) : NULL;
+        if(f_handle->in){
+                /* copied: the handle is closed before the report is written */
+                hts_fmt = *hts_get_format(f_handle->in);
+                have_hts_fmt = 1;
+        }
+        fname = have_hts_fmt ? format_name(&hts_fmt) : NULL;
         if(fname){
                 snprintf(format, sizeof(format), "%s", fname);
         }
@@ -595,7 +602,7 @@ int process_reads_file(struct samstat_param* p, int id)
         if(s->is_partial_report){
                 WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
         }
-        RUN(stat_report(s,p, id));
+        RUN(stat_report(s, p, id, have_hts_fmt ? &hts_fmt : NULL));
         RUN(print_summary_line(p, id, s, format, n_read, seconds_since(&t0)));
         ret = OK;
 ERROR:

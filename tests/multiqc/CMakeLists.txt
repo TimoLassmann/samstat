@@ -172,7 +172,7 @@ mqc_run_test(escape_name 0
   FILE_TEXT_IN "a@Q@b@BS@c.sam.samstat_mapq_mqc.json")
 
 # sample name = file name without directory, '.gz' and one known extension
-foreach(case "small.bam|small" "reads.fq.gz|reads" "READS.FQ|READS" "x.fa.gz|x" "y.fastq|y")
+foreach(case "small.bam|small" "reads.fq.gz|reads" "READS.FQ|READS" "x.fa.gz|x" "y.fastq|y" "s1.CRAM|s1")
   string(REPLACE "|" ";" parts "${case}")
   list(GET parts 0 fname)
   list(GET parts 1 sample)
@@ -182,6 +182,9 @@ foreach(case "small.bam|small" "reads.fq.gz|reads" "READS.FQ|READS" "x.fa.gz|x" 
     set(src ${SAMSTAT_FIXTURE_DIR}/reads.fa.gz)
   elseif(fname STREQUAL "y.fastq")
     set(src ${SAMSTAT_FIXTURE_DIR}/qual.fq)
+  elseif(fname STREQUAL "s1.CRAM")
+    # the type comes from the content (a SAM), the name is what is stripped: .cram in any case
+    set(src ${SAMSTAT_FIXTURE_DIR}/small.sam)
   else()
     continue()
   endif()
@@ -220,7 +223,7 @@ mqc_run_test(with_json 0
 # an output directory that does not exist is created (mkdir -p)
 mqc_run_test(missing_dir 0
   ARGS --multiqc -d @OUTDIR@/does/not/exist ${SAMSTAT_FIXTURE_DIR}/small.sam
-  REGEX "does/not/exist/small.sam.samstat_mapq_mqc.json")
+  FILES does/not/exist/small.sam.samstat_mapq_mqc.json)
 
 # a MultiQC file that cannot be created (a directory has its name): exit 1 with a message
 mqc_run_test(unwritable_file 1

@@ -170,3 +170,13 @@ accompanied by a `reads.fq`; the lower-case FASTQ exists only inside `reads.fq.g
 - Expected: total reads 4; read1 = 2; read2 = 2; `gt30` = 2 (pairA R1+R2),
   `lt30` = 2 (pairB R1+R2); R1 length 30 x2; R2 length 25 x2; 0 mismatches;
   Q40 x 110 bases (60 from R1, 50 from R2).
+
+## n) softclip_shift.sam
+
+- Purpose: soft clip whose length is not a multiple of 4, with a read that is not
+  periodic. With `case 'S': sp++` the aligned bases are taken from the wrong place
+  in SEQ; `softclip5_md.sam` clips 5 and its sequence repeats every 4 bases, so
+  it cannot show that.
+- Read `sc3_shift` (`3S20M`, SEQ `GGG` + `ACGT` x5, `NM:i:1 MD:Z:2T17`).
+- Expected: total reads 1; length 20; exactly 1 mismatch at aligned offset 2:
+  reference `T`, read base `G` (SEQ index 5). With the bug the read base is `A`.

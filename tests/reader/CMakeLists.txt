@@ -42,6 +42,29 @@ reader_json_test(supplementary supplementary.sam
   "summary.mapq_counts.read1.mapq_lt10=0"
   "read1.length.mapq_ge30.50=1")
 
+# 5'S: the A->C mismatch is at aligned offset 9 on the forward read; the reverse
+# read is reverse complemented (ref T, read G) so it is at offset 20-1-9 = 10.
+reader_json_test(softclip5_md softclip5_md.sam
+  "summary.total_reads=2"
+  "read1.length.mapq_ge30.20=2"
+  "read1.mismatches.mapq_ge30.C.9=1"
+  "read1.mismatches.mapq_ge30.G.10=1"
+  "read1.mismatches.mapq_ge30.A.9=0"
+  "read1.mismatches.mapq_ge30.T.9=0")
+
+# 3S: the read pointer must advance by the clip length, not by 1. The mismatch
+# at aligned offset 2 is read base G (SEQ index 5), not A (SEQ index 3).
+reader_json_test(softclip_shift softclip_shift.sam
+  "summary.total_reads=1"
+  "read1.length.mapq_ge30.20=1"
+  "read1.mismatches.mapq_ge30.G.2=1"
+  "read1.mismatches.mapq_ge30.A.2=0")
+
+# 5H10S40M and 40M10S5H: only the soft clip is removed from the length (50 - 10)
+reader_json_test(hardclip_softclip hardclip_softclip.sam
+  "summary.total_reads=2"
+  "read1.length.mapq_ge30.40=2")
+
 # --- rejected inputs -------------------------------------------------------
 # reader_error_test(<name> <fixture> <regex>)
 function(reader_error_test name input regex)

@@ -8,7 +8,6 @@
 #include "convert_tables.h"
 
 /* #include "convert_tables.h" */
-/* #include "../metrics/metrics.h" */
 
 
 /* #include "../sambamparse/sam_bam_parse.h" */

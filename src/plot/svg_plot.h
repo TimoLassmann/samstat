@@ -142,6 +142,10 @@ void svg_grid_init(svg_grid* g, int rows, int cols, double w, double h, double f
 int svg_grid_panel(tld_strbuf* o, const svg_grid* g, int r, int c, const char* title,
                    const svg_axis* x, const svg_axis* y, svg_panel* p);
 
+/* As svg_grid_panel; x ticks above x_tick_max are dropped (0 = no limit). */
+int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char* title,
+                      const svg_axis* x, const svg_axis* y, double x_tick_max, svg_panel* p);
+
 int svg_line(tld_strbuf* o, const svg_panel* p, const svg_series* s);
 int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s);
 

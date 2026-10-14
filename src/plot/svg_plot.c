@@ -387,7 +387,7 @@ ERROR:
 int svg_begin(tld_strbuf* o, const char* id, double w, double h, double font,
               const char* title, const char* desc)
 {
-        TRY(begin_ex(o, id, w, h, font, title, desc, "max-width:100%;height:auto"));
+        TRY(begin_ex(o, id, w, h, font, title, desc, "max-width:100%;height:auto;vertical-align:top"));
         TRY(pf(o, "<rect width=\"%f\" height=\"%f\" fill=\"#fff\"/>", w, h));
         return OK;
 ERROR:
@@ -416,13 +416,19 @@ void svg_grid_init(svg_grid* g, int rows, int cols, double w, double h, double f
         g->mt = (has_titles ? 2.0 : 0.8) * font;
         g->mb = 3.4 * font;     /* x tick labels and the x title */
         g->gap_x = 3.0 * font;
-        g->gap_y = g->rows > 1 ? 1.6 * font : 0.0;
+        g->gap_y = g->rows > 1 ? 2.7 * font : 0.0;   /* room for the next panel title and this panel's last tick label */
         g->pw = (w - g->ml - g->mr - (g->cols - 1) * g->gap_x) / g->cols;
         g->ph = (h - g->mt - g->mb - (g->rows - 1) * g->gap_y) / g->rows;
 }
 
 int svg_grid_panel(tld_strbuf* o, const svg_grid* g, int r, int c, const char* title,
                    const svg_axis* x, const svg_axis* y, svg_panel* p)
+{
+        return svg_grid_panel_ex(o, g, r, c, title, x, y, 0.0, p);
+}
+
+int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char* title,
+                      const svg_axis* x, const svg_axis* y, double x_tick_max, svg_panel* p)
 {
         double xv[SVG_MAX_TICKS], yv[SVG_MAX_TICKS], xstep = 0.0, ystep = 0.0;
         int xm[SVG_MAX_TICKS], ym[SVG_MAX_TICKS];
@@ -446,6 +452,12 @@ int svg_grid_panel(tld_strbuf* o, const svg_grid* g, int r, int c, const char* t
         int ny = svg_ticks(&p->y, (int)(p->h / (3.0 * f)), yv, ym, SVG_MAX_TICKS, &ystep);
         if (nx < 0 || ny < 0) {
                 ERROR_MSG("svg_plot: ticks failed");
+        }
+        if (x_tick_max != 0.0 && !p->x.log) {
+                /* e.g. an identity axis that runs to 101 so that the 100 % bin is visible */
+                while (nx > 0 && xv[nx - 1] > x_tick_max + fabs(xstep) * 1e-9) {
+                        nx--;
+                }
         }
 
         /* horizontal grid lines */
@@ -680,7 +692,7 @@ int svg_swatch_row(tld_strbuf* o, const char* id, const svg_swatch_item* items, 
         for (int i = 0; i < n; i++) {
                 x += 28.0 + 6.0 + 0.62 * font * (double)strlen(items[i].label ? items[i].label : "") + 14.0;
         }
-        TRY(begin_ex(o, id, x, h, font, title, desc, "max-width:100%;height:auto"));
+        TRY(begin_ex(o, id, x, h, font, title, desc, "max-width:100%;height:auto;vertical-align:top"));
         x = 2.0;
         for (int i = 0; i < n; i++) {
                 const char* label = items[i].label ? items[i].label : "";

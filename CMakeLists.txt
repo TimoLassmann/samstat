@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(SAMStat LANGUAGES C VERSION "2.3.0")
+project(SAMStat LANGUAGES C VERSION "2.4.0")
 
 # message(STATUS "${CMAKE_PROJECT_NAME} Name ")
 # message(STATUS "${CMAKE_PROJECT_VERSION} Version ")

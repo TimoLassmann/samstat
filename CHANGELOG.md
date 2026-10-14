@@ -3,6 +3,28 @@
 All notable changes to SAMStat are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.4.0] - unreleased
+
+### Breaking changes
+
+- **JSON format version 2.** `format_version` is 2; the version 1 keys are gone and the former `v2` block is the top level (`summary`, `mapq_bins`, `axes`, `read1`, plus `read2` for paired input). Per-base mismatch counts are replaced by one total per bin, and the quality-by-position matrix and clip-trimmed length no longer exist. Summary fractions are written with four decimals and are `null` when they do not apply. See `docs/json-format.md` and `docs/samstat.schema.json`. The MultiQC files change with it: seven general-stats columns, five sections, and a relative position axis for both position plots.
+- **Protein FASTA is unsupported.** Inputs are now read with htslib, which treats a protein FASTA as nucleotides with every non-ACGT letter counted as N, so the report shows nearly 100% N. There is no detection and no error.
+- **Unknown input exits 1 for that file.** Input type is detected from the content, not the extension. Non-empty input that is not SAM, BAM, FASTA or FASTQ fails that file with exit 1; the other files are still processed. Empty input is still a warning and exit 0.
+- **`-p` counts.** With `-p N`, the secondary and supplementary counts cover only the reads up to the cutoff, so they no longer depend on batch size or `-t`.
+- **Read length is the full read length** (soft-clipped bases included), not the clip-trimmed length. Lengths, N50 and base totals change for soft-clipped reads.
+- **Deprecated options** `-l`, `--seed`, `--norm` and `--plotend` are accepted, print a warning and are ignored.
+
+### Changed
+
+- Intra-file threading: `-t` is now the total thread budget (default 4) and also speeds up a single input; output is byte-identical for any `-t`. With at least as many inputs as threads, inputs run one per thread as before.
+- The HTML report is rebuilt: one page with a summary strip, optional notes, a MAPQ key table and six fixed plots as inline SVG; no Plotly, no JavaScript, no network request; prints cleanly to A4. The plots are read length, read mean quality, quality along the read, base composition along the read, error rates along the read (aligned input) and read identity (aligned input). Rates replace raw counts in the error profile.
+- Reads are taken from SAM, BAM, FASTA and FASTQ through htslib; `-` reads standard input.
+- Mismatches are taken from X operations in the CIGAR when a read has no MD tag. A note in the report states how many mapped reads lack MD. bwa-mem and bwa-mem2 write MD by default; STAR and minimap2 (without `--MD`) do not.
+
+### Removed
+
+- Plotly and all JavaScript from the HTML report.
+
 ## [2.3.0] - 2026-10-14
 
 ### Fixed

@@ -7,7 +7,9 @@
 # report, regenerate and review the diff:
 #
 #   cmake --build <build> --target update-goldens
-#   (or: ctest -L golden with each test's -DUPDATE=ON, see run_golden.cmake)
+#
+# This is the only golden mechanism: json:golden:* tests (tests/json) compare against
+# the same tests/golden/expected/<input>.json files.
 #
 # Inputs whose report exceeds 4 MB (long reads) are not golden-tested.
 

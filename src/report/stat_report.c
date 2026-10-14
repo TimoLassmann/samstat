@@ -236,25 +236,48 @@ ERROR:
 
 int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id)
 {
-        char buffer[1024];
+        char* buffer = NULL;
+        char* filename = NULL;
         FILE* f_ptr = NULL;
+        const char* str = TLD_STR(out_buffer);
+        size_t len = strlen(str);
+        int needed;
+
         if(p->outdir){
-                char* filename = NULL;
-                /* tlfilename(p->infile[id], &filename); */
                 RUN(tld_get_filename(p->infile[id], &filename));
-                snprintf(buffer,1024,"%s/%s.samstat.html",p->outdir, filename);
-                MFREE(filename);
+                needed = snprintf(NULL, 0, "%s/%s.samstat.html", p->outdir, filename);
         }else{
-                snprintf(buffer,1024,"%s.samstat.html", p->infile[id]);
+                needed = snprintf(NULL, 0, "%s.samstat.html", p->infile[id]);
+        }
+        ASSERT(needed > 0, "Could not build output file name");
+        MMALLOC(buffer, (size_t) needed + 1);
+        if(p->outdir){
+                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s/%s.samstat.html", p->outdir, filename) == needed, "Output file name was truncated");
+        }else{
+                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s.samstat.html", p->infile[id]) == needed, "Output file name was truncated");
         }
         LOG_MSG("Writing to: %s", buffer);
         f_ptr = fopen(buffer, "w");
-        ASSERT(f_ptr != NULL,"Failed to open output file");
+        ASSERT(f_ptr != NULL,"Failed to open output file: %s", buffer);
 
-        fprintf(f_ptr,"%s", TLD_STR(out_buffer));
-        fclose(f_ptr);
+        ASSERT(fwrite(str, 1, len, f_ptr) == len, "Failed to write output file: %s", buffer);
+        ASSERT(fclose(f_ptr) == 0, "Failed to close output file: %s", buffer);
+        f_ptr = NULL;
+        MFREE(buffer);
+        if(filename){
+                MFREE(filename);
+        }
         return OK;
 ERROR:
+        if(f_ptr){
+                fclose(f_ptr);
+        }
+        if(buffer){
+                MFREE(buffer);
+        }
+        if(filename){
+                MFREE(filename);
+        }
         return FAIL;
 }
 

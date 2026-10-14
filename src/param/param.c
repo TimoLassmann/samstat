@@ -1,6 +1,7 @@
 #include <getopt.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include "misc/misc.h"
@@ -206,7 +207,7 @@ int sanity_check_param(struct samstat_param *p)
         for(int i = 0; i < p->n_infile;i++){
                 if(p->file_type[i] == FILE_TYPE_UNKNOWN){
                         n_unknown++;
-                }else if(p->file_type[i] == FILE_TYPE_FASTA){
+                }else if(p->file_type[i] == FILE_TYPE_FASTAQ){
                         n_fasta++;
                 }else if(p->file_type[i] == FILE_TYPE_SAMBAM){
                         n_sam++;
@@ -215,21 +216,16 @@ int sanity_check_param(struct samstat_param *p)
                 }
         }
 
-        if(p->n_infile == n_unknown){
-                LOG_MSG("Could not recognize the type (fasta / sam / bam) of any input file by their file name extension:");
+        if(n_unknown){
                 for(int i = 0; i < p->n_infile;i++){
-                        LOG_MSG("   %s", p->infile[i]);
-                }
-                ERROR_MSG("Quitting");
-        }else{
-                if(n_fasta && n_sam){
-                        WARNING_MSG("Found both fasta and sam/bam files.");
-                        for(int i = 0; i < p->n_infile;i++){
-                                if(p->file_type[i] != FILE_TYPE_UNKNOWN){
-                                        LOG_MSG("   %s", p->infile[i]);
-                                }
+                        if(p->file_type[i] == FILE_TYPE_UNKNOWN){
+                                LOG_MSG("   unrecognized file name extension: %s", p->infile[i]);
                         }
                 }
+                ERROR_MSG("Could not recognize the type of %d input file(s) by their extension (supported: .sam .bam .fa .fasta .fna .fq .fastq, and .gz variants of the fasta/fastq ones).", n_unknown);
+        }
+        if(n_fasta && n_sam){
+                WARNING_MSG("Found both fasta/fastq and sam/bam files.");
         }
         /* check for identical files */
         for(int i = 0; i < p->n_infile;i++){
@@ -246,45 +242,37 @@ ERROR:
         return FAIL;
 }
 
+static int has_suffix_nocase(const char *name, const char *suffix)
+{
+        size_t n = strlen(name);
+        size_t m = strlen(suffix);
+        if(n <= m){
+                return 0;
+        }
+        return strcasecmp(name + n - m, suffix) == 0;
+}
+
 int detect_file_type(char *filename, int* type)
 {
-        {
-                tld_str f = tld_char_to_str(filename);
-                tld_str sam_suffix = tld_char_to_str(".sam");
-                tld_str bam_suffix = tld_char_to_str(".bam");
-                tld_str fasta_suffix = tld_char_to_str(".fasta");
-                tld_str fasta_suffix_short = tld_char_to_str(".fa");
-                tld_str fastq_suffix = tld_char_to_str(".fastq");
-                tld_str fastq_suffix_2 = tld_char_to_str(".fq");
+        static const char* sambam_suffix[] = {".sam", ".bam", NULL};
+        static const char* fastaq_suffix[] = {
+                ".fa", ".fasta", ".fna", ".fq", ".fastq",
+                ".fa.gz", ".fasta.gz", ".fna.gz", ".fq.gz", ".fastq.gz",
+                NULL};
 
-                tld_str fasta_suffix_gz = tld_char_to_str(".fasta.gz");
-                tld_str fasta_suffix_gz2 = tld_char_to_str(".fna.gz");
-                tld_str fastq_suffix_gz = tld_char_to_str(".fastq.gz");
-
-                if(tld_suffix_match(f, sam_suffix)){
+        *type = FILE_TYPE_UNKNOWN;
+        for(int i = 0; sambam_suffix[i]; i++){
+                if(has_suffix_nocase(filename, sambam_suffix[i])){
                         *type = FILE_TYPE_SAMBAM;
-                }else if(tld_suffix_match(f, bam_suffix)){
-                        *type = FILE_TYPE_SAMBAM;
-                }else if(tld_suffix_match(f, fasta_suffix)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_short)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix_2)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_gz)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_gz2)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix_gz)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else{
-                        *type = FILE_TYPE_UNKNOWN;
+                        return OK;
                 }
-
         }
-
+        for(int i = 0; fastaq_suffix[i]; i++){
+                if(has_suffix_nocase(filename, fastaq_suffix[i])){
+                        *type = FILE_TYPE_FASTAQ;
+                        return OK;
+                }
+        }
         /* a missing file is reported when the file is processed (exit code 1) */
         return OK;
 }

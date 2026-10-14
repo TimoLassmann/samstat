@@ -35,3 +35,11 @@ report_html_test(plotly_pinned "${REPORT_SAM}"
   "-DMATCHES=plotly-[0-9]+\\.[0-9]+\\.[0-9]+\\.min\\.js")
 report_html_test(no_unused_d3 "${REPORT_SAM}"
   "-DNOT_CONTAINS=d3js.org")
+
+# 'lines' is not a Plotly trace type; line traces must be scatter + mode lines.
+foreach(input "xx#minimal.sam" "xx#pair.sam" "ce#1.sam" "ce#2.sam")
+  report_html_test(trace_type:${input} "${SAMSTAT_TEST_DATA_DIR}/${input}"
+    "-DNOT_CONTAINS=type:'lines'|type: 'lines'|type:\"lines\"|type: \"lines\"")
+endforeach()
+report_html_test(trace_type_lines_mode "${SAMSTAT_TEST_DATA_DIR}/ce#1.sam"
+  "-DCONTAINS=type: 'scatter',\nmode: 'lines'")

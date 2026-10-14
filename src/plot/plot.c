@@ -1206,7 +1206,10 @@ int add_count_data(tld_strbuf *o,struct series_data* s_data , char**x, uint64_t*
                 /* snprintf(buf, 256,"name: %s,\n", label); */
                 /* RUN(tld_append(o,buf)); */
         }
-        if(s_data->type){
+        if(s_data->type && !strcmp(s_data->type, "lines")){
+                /* 'lines' is not a Plotly trace type; it is a scatter trace drawn with lines */
+                RUN(tld_append(o,"type: 'scatter',\nmode: 'lines',\n"));
+        }else if(s_data->type){
                 snprintf(buf, 256,"type: '%s',\n", s_data->type);
                 RUN(tld_append(o,buf));
         }else{
@@ -1265,7 +1268,10 @@ int add_real_data(tld_strbuf *o,struct series_data* s_data, char**x, double* y, 
                 /* snprintf(buf, 256,"name: %s,\n", label); */
                 /* RUN(tld_append(o,buf)); */
         }
-        if(s_data->type){
+        if(s_data->type && !strcmp(s_data->type, "lines")){
+                /* 'lines' is not a Plotly trace type; it is a scatter trace drawn with lines */
+                RUN(tld_append(o,"type: 'scatter',\nmode: 'lines',\n"));
+        }else if(s_data->type){
                 snprintf(buf, 256,"type: '%s',\n", s_data->type);
                 RUN(tld_append(o,buf));
         }else{
@@ -1340,7 +1346,10 @@ int add_data_series_error(tld_strbuf *o,struct series_data* s_data, char**x, dou
                 /* snprintf(buf, 256,"name: %s,\n", label); */
                 /* RUN(tld_append(o,buf)); */
         }
-        if(s_data->type){
+        if(s_data->type && !strcmp(s_data->type, "lines")){
+                /* 'lines' is not a Plotly trace type; it is a scatter trace drawn with lines */
+                RUN(tld_append(o,"type: 'scatter',\nmode: 'lines',\n"));
+        }else if(s_data->type){
                 snprintf(buf, 256,"type: '%s',\n", s_data->type);
                 RUN(tld_append(o,buf));
         }else{

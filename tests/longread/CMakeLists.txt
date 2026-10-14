@@ -1,7 +1,6 @@
 # Long-read and summary value tests (label: longread).
 #
-# Every test here is DISABLED until WP3.1b (JSON v2 preview) enables it. The expected values
-# come from tests/data/longread/README.md, i.e. from the fixture generator's ground truth
+# The expected values come from tests/data/longread/README.md, i.e. from the fixture generator's ground truth
 # and the definitions of docs/plan-v2.4/standard-plots.md section 3; none was read from a
 # samstat run. Keys are the `summary` keys of standard-plots.md section 7.
 #
@@ -66,6 +65,8 @@ function(lr_value_test fixture)
   cmake_parse_arguments(T "" "" "EQ;PCT1;NEAR" ${ARGN})
   set(checks "")
   foreach(kv IN LISTS T_EQ)
+    # check_json reads a JSON null as the empty string (string(JSON GET)): "k=null" -> "k="
+    string(REGEX REPLACE "=null$" "=" kv "${kv}")
     list(APPEND checks "${LR_P}summary.${kv}")
   endforeach()
   foreach(kv IN LISTS T_PCT1)
@@ -96,7 +97,7 @@ function(lr_value_test fixture)
       -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_DIR}/${fixture}
       -DOUTDIR=${LR_OUT}/value_${fixture} "-DCHECKS=${checks_arg}"
       -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_json.cmake)
-  set_tests_properties(longread:value:${fixture} PROPERTIES LABELS longread DISABLED TRUE)   # enabled by WP3.1b
+  set_tests_properties(longread:value:${fixture} PROPERTIES LABELS longread)
 endfunction()
 
 # Single-ended fixtures put all reads in read1: the MAPQ class counts are checked as
@@ -172,10 +173,20 @@ lr_value_test(nonm.sam
 
 # --- ubam_like.sam: no @SQ, every record unmapped: unaligned layout -------------------------------
 lr_value_test(ubam_like.sam
-  EQ total_reads=6 is_aligned=false total_bases=4100 min_length=300 max_length=1100
+  EQ total_reads=6 total_bases=4100 min_length=300 max_length=1100
      layout=short mapq_counts.read1.unmapped=6
   PCT1 n50=750 median_length=600
   NEAR mean_q=12.1286:0.1)
+
+# is_aligned=false for a uBAM without @SQ needs the reader to supply has_sq (WP3.2 removes
+# the input-type assignment in samstat.c). Until WP3.2 is merged (gate G3) this check stays
+# disabled; the collector side is covered by collect:unit.
+add_test(NAME longread:is_aligned:ubam_like.sam
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_DIR}/ubam_like.sam
+    -DOUTDIR=${LR_OUT}/is_aligned_ubam_like "-DCHECKS=${LR_P}summary.is_aligned=false"
+    -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_json.cmake)
+set_tests_properties(longread:is_aligned:ubam_like.sam PROPERTIES LABELS longread DISABLED TRUE)   # enable at G3, after WP3.2
 
 # --- sq_nomap.sam: @SQ present, no mapped read: aligned layout, 100% unmapped ---------------------
 lr_mq(mq 0 0 0 6)
@@ -273,7 +284,7 @@ function(lr_mapq_sum_test fixture expect)
       -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_DIR}/${fixture}
       -DOUTDIR=${LR_OUT}/mapq_sum_${fixture} -DPREFIX=${LR_PREFIX} -DEXPECT=${expect}
       -P ${LR_GEN}/check_mapq_sum.cmake)
-  set_tests_properties(longread:mapq_sum:${fixture} PROPERTIES LABELS longread DISABLED TRUE)   # enabled by WP3.1b
+  set_tests_properties(longread:mapq_sum:${fixture} PROPERTIES LABELS longread)
 endfunction()
 lr_mapq_sum_test(ont_like.sam 12,4,6,2)
 lr_mapq_sum_test(ont_like.bam 13,4,6,2)
@@ -287,4 +298,4 @@ add_test(NAME longread:ultralong
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
     -DOUTDIR=${LR_OUT}/ultralong -DPREFIX=${LR_PREFIX}
     -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_ultralong.cmake)
-set_tests_properties(longread:ultralong PROPERTIES LABELS longread DISABLED TRUE)   # enabled by WP3.1b
+set_tests_properties(longread:ultralong PROPERTIES LABELS longread)

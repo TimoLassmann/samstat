@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reads are taken from SAM, BAM, FASTA and FASTQ through htslib; `-` reads standard input.
 - Mismatches are taken from X operations in the CIGAR when a read has no MD tag. A note in the report states how many mapped reads lack MD. bwa-mem and bwa-mem2 write MD by default; STAR and minimap2 (without `--MD`) do not.
 
+- `-t` accepts 1 to 64; larger values are rejected with exit 2.
+- The per-position plots 3 to 5 are replaced by a one-line note for inputs with fewer than 50 reads.
+
 - Each input now prints one summary line on stderr (format, reads, N50, mean Q, % mapped, layout, time); a progress counter is shown only when stderr is a terminal.
 
 ### Added

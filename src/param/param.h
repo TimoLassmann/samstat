@@ -24,6 +24,7 @@ struct samstat_param {
         uint8_t collect_end;
         uint8_t norm_len_plot;
         uint8_t json;
+        uint8_t multiqc;
         uint64_t top_n;
         int32_t report_max_len;
         double subsample;

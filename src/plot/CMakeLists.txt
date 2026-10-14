@@ -20,10 +20,14 @@ if(SAMSTAT_SANITIZE)
   target_link_options(svg_plot_test PRIVATE -fsanitize=address,undefined)
 endif()
 
+# report_plots.c (WP4.2b) draws the six standard plots from a finalised stat_collection. It uses
+# the wording of report/report_help.c and the tables of collect/collect.c, which the final
+# executable links in; module_plot itself does not need them until report_plots.o is pulled.
 add_library(module_plot STATIC
   plot.c
   plot_interval.c
   plot_group.c
+  report_plots.c
   )
 
 target_include_directories(module_plot

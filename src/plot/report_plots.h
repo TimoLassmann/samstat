@@ -1,0 +1,60 @@
+#ifndef REPORT_PLOTS_H
+#define REPORT_PLOTS_H
+
+/*
+ * The six standard plots and the MAPQ swatches of the SAMStat report
+ * (docs/plan-v2.4/standard-plots.md sections 2 and 4), drawn from a finalised
+ * stat_collection on top of the svg_plot primitives.
+ *
+ * Output contract (the page code, WP4.2a, relies on it):
+ *   - Only static markup: <svg> elements, and <p class="plot-na">,
+ *     <p class="plot-note"> and <p class="plot-key"> (wraps the key of plot 4) lines. No <script>, no <style>, no external
+ *     reference, no per-point elements.
+ *   - Every <svg> has role="img", <title> and <desc>. Ids are unique on the
+ *     page: "samstat-p<plot>[-r1|-r2|-key]" and "samstat-mapq-<class>".
+ *   - Every <svg> carries style="max-width:100%;height:auto;vertical-align:top"
+ *     and its natural width in the width attribute. A paired input is drawn as
+ *     two sibling <svg> elements (Read 1, Read 2) with identical axes. They sit
+ *     in the normal inline flow: side by side when the container is wide enough
+ *     and stacked on a narrow screen. The page needs no wrapper and no CSS for
+ *     this; separating the figures with whitespace is enough.
+ *   - A plot that has no usable data is replaced by one <p class="plot-na">
+ *     line (the wording lives in report_help.c). A plot that does not apply to
+ *     the input type (plots 5 and 6 on unaligned input) writes nothing.
+ *   - <p class="plot-note"> carries the partial-MD note of plot 5.
+ *   - The output depends only on the collection: deterministic bytes.
+ *
+ * The caption, the "How to read this" block and the plot title are the
+ * caller's (report_help.c); these functions draw the figure only.
+ */
+
+#include "tld.h"
+
+struct stat_collection;
+
+/*
+ * Palettes. The MAPQ palette is Okabe-Ito (blue, orange, vermillion) plus grey;
+ * every class also has its own dash pattern, so the lines stay distinguishable
+ * in greyscale and for colour-blind readers. The base palette shares no hex
+ * value with the MAPQ palette (standard-plots.md 2.8). A dash of "" is solid.
+ * Index = MAPQ class (COLLECT_MAPQ_*) or base (A C G T N).
+ */
+static const char* const report_mapq_colour[4] = {"#0072B2", "#E69F00", "#D55E00", "#777777"};
+static const char* const report_mapq_dash[4] = {"", "6 3", "2 3", "8 3 2 3"};
+static const char* const report_base_colour[5] = {"#009E73", "#CC79A7", "#000000", "#8C5A00", "#56B4E9"};
+static const char* const report_base_dash[5] = {"", "", "", "", "6 3"};
+
+/* Line of unaligned input (one line, "all reads"). */
+#define REPORT_ALL_READS_COLOUR "#000000"
+
+/*
+ * Draw plot plot_id (1 = length, 2 = read quality, 3 = quality by position,
+ * 4 = base composition, 5 = errors by position, 6 = identity) into o, or the
+ * N/A line. Returns OK or FAIL (bad plot_id, out of memory).
+ */
+int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_id);
+
+/* One small <svg> with the line sample (colour and dash) of a MAPQ class 0..3 (the MAPQ table). */
+int report_mapq_swatch(tld_strbuf* o, int mapq_class);
+
+#endif

@@ -1,7 +1,7 @@
 # Baseline golden tests (label: golden).
 #
-# For every dev/*.sam, dev/*.fa and tests/data/*.{sam,bam} that ran without crashing
-# when the goldens were captured, samstat --json is run and the report is compared
+# For every dev/*.sam, dev/*.fa, tests/data/*.{sam,bam} and tests/data/longread/*.{sam,bam,fq}
+# that ran without crashing when the goldens were captured, samstat --json is run and the report is compared
 # with tests/golden/expected/<input>.json (meta ignored). The goldens capture
 # CURRENT behaviour, including known bugs; when a fix intentionally changes a
 # report, regenerate and review the diff:
@@ -12,13 +12,19 @@
 # the same tests/golden/expected/<input>.json files.
 #
 # Inputs whose report exceeds 4 MB (long reads) are not golden-tested.
+#
+# The long-read fixtures (tests/data/longread) have no golden yet: a golden test is
+# registered only when tests/golden/expected/<input>.json exists, and those files are
+# created at gate G2 by the gate verifier (new files, not a diff).
 
 set(GOLDEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/expected)
 set(GOLDEN_OUT ${SAMSTAT_TEST_OUT_DIR}/golden)
 
 file(GLOB GOLDEN_CANDIDATES
   ${SAMSTAT_TEST_DATA_DIR}/*.sam ${SAMSTAT_TEST_DATA_DIR}/*.fa
-  ${SAMSTAT_FIXTURE_DIR}/*.sam ${SAMSTAT_FIXTURE_DIR}/*.bam)
+  ${SAMSTAT_FIXTURE_DIR}/*.sam ${SAMSTAT_FIXTURE_DIR}/*.bam
+  ${SAMSTAT_FIXTURE_DIR}/longread/*.sam ${SAMSTAT_FIXTURE_DIR}/longread/*.bam
+  ${SAMSTAT_FIXTURE_DIR}/longread/*.fq)
 
 set(update_commands)
 foreach(input ${GOLDEN_CANDIDATES})

@@ -20,9 +20,10 @@ execute_process(
   ERROR_VARIABLE err)
 file(CHMOD ${OUTDIR} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
 
-string(FIND "${out}${err}" "Failed to open output file" pos)
+# since 2.4 the output directory is checked before any record is read
+string(FIND "${out}${err}" "use -d DIR" pos)
 if(pos EQUAL -1)
-  message(FATAL_ERROR "expected 'Failed to open output file' in the output:\n${out}\n${err}")
+  message(FATAL_ERROR "expected 'use -d DIR' in the output:\n${out}\n${err}")
 endif()
 file(GLOB written ${OUTDIR}/*)
 if(written)

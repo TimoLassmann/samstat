@@ -79,14 +79,18 @@ cli_test(help_short ARGS -h RC 0 REGEX "Usage")
 cli_test(help_long ARGS -help RC 0 REGEX "Usage")
 cli_test(version_short ARGS -v RC 0 REGEX "[0-9]+\\.[0-9]+")
 cli_test(version_long ARGS -version RC 0 REGEX "[0-9]+\\.[0-9]+")
+cli_test(threads_long ARGS --threads 2 -d ${D} ${FX}/small.sam FILES small.sam.samstat.html)
+cli_test(nthreads_alias ARGS --nthreads 2 -d ${D} ${FX}/small.sam FILES small.sam.samstat.html)
 cli_test(only_options ARGS -t 2 RC 2 REGEX "Usage")
 cli_test(unknown_option ARGS --bogus ${FX}/small.sam RC 2 NO_FILES small.sam.samstat.html)
 cli_test(missing_option_value ARGS ${FX}/small.sam -t RC 2)
 cli_test(duplicate_input
   ARGS -d ${D} ${FX}/small.sam ${FX}/small.sam
   RC 2 REGEX "Duplicated input" NO_FILES small.sam.samstat.html)
-cli_test(outdir_missing
-  ARGS -d ${D}/nope ${FX}/small.sam RC 2 REGEX "does not exist")
+# -d creates the directory (mkdir -p)
+cli_test(dir_created
+  ARGS -d ${D}/new/deeper ${FX}/small.sam
+  FILES new/deeper/small.sam.samstat.html)
 
 # --- file type detection --------------------------------------------------------
 cli_test(ext_unknown_only ARGS -d ${D} ${FX}/unknown.xyz RC 2 REGEX "unknown\\.xyz")
@@ -128,7 +132,7 @@ foreach(ext fa.gz fasta.gz fna.gz fq.gz fastq.gz FQ.GZ Fa.Gz)
 endforeach()
 
 # --- numeric options are validated strictly (exit 2) --------------------------------
-foreach(opt -t -p -l)
+foreach(opt -t -p)
   foreach(bad abc 12x -5 0x10 " 7" 1.5 99999999999999999999999)
     string(MAKE_C_IDENTIFIER "${opt}_${bad}" id)
     cli_test(badnum_${id}
@@ -138,10 +142,7 @@ foreach(opt -t -p -l)
 endforeach()
 cli_test(badnum_t_zero ARGS -t 0 ${FX}/small.sam RC 2 REGEX "-t")
 cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
-cli_test(badnum_l_zero ARGS -l 0 ${FX}/small.sam RC 2 REGEX "-l")
-cli_test(badnum_l_too_long ARGS -l 10001 ${FX}/small.sam RC 2 REGEX "10000")
-cli_test(num_l_warn_long ARGS -d ${D} -l 600 ${FX}/small.sam REGEX "> 500" FILES small.sam.samstat.html)
-cli_test(num_ok ARGS -d ${D} -t 3 -p 100 -l 100 ${FX}/small.sam FILES small.sam.samstat.html)
+cli_test(num_ok ARGS -d ${D} -t 3 -p 100 ${FX}/small.sam FILES small.sam.samstat.html)
 
 # --- -p/--peek analyses exactly N reads (chunk size is 10000) --------------------------
 # peek_test(<name> <kind> <n_reads> <peek> <expected total> <partial true|false>)
@@ -211,3 +212,136 @@ add_test(NAME cli:threads_many_inputs
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/small.sam
     -DOUTDIR=${CLI_OUT}/threads_many_inputs -P ${CLI_HELPERS}/run_threads.cmake)
 set_tests_properties(cli:threads_many_inputs PROPERTIES LABELS cli)
+
+# --- WP1.4: deprecated options, up-front output checks, version and help -------------
+# The scripts are generated into the build tree so that tests/cmake/ stays untouched.
+set(CLI_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
+file(MAKE_DIRECTORY ${CLI_GEN})
+
+# deprecated option: exit 0, exactly one warning line, JSON identical to a run without it
+file(WRITE ${CLI_GEN}/run_deprecated.cmake [=[
+# -DSAMSTAT -DOUTDIR -DINPUT -DOPT=<name> -DOPTARG=<value or empty>
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR}/a ${OUTDIR}/b)
+execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR}/a ${INPUT}
+  RESULT_VARIABLE rc_a OUTPUT_VARIABLE out_a ERROR_VARIABLE err_a)
+set(flag ${OPT})
+if(OPTARG)
+  list(APPEND flag ${OPTARG})
+endif()
+execute_process(COMMAND ${SAMSTAT} ${flag} --json -d ${OUTDIR}/b ${INPUT}
+  RESULT_VARIABLE rc_b OUTPUT_VARIABLE out_b ERROR_VARIABLE err_b)
+if(NOT rc_a EQUAL 0 OR NOT rc_b EQUAL 0)
+  message(FATAL_ERROR "exit codes ${rc_a} / ${rc_b}\n${out_b}\n${err_b}")
+endif()
+set(log "${out_b}\n${err_b}")
+string(REGEX MATCHALL "samstat: warning: [^\n]*deprecated[^\n]*" w "${log}")
+list(LENGTH w nw)
+if(NOT nw EQUAL 1)
+  message(FATAL_ERROR "expected exactly one deprecation warning, got ${nw}:\n${log}")
+endif()
+if(NOT w MATCHES "samstat: warning: ${OPT} is deprecated and ignored")
+  message(FATAL_ERROR "unexpected warning text: ${w}")
+endif()
+file(READ ${OUTDIR}/a/small.sam.samstat.json ja)
+file(READ ${OUTDIR}/b/small.sam.samstat.json jb)
+if(NOT ja STREQUAL jb)
+  message(FATAL_ERROR "JSON differs when ${OPT} is given")
+endif()
+]=])
+function(deprecated_test name opt optarg)
+  add_test(NAME cli:deprecated_${name}
+    COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${CLI_OUT}/deprecated_${name}
+      -DINPUT=${FX}/small.sam -DOPT=${opt} "-DOPTARG=${optarg}" -P ${CLI_GEN}/run_deprecated.cmake)
+  set_tests_properties(cli:deprecated_${name} PROPERTIES LABELS cli)
+endfunction()
+deprecated_test(l -l 100)
+deprecated_test(seed --seed 7)
+deprecated_test(norm --norm "")
+deprecated_test(plotend --plotend "")
+
+# unwritable report directories fail that input (exit 1), quickly, naming -d DIR
+file(WRITE ${CLI_GEN}/run_perm.cmake [=[
+# -DSAMSTAT -DOUTDIR -DINPUT -DMODE=outdir|input_dir
+file(REMOVE_RECURSE ${OUTDIR})
+file(MAKE_DIRECTORY ${OUTDIR}/ro)
+if(MODE STREQUAL "outdir")
+  set(args -d ${OUTDIR}/ro ${INPUT})
+else()
+  file(COPY_FILE ${INPUT} ${OUTDIR}/ro/small.sam)
+  set(args ${OUTDIR}/ro/small.sam)
+endif()
+file(CHMOD ${OUTDIR}/ro PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+# root ignores permission bits: skip
+execute_process(COMMAND id -u OUTPUT_VARIABLE uid OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(uid STREQUAL "0")
+  file(CHMOD ${OUTDIR}/ro PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+  file(REMOVE_RECURSE ${OUTDIR})
+  message(STATUS "running as root, skipping")
+  return()
+endif()
+string(TIMESTAMP t0 "%s")
+execute_process(COMMAND ${SAMSTAT} ${args} RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+string(TIMESTAMP t1 "%s")
+file(CHMOD ${OUTDIR}/ro PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+math(EXPR dt "${t1}-${t0}")
+set(msg "")
+if(NOT rc EQUAL 1)
+  set(msg "exit code ${rc}, expected 1")
+elseif(NOT "${out}${err}" MATCHES "cannot write [^\n]*; use -d DIR")
+  set(msg "message lacks 'use -d DIR'")
+elseif(dt GREATER 1)
+  set(msg "took ${dt} s")
+endif()
+if(MODE STREQUAL "outdir")
+  file(GLOB made ${OUTDIR}/ro/*.samstat.html)
+  if(made)
+    set(msg "${msg} report written")
+  endif()
+endif()
+# leave nothing behind that a backup tool or ctest cleanup would trip over
+file(REMOVE_RECURSE ${OUTDIR})
+if(msg)
+  message(FATAL_ERROR "${msg}\nstdout:\n${out}\nstderr:\n${err}")
+endif()
+]=])
+foreach(mode outdir input_dir)
+  set(tname outdir_unwritable)
+  if(mode STREQUAL "input_dir")
+    set(tname input_dir_readonly)
+  endif()
+  add_test(NAME cli:${tname}
+    COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${CLI_OUT}/perm_${mode}
+      -DINPUT=${FX}/small.sam -DMODE=${mode} -P ${CLI_GEN}/run_perm.cmake)
+  set_tests_properties(cli:${tname} PROPERTIES LABELS cli)
+endforeach()
+
+# two inputs resolving to the same report file: exit 2, both named
+file(MAKE_DIRECTORY ${CLI_OUT}/collide/a ${CLI_OUT}/collide/b)
+file(COPY_FILE ${FX}/small.sam ${CLI_OUT}/collide/a/same.sam ONLY_IF_DIFFERENT)
+file(COPY_FILE ${FX}/small.sam ${CLI_OUT}/collide/b/same.sam ONLY_IF_DIFFERENT)
+cli_test(output_collision
+  ARGS -d ${D} ${CLI_OUT}/collide/a/same.sam ${CLI_OUT}/collide/b/same.sam
+  RC 2 REGEX "collide/a/same\\.sam.*collide/b/same\\.sam" NO_FILES same.sam.samstat.html)
+
+cli_test(version_regex ARGS -v RC 0 REGEX "(^|\n)SAMStat [0-9]+\\.[0-9]+\\.[0-9]+\n")
+
+# every long option of -h is documented in Readme.org
+add_test(NAME cli:help_matches_readme
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DREADME=${PROJECT_SOURCE_DIR}/Readme.org
+    -P ${CLI_GEN}/check_help.cmake)
+set_tests_properties(cli:help_matches_readme PROPERTIES LABELS cli)
+file(WRITE ${CLI_GEN}/check_help.cmake [=[
+execute_process(COMMAND ${SAMSTAT} -h OUTPUT_VARIABLE help RESULT_VARIABLE rc)
+file(READ ${README} readme)
+string(REGEX MATCHALL "--[a-z]+" opts "${help}")
+if(NOT opts)
+  message(FATAL_ERROR "no long options found in -h output")
+endif()
+foreach(o IN LISTS opts)
+  string(FIND "${readme}" "${o}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "${o} is in -h but not in Readme.org")
+  endif()
+endforeach()
+]=])

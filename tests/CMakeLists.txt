@@ -26,3 +26,16 @@ foreach(input ${SAMSTAT_SMOKE_INPUTS})
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_smoke.cmake)
   set_tests_properties(smoke:${name} PROPERTIES LABELS smoke)
 endforeach()
+
+# Each test area lives in its own subdirectory (tests/<area>/CMakeLists.txt)
+# and is picked up automatically. Shared variables available to them:
+#   SAMSTAT_TEST_DATA_DIR  dev/ inputs
+#   SAMSTAT_TEST_OUT_DIR   scratch output root in the build tree
+#   SAMSTAT_FIXTURE_DIR    hand-written fixtures in tests/data
+set(SAMSTAT_FIXTURE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data)
+file(GLOB SAMSTAT_TEST_AREAS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(area ${SAMSTAT_TEST_AREAS})
+  if(IS_DIRECTORY ${area} AND EXISTS ${area}/CMakeLists.txt)
+    add_subdirectory(${area})
+  endif()
+endforeach()

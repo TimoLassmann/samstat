@@ -13,9 +13,7 @@
 #
 # There is no size limit: the v2 collector keeps reports small for any read length.
 #
-# A golden test is registered only when tests/golden/expected/<input>.json exists. Goldens
-# written before the "v2" object existed are compared without it (run_golden.cmake) until
-# gate G3 regenerates them.
+# A golden test is registered only when tests/golden/expected/<input>.json exists.
 
 set(GOLDEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/expected)
 set(GOLDEN_OUT ${SAMSTAT_TEST_OUT_DIR}/golden)

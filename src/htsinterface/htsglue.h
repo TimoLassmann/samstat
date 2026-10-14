@@ -29,7 +29,19 @@ struct aln_data {
         uint32_t n_clip5;
         uint32_t n_clip3;
         /* uint64_t stop; */
+        /* Per-record CIGAR counts (filled by parse_alignment, standard-plots.md 3.4):
+         * m_bases = bases in M, = and X ops; *_ev = number of I / D operations;
+         * *_bases = bases in them; s_bases = soft-clipped bases; x_ops = bases in X
+         * ops. All zero for unmapped records and for a CIGAR that does not fit SEQ. */
+        uint32_t m_bases;
+        uint32_t i_ev;
+        uint32_t i_bases;
+        uint32_t d_ev;
+        uint32_t d_bases;
+        uint32_t s_bases;
+        uint32_t x_ops;
         uint8_t reverse;
+        uint8_t has_md_or_x;    /* 1 if the record has an MD tag or X ops (mismatches are known) */
 };
 
 struct sam_bam_file {

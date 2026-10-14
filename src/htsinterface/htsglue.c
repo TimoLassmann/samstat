@@ -40,6 +40,7 @@ int clear_aln_data(struct tl_seq_buffer *sb)
                         a->md->len = 0;
                         a->n_clip5 = 0;
                         a->n_clip3 = 0;
+                        a->error = -1;
                 }
         }
         return OK;
@@ -161,6 +162,9 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                                 /* s->qual[s->len] = 0 ; */
                         }
                         /* extra stuff  */
+                        /* NM is stored only when present: reset it so that a reused
+                         * slot does not inherit the value of an earlier record. */
+                        a->error = -1;
                         if(! (BAM_FUNMAP & b->core.flag)){
                                 uint8_t * aux =  bam_aux_get(b,"NM");
                                 if(aux){
@@ -293,6 +297,15 @@ int alloc_aln_data(struct aln_data **aln_d)
         a->reverse = 0;
         a->n_clip5 = 0;
         a->n_clip3 = 0;
+        a->error = -1;
+        a->m_bases = 0;
+        a->i_ev = 0;
+        a->i_bases = 0;
+        a->d_ev = 0;
+        a->d_bases = 0;
+        a->s_bases = 0;
+        a->x_ops = 0;
+        a->has_md_or_x = 0;
         RUN(tld_strbuf_alloc(&a->md, 16));
         galloc(&a->read, a->aln_len_alloc);
         galloc(&a->genome, a->aln_len_alloc);

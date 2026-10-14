@@ -47,3 +47,4 @@ function(reader_error_test name input regex)
 endfunction()
 
 reader_error_test(not_a_bam not_a_bam.bam "Cannot read the SAM/BAM header")
+reader_error_test(truncated truncated.bam "truncated or corrupt")

@@ -189,6 +189,7 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         }
                 }
         }
+        ASSERT(r == -1,"Error reading alignments from %s (truncated or corrupt input?)", f_handle->filename);
         gfree(buffer);
         return OK;
 ERROR:

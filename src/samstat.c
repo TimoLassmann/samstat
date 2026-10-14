@@ -8,6 +8,7 @@
 #include "tools/tools.h"
 #include <stdint.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
@@ -20,53 +21,85 @@ int process_fasta_fastq_file(struct samstat_param *p, int id);
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
 
+/* Run the analysis for input file <id> depending on its type. */
+static int process_file(struct samstat_param *p, int id);
+
 int main(int argc, char *argv[])
 {
         struct samstat_param* param = NULL;
+        int n_failed = 0;
+        int ret = EXIT_SUCCESS;
 
-        RUN(parse_param(argc, argv, &param));
+        if(parse_param(argc, argv, &param) != OK){
+                return SAMSTAT_EXIT_USAGE;
+        }
 
 #if HAVE_PTHREADS
         struct thread_data* td = NULL;
         RUN(thread_data_init(&td, param));
 
+        int n_created = 0;
         for(long t = 0; t < td->n_threads; t++){
-                int rc = pthread_create(&td->threads[t], NULL, samstat_worker, (void *)td);
+                int rc = pthread_create(&td->threads[n_created], NULL, samstat_worker, (void *)td);
                 if(rc){
-                        ERROR_MSG("ERROR; return code from pthread_create() is %d\n", rc);
+                        WARNING_MSG("pthread_create() failed with return code %d.", rc);
+                }else{
+                        n_created++;
                 }
         }
-        for(long t = 0; t < td->n_threads; t++) {
+        if(n_created == 0){
+                /* no worker thread could be started - do the work here */
+                samstat_worker((void *) td);
+        }
+        for(int t = 0; t < n_created; t++) {
                 void *status;
                 int rc = pthread_join(td->threads[t], &status);
                 if(rc){
-                        ERROR_MSG("ERROR; return code from pthread_join() is %d\n", rc);
-                }
-                if(status == PTHREAD_CANCELED){
-                        fprintf(stdout,"Main: completed join with thread %ld having a status of %ld (cancelled)\n",t,(long)status);
+                        WARNING_MSG("pthread_join() failed with return code %d.", rc);
                 }
         }
-
+        for(int i = 0; i < param->n_infile; i++){
+                if(!td->ok[i]){
+                        n_failed++;
+                }
+        }
         thread_data_free(td);
 #else
         for(int i = 0 ; i < param->n_infile;i++){
                 if(param->verbose){
                         LOG_MSG("Processing: %s", param->infile[i]);
                 }
-                int t = -1;
-                t = param->file_type[i];
-                if(t == FILE_TYPE_FASTAQ){
-                        RUN(process_fasta_fastq_file(param,i));
-                }else if(t == FILE_TYPE_SAMBAM){
-                        RUN(process_sam_bam_file(param,i));
+                if(process_file(param, i) != OK){
+                        WARNING_MSG("Failed to process file: %s", param->infile[i]);
+                        n_failed++;
                 }
         }
 #endif
         param_free(param);
-
-        return EXIT_SUCCESS;
+        if(n_failed){
+                WARNING_MSG("%d of the input files could not be processed.", n_failed);
+                ret = SAMSTAT_EXIT_FAILED;
+        }
+        return ret;
+#if HAVE_PTHREADS
 ERROR:
-        return EXIT_FAILURE;
+        param_free(param);
+        return SAMSTAT_EXIT_FAILED;
+#endif
+}
+
+static int process_file(struct samstat_param *p, int id)
+{
+        if(p->file_type[id] == FILE_TYPE_FASTAQ){
+                RUN(process_fasta_fastq_file(p, id));
+        }else if(p->file_type[id] == FILE_TYPE_SAMBAM){
+                RUN(process_sam_bam_file(p, id));
+        }else{
+                ERROR_MSG("File type of %s not recognized.", p->infile[id]);
+        }
+        return OK;
+ERROR:
+        return FAIL;
 }
 
 #if HAVE_PTHREADS
@@ -103,22 +136,16 @@ void *samstat_worker(void *data)
 
                  if(target_id == -1){
                          run = 0;
+                 }else if(process_file(param, target_id) == OK){
+                         td->ok[target_id] = 1;
                  }else{
-                         int t = -1;
-                         t = param->file_type[target_id];
-                         if(t == FILE_TYPE_FASTAQ){
-                                 RUN(process_fasta_fastq_file(param,target_id));
-                         }else if(t == FILE_TYPE_SAMBAM){
-                                 RUN(process_sam_bam_file(param,target_id));
-                         }
+                         /* an error in one file must not stop the remaining files */
+                         WARNING_MSG("Failed to process file: %s", param->infile[target_id]);
                  }
         }
-
-        pthread_exit(0);
         return NULL;
 ERROR:
-        LOG_MSG("Thread %d done due to error.");
-        pthread_exit(0);
+        LOG_MSG("Worker thread done due to error.");
         return NULL;
 }
 #endif
@@ -133,6 +160,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
         uint64_t old_n_read = 0;
+        int ret = FAIL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
@@ -156,6 +184,16 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                         break;
                 }
 
+                /* -p/--peek: analyse exactly top_n reads */
+                if(n_read >= p->top_n){
+                        s->is_partial_report = 1;
+                        break;
+                }
+                if((uint64_t) sb->num_seq > p->top_n - n_read){
+                        sb->num_seq = (int) (p->top_n - n_read);
+                        s->is_partial_report = 1;
+                }
+
                 for(int i = 0; i < sb->num_seq;i++){
                         parse_alignment(sb->sequences[i]);
                         fix_orientation(sb->sequences[i]);
@@ -170,11 +208,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                                 old_n_read = n_read;
                         }
                 }
-                if(n_read > p->top_n && sb->num_seq == sb->malloc_num){
-                        if(p->verbose){
-                                LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
-                        }
-                        s->is_partial_report = 1;
+                if(s->is_partial_report){
                         break;
                 }
                 clear_aln_data(sb);
@@ -182,21 +216,34 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         }
         s->n_secondary = f_handle->n_secondary;
         s->n_supplementary = f_handle->n_supplementary;
-        RUN(close_bam(f_handle));
+        ret = close_bam(f_handle);
+        f_handle = NULL; /* closed - must not be closed again in the cleanup below */
+        RUN(ret);
+        ret = FAIL;
 
-        RUN(stat_report(s,p, id));
-        stat_collection_free(s);
-
-        if(sb->data){
-                a = sb->data;
-                free_alphabet(a);
+        if(n_read == 0){
+                WARNING_MSG("%s: the input is empty (no reads), the report will be empty.", p->infile[id]);
         }
-
-        free_aln_data(sb);
-        free_tl_seq_buffer(sb);
-        return OK;
+        if(s->is_partial_report){
+                WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
+        }
+        RUN(stat_report(s,p, id));
+        ret = OK;
 ERROR:
-        return FAIL;
+        /* shared by the success and the error path */
+        if(f_handle){
+                close_bam(f_handle);
+        }
+        stat_collection_free(s);
+        if(sb){
+                if(sb->data){
+                        free_alphabet((struct alphabet*) sb->data);
+                        sb->data = NULL;
+                }
+                free_aln_data(sb);
+                free_tl_seq_buffer(sb);
+        }
+        return ret;
 }
 
 int process_fasta_fastq_file(struct samstat_param* p, int id)
@@ -206,15 +253,22 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct alphabet* a = NULL;
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
+        int ret = FAIL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
+        /* the parser rejects a zero byte file - treat it as an input without reads */
+        struct stat st;
+        int is_empty = (stat(p->infile[id], &st) == 0 && st.st_size == 0);
+
+        if(!is_empty){
+                RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
+        }
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         RUN(stat_collection_alloc(&s));
         RUN(stat_collection_config_additional_plot(s,p));
 
-        while(1){
+        while(!is_empty){
                 RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
                 if(!sb->data){
                         LOG_MSG("Setting alphabet");
@@ -232,33 +286,50 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                         break;
                 }
 
+                /* -p/--peek: analyse exactly top_n reads */
+                if(n_read >= p->top_n){
+                        s->is_partial_report = 1;
+                        break;
+                }
+                if((uint64_t) sb->num_seq > p->top_n - n_read){
+                        sb->num_seq = (int) (p->top_n - n_read);
+                        s->is_partial_report = 1;
+                }
+
                 RUN(collect_stats(sb, s));
 
                 n_read += sb->num_seq;
                 if(p->verbose){
                         LOG_MSG("Processed %"PRId64" sequences", n_read);
                 }
-                if(n_read > p->top_n){
-                        if(p->verbose){
-                                LOG_MSG("Stopping because more than %"PRId64" sequences were read.", n_read);
-                        }
-                        s->is_partial_report = 1;
+                if(s->is_partial_report){
                         break;
                 }
                 reset_tl_seq_buffer(sb);
         }
 
-        RUN(stat_report(s,p, id));
-        stat_collection_free(s);
-        if(sb->data){
-                a = sb->data;
-                free_alphabet(a);
+        if(n_read == 0){
+                WARNING_MSG("%s: the input is empty (no reads), the report will be empty.", p->infile[id]);
         }
-        free_tl_seq_buffer(sb);
-        RUN(close_seq_file(&f_handle));
-        return OK;
+        if(s->is_partial_report){
+                WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
+        }
+        RUN(stat_report(s,p, id));
+        ret = OK;
 ERROR:
-        return  FAIL;
+        /* shared by the success and the error path */
+        stat_collection_free(s);
+        if(sb){
+                if(sb->data){
+                        free_alphabet((struct alphabet*) sb->data);
+                        sb->data = NULL;
+                }
+                free_tl_seq_buffer(sb);
+        }
+        if(f_handle){
+                close_seq_file(&f_handle);
+        }
+        return ret;
 }
 
 int debug_seq_buffer_print(struct tl_seq_buffer *sb)

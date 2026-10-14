@@ -8,6 +8,10 @@
 #define EXTERN extern
 #endif
 
+/* process exit codes */
+#define SAMSTAT_EXIT_FAILED 1 /* at least one input could not be processed */
+#define SAMSTAT_EXIT_USAGE 2 /* bad command line */
+
 #define FILE_TYPE_SAMBAM 0
 #define FILE_TYPE_FASTAQ 1
 #define FILE_TYPE_UNKNOWN 2

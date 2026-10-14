@@ -160,6 +160,7 @@ int process_sam_bam_file(struct samstat_param* p, int id)
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
         uint64_t old_n_read = 0;
+        int ret = FAIL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
@@ -213,7 +214,10 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
         }
-        RUN(close_bam(f_handle));
+        ret = close_bam(f_handle);
+        f_handle = NULL; /* closed - must not be closed again in the cleanup below */
+        RUN(ret);
+        ret = FAIL;
 
         if(n_read == 0){
                 WARNING_MSG("%s: the input is empty (no reads), the report will be empty.", p->infile[id]);
@@ -222,18 +226,22 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
         }
         RUN(stat_report(s,p, id));
-        stat_collection_free(s);
-
-        if(sb->data){
-                a = sb->data;
-                free_alphabet(a);
-        }
-
-        free_aln_data(sb);
-        free_tl_seq_buffer(sb);
-        return OK;
+        ret = OK;
 ERROR:
-        return FAIL;
+        /* shared by the success and the error path */
+        if(f_handle){
+                close_bam(f_handle);
+        }
+        stat_collection_free(s);
+        if(sb){
+                if(sb->data){
+                        free_alphabet((struct alphabet*) sb->data);
+                        sb->data = NULL;
+                }
+                free_aln_data(sb);
+                free_tl_seq_buffer(sb);
+        }
+        return ret;
 }
 
 int process_fasta_fastq_file(struct samstat_param* p, int id)
@@ -243,6 +251,7 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
         struct alphabet* a = NULL;
         struct stat_collection* s = NULL;
         uint64_t n_read = 0;
+        int ret = FAIL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
@@ -304,16 +313,21 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
                 WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
         }
         RUN(stat_report(s,p, id));
-        stat_collection_free(s);
-        if(sb->data){
-                a = sb->data;
-                free_alphabet(a);
-        }
-        free_tl_seq_buffer(sb);
-        RUN(close_seq_file(&f_handle));
-        return OK;
+        ret = OK;
 ERROR:
-        return  FAIL;
+        /* shared by the success and the error path */
+        stat_collection_free(s);
+        if(sb){
+                if(sb->data){
+                        free_alphabet((struct alphabet*) sb->data);
+                        sb->data = NULL;
+                }
+                free_tl_seq_buffer(sb);
+        }
+        if(f_handle){
+                close_seq_file(&f_handle);
+        }
+        return ret;
 }
 
 int debug_seq_buffer_print(struct tl_seq_buffer *sb)

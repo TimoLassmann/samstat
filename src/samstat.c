@@ -11,6 +11,9 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
+#include <math.h>
+#include <stdio.h>
 
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
@@ -257,12 +260,129 @@ ERROR:
         return FAIL;
 }
 
-static void log_progress(struct samstat_param *p, uint64_t n_read, uint64_t *old_n_read)
+/* A counter on standard error every ~1 M reads, only for a person watching: standard error
+ * must be a terminal. With -v the log lines are written instead. */
+#define PROGRESS_STEP 1000000
+
+static void log_progress(struct samstat_param *p, const char *name, uint64_t n_read, uint64_t *old_n_read)
 {
-        if(p->verbose && n_read >= *old_n_read + 1000000){
-                LOG_MSG("Processed %"PRId64" sequences", n_read);
-                *old_n_read = n_read;
+        if(n_read < *old_n_read + PROGRESS_STEP){
+                return;
         }
+        if(p->verbose){
+                LOG_MSG("Processed %"PRId64" sequences", n_read);
+        }else if(isatty(STDERR_FILENO)){
+                fprintf(stderr, "\rsamstat: %s: %"PRIu64" reads processed", name, n_read);
+        }
+        *old_n_read = n_read;
+}
+
+/* Remove the progress counter again (it is not followed by a newline). */
+static void clear_progress(const struct samstat_param *p, uint64_t old_n_read)
+{
+        if(old_n_read && !p->verbose && isatty(STDERR_FILENO)){
+                fputs("\r\033[K", stderr);
+        }
+}
+
+static double seconds_since(const struct timespec *t0)
+{
+        struct timespec t1;
+
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        return (double) (t1.tv_sec - t0->tv_sec) + (double) (t1.tv_nsec - t0->tv_nsec) * 1e-9;
+}
+
+static const char *format_name(const htsFormat *f)
+{
+        switch(f->format){
+        case sam:
+                return "SAM";
+        case bam:
+                return "BAM";
+        case cram:
+                return "CRAM";
+        case fastq_format:
+                return "FASTQ";
+        case fasta_format:
+                return "FASTA";
+        default:
+                return NULL;
+        }
+}
+
+/* "12.4M reads" style counts and "18.2 kb" lengths for the one-line summary. */
+static void fmt_count(char *buf, size_t n, uint64_t v)
+{
+        if(v < 1000){
+                snprintf(buf, n, "%"PRIu64, v);
+        }else if(v < 1000000){
+                snprintf(buf, n, "%.1fk", (double) v / 1e3);
+        }else if(v < 1000000000){
+                snprintf(buf, n, "%.1fM", (double) v / 1e6);
+        }else{
+                snprintf(buf, n, "%.1fG", (double) v / 1e9);
+        }
+}
+
+static void fmt_length(char *buf, size_t n, uint64_t v)
+{
+        if(v < 1000){
+                snprintf(buf, n, "%"PRIu64" bp", v);
+        }else if(v < 1000000){
+                snprintf(buf, n, "%.1f kb", (double) v / 1e3);
+        }else{
+                snprintf(buf, n, "%.1f Mb", (double) v / 1e6);
+        }
+}
+
+/* standard-plots.md section 6: one line per input, written after the report. <s> is
+ * finalised by stat_report. One fprintf, so lines of concurrent inputs do not mix. */
+static int print_summary_line(const struct samstat_param *p, int id, const struct stat_collection *s, const char *format, uint64_t n_read, double secs)
+{
+        char *base = NULL;
+        char out[2048];
+        char reads[32];
+        char n50[32];
+        char extra[128];
+        char partial[96];
+        const char *stem = samstat_output_stem(p, id);
+        size_t pos = 0;
+
+        if(p->outdir){
+                RUN(tld_get_filename((char *) stem, &base));
+                snprintf(out, sizeof(out), "%s/%s.samstat.html", p->outdir, base);
+        }else{
+                snprintf(out, sizeof(out), "%s.samstat.html", stem);
+        }
+        fmt_count(reads, sizeof(reads), s->n_total);
+        extra[0] = 0;
+        if(s->n_total){
+                fmt_length(n50, sizeof(n50), s->n50);
+                pos += (size_t) snprintf(extra + pos, sizeof(extra) - pos, ", N50 %s", n50);
+                if(!isnan(s->mean_q)){
+                        pos += (size_t) snprintf(extra + pos, sizeof(extra) - pos, ", mean Q %.1f", s->mean_q);
+                }
+                if(s->is_aligned && !isnan(s->pct_mapped)){
+                        snprintf(extra + pos, sizeof(extra) - pos, ", %.1f%% mapped", s->pct_mapped);
+                }
+        }
+        partial[0] = 0;
+        if(s->is_partial_report){
+                snprintf(partial, sizeof(partial), ", partial: first %"PRIu64" reads", n_read);
+        }
+        fprintf(stderr, "samstat: %s -> %s (%s%s%s reads%s, %s layout%s, %.0f s)\n",
+                stem, out, format[0] ? format : "", format[0] ? ", " : "", reads, extra,
+                s->layout == COLLECT_LAYOUT_LONG ? "long" : "short", partial, secs);
+        if(base){
+                MFREE(base);
+        }
+        return OK;
+ERROR:
+        if(base){
+                MFREE(base);
+        }
+        return FAIL;
 }
 
 /* The calling thread does everything: -t 1, one input per thread, or no thread could be
@@ -281,7 +401,7 @@ static int run_inline(struct samstat_param *p, struct sam_bam_file *f, struct fi
                 }
                 RUN(process_batch(w, b));
                 *n_read += (uint64_t) b->n;
-                log_progress(p, *n_read, &old_n_read);
+                log_progress(p, f->filename, *n_read, &old_n_read);
         }
         bam_batch_free(b);
         return OK;
@@ -371,7 +491,7 @@ static int run_pipeline(struct samstat_param *p, struct sam_bam_file *f, struct 
                         break;          /* end of the input (or of the -p cutoff) */
                 }
                 *n_read += (uint64_t) b->n;
-                log_progress(p, *n_read, &old_n_read);
+                log_progress(p, f->filename, *n_read, &old_n_read);
                 batch_queue_put_filled(q, b);
         }
         batch_queue_finish(q);
@@ -415,6 +535,9 @@ int process_reads_file(struct samstat_param* p, int id)
         uint64_t n_read = 0;
         int n_workers = 0;
         int is_stdin = (strcmp(p->infile[id], SAMSTAT_STDIN) == 0);
+        struct timespec t0;
+        const char *fname;
+        char format[16];
         int have_inline_worker = 0;
         int ret = FAIL;
 
@@ -430,7 +553,13 @@ int process_reads_file(struct samstat_param* p, int id)
         opts.batch_bases = p->batch_bases;
         opts.max_primary = p->top_n;
 
+        clock_gettime(CLOCK_MONOTONIC, &t0);
         RUN(open_reads(&f_handle, p->infile[id], &opts));
+        format[0] = 0;
+        fname = f_handle->in ? format_name(hts_get_format(f_handle->in)) : NULL;
+        if(fname){
+                snprintf(format, sizeof(format), "%s", fname);
+        }
         if(p->verbose){
                 LOG_MSG("%s: workers: %d, decompression threads: %d", p->infile[id], MACRO_MAX(n_workers, 1), opts.pool_threads);
         }
@@ -454,6 +583,7 @@ int process_reads_file(struct samstat_param* p, int id)
         s->n_secondary = f_handle->n_secondary;
         s->n_supplementary = f_handle->n_supplementary;
         s->is_partial_report = f_handle->partial;
+        clear_progress(p, n_read);
         ret = close_bam(f_handle);
         f_handle = NULL; /* closed - must not be closed again in the cleanup below */
         RUN(ret);
@@ -466,6 +596,7 @@ int process_reads_file(struct samstat_param* p, int id)
                 WARNING_MSG("%s: partial report, based on the first %"PRIu64" reads only.", p->infile[id], n_read);
         }
         RUN(stat_report(s,p, id));
+        RUN(print_summary_line(p, id, s, format, n_read, seconds_since(&t0)));
         ret = OK;
 ERROR:
         /* shared by the success and the error path */

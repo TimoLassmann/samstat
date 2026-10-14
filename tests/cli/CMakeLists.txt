@@ -487,3 +487,21 @@ add_test(NAME cli:stdin_double_dash
     -DOUTDIR=${CLI_OUT}/stdin_double_dash -DSTDIN_FILE=${FX}/small.sam
     -DEXPECT_RC=2 -DEXTRA_ARGS=- -P ${CLI_GEN}/run_stdin.cmake)
 set_tests_properties(cli:stdin_double_dash PROPERTIES LABELS cli)
+
+# --- stderr summary line and progress (standard-plots.md section 6) ---------------------
+# one line per input: samstat: <in> -> <out> (<format>, <n> reads, N50 ..., mean Q ..., [% mapped,] <layout> layout, <t> s)
+cli_test(stderr_summary_line_bam
+  ARGS -d ${D} ${FX}/small.bam
+  REGEX "samstat: [^\n]*small\\.bam -> [^\n]*small\\.bam\\.samstat\\.html \\(BAM, [0-9.]+[kMG]? reads, N50 [0-9.]+ (bp|kb|Mb), mean Q [0-9.]+, [0-9.]+% mapped, (short|long) layout, [0-9]+ s\\)")
+cli_test(stderr_summary_line_fastq
+  GEN_FASTQ 50 ARGS -d ${D} @GENFQ@
+  REGEX "samstat: [^\n]*gen_50\\.fq -> [^\n]*gen_50\\.fq\\.samstat\\.html \\(FASTQ, 50 reads, N50 20 bp, mean Q 40\\.0, short layout, [0-9]+ s\\)"
+  NO_REGEX "% mapped")
+cli_test(stderr_summary_line_partial
+  GEN_FASTQ 50 ARGS -d ${D} -p 10 @GENFQ@
+  REGEX "FASTQ, 10 reads, N50 20 bp, mean Q 40\\.0, short layout, partial: first 10 reads, [0-9]+ s\\)")
+# a pipe is not a terminal: no counter ("N reads processed" + CR)
+cli_test(no_progress_without_tty
+  GEN_FASTQ 1100000 ARGS -d ${D} @GENFQ@
+  REGEX "FASTQ, 1\\.1M reads"
+  NO_REGEX "reads processed|Processed")

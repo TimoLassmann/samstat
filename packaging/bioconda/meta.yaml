@@ -1,7 +1,7 @@
 # Bioconda recipe for SAMStat.
 # The sha256 below is a placeholder: after tagging a release, replace it with
 # the value from samstat-<version>.tar.gz.sha256 attached to the GitHub release.
-{% set version = "2.3.0" %}
+{% set version = "2.4.0" %}
 
 package:
   name: samstat

@@ -347,7 +347,7 @@ static void test_palettes(void)
         }
         for (int b = 0; b < 5; b++) {
                 fprintf(stderr, "contrast on white: base %s  %s %.2f:1\n", b == 0 ? "A" : b == 1 ? "C" : b == 2 ? "G" : b == 3 ? "T" : "N", report_base_colour[b], contrast_on_white(report_base_colour[b]));
-                CHECK(contrast_on_white(report_base_colour[b]) >= 3.0, "base colour %d is below 3:1 (WCAG 1.4.11)", b);
+                CHECK(contrast_on_white(report_base_colour[b]) >= 5.0, "base colour %d is below 5:1 (thin dashed lines)", b);
         }
         CHECK(contrast_on_white("#777777") >= 4.4, "grey");
         /* every base has its own dash pattern, so no line depends on colour alone (WCAG 1.4.1) */
@@ -653,7 +653,7 @@ static void test_clarity(void)
         CHECK(strstr(report_plot_help[REPORT_PLOT_READQ].note, "error probabilities") != NULL, "the note lives in plot 2");
         CHECK(strstr(report_plot_help[REPORT_PLOT_READQ].caption, "Q20 = 1 error in 100 bases") != NULL, "plot 2 caption explains Q20");
 
-        /* positions backed by fewer than 10 reads are gaps, and the axis ends at the last backed position */
+        /* positions backed by fewer than 50 reads are gaps, and the axis ends at the last backed position */
         {
                 struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 150, .nreads = 1000};
                 struct stat_collection* s = make(&sp);
@@ -670,17 +670,44 @@ static void test_clarity(void)
                 }
                 char* p3 = render(s, 3);
                 CHECK(p3 && strstr(p3, "from position 1 to position 100") != NULL, "axis ends at position 100: %.200s", p3 ? p3 : "(null)");
-                CHECK(p3 && strstr(p3, "fewer than 10 reads") != NULL, "the description says why there are gaps");
+                CHECK(p3 && strstr(p3, "fewer than 50 reads") != NULL, "the description says why there are gaps");
                 free(p3);
                 stat_collection_free(s);
         }
-        /* a tiny input keeps every position (nothing would be left otherwise) */
+        /* fewer reads than that: plots 3-5 are one "too few reads" line each (the page says the same),
+         * from 50 reads on they are drawn; plots 1, 2 and 6 do not depend on it */
+        {
+                const uint64_t counts[2] = {49, 100};     /* per mate; the mapped classes round down */
+                for (int k = 0; k < 2; k++) {
+                        struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = counts[k]};
+                        struct stat_collection* s = make(&sp);
+                        CHECK(s != NULL && stat_collection_finalise(s) == OK, "finalise %d", k);
+                        char want[160];
+                        snprintf(want, sizeof(want), "<p class=\"plot-na\">Too few reads (%" PRIu64 ") for a per-position plot (needs at least " REPORT_MIN_POS_BASES_STR ").</p>\n", s->n_total);
+                        for (int id = 3; id <= 5; id++) {
+                                char* d = render(s, id);
+                                if (k == 0) {
+                                        CHECK(d && strcmp(d, want) == 0, "%d reads, plot %d: %.200s", (int)counts[k], id, d ? d : "(null)");
+                                } else {
+                                        CHECK(d && strstr(d, "<svg ") != NULL && strstr(d, "Too few reads") == NULL, "%d reads, plot %d is drawn", (int)counts[k], id);
+                                }
+                                free(d);
+                        }
+                        for (int id = 1; id <= 6; id += id == 2 ? 4 : 1) {
+                                char* d = render(s, id);
+                                CHECK(d && strstr(d, "<svg ") != NULL && strstr(d, "Too few reads") == NULL, "%d reads, plot %d is drawn", (int)counts[k], id);
+                                free(d);
+                        }
+                        stat_collection_free(s);
+                }
+        }
+        /* the unaligned case says the same for plots 3 and 4 */
         {
                 struct spec sp = {.paired = 0, .aligned = 0, .quals = 1, .readlen = 50, .nreads = 5};
                 struct stat_collection* s = make(&sp);
                 char* p3 = render(s, 3);
-                CHECK(p3 && strstr(p3, "from position 1 to position 50") != NULL && strstr(p3, "fewer than 10 reads") == NULL,
-                      "5 reads: no masking: %.200s", p3 ? p3 : "(null)");
+                CHECK(p3 && strstr(p3, "Too few reads (5) for a per-position plot (needs at least 50).") != NULL && strstr(p3, "<svg ") == NULL,
+                      "5 reads: plot 3 is replaced: %.200s", p3 ? p3 : "(null)");
                 free(p3);
                 stat_collection_free(s);
         }
@@ -726,8 +753,11 @@ static void test_clarity(void)
                 CHECK(s->n50_best == 1000000 && s->n50_exact && s->median_best == 1000000 && s->median_exact,
                       "exact display values: %" PRIu64 " %" PRIu64, s->n50_best, s->median_best);
                 char* p1 = render(s, 1);
-                CHECK(p1 && strstr(p1, "N50 1,000.0 kb") != NULL && strstr(p1, "N50 ~") == NULL, "plot 1 label is exact: %s", p1 ? p1 : "(null)");
-                CHECK(p1 && strstr(p1, "range from 1,000.0 kb to 1,000.0 kb") != NULL, "min and max length are exact");
+                CHECK(p1 && strstr(p1, "N50 1.0 Mb") != NULL && strstr(p1, "N50 ~") == NULL, "plot 1 label is exact: %s", p1 ? p1 : "(null)");
+                CHECK(p1 && strstr(p1, "range from 1.0 Mb to 1.0 Mb") != NULL, "min and max length are exact, in the unit of the Bases tile");
+                /* a lone bin on the log axis: at least three labelled ticks and a visible bar */
+                CHECK(p1 && strstr(p1, ">200 k<") != NULL && strstr(p1, ">1 M<") != NULL && strstr(p1, ">5 M<") != NULL,
+                      "lone bin: at least three labelled ticks");
                 free(p1);
                 stat_collection_free(s);
         }
@@ -757,7 +787,7 @@ static void test_clarity(void)
                 struct spec sp = {.paired = 0, .aligned = 0, .quals = 1, .readlen = 100, .nreads = 20000};
                 struct stat_collection* s = make(&sp);
                 char* p4 = render(s, 4);
-                CHECK(p4 && strstr(p4, "A green, solid line; C reddish purple, dashed line; G black, dotted line; T brown, dash-dot line; N blue, fine dotted line") != NULL,
+                CHECK(p4 && strstr(p4, "A green, solid line; C reddish purple, dashed line; G black, dotted line; T brown, dash-dot line; N blue, long-dashed line") != NULL,
                       "key text: %.600s", p4 ? p4 : "(null)");
                 for (int b = 1; b < 5; b++) {
                         char needle[64];
@@ -767,6 +797,41 @@ static void test_clarity(void)
                 free(p4);
                 stat_collection_free(s);
         }
+}
+
+/* Clarity round 2: flat error panels say so on a whole-number scale; plot 6 ends at 100. */
+static void test_clarity_r2(void)
+{
+        struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = 1000};
+        struct stat_collection* s = make(&sp);
+        CHECK(s != NULL && stat_collection_finalise(s) == OK, "finalise");
+        if (!s) {
+                return;
+        }
+        char* p5 = render(s, 5);
+        CHECK(p5 && count_of(p5, ">none detected<") < 3, "data with errors: not every panel is labelled none detected (%d)", p5 ? count_of(p5, ">none detected<") : -1);
+        free(p5);
+        for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                        struct collect_pos_bin* b = &s->acc->pos_abs[0][m][i];
+                        b->mismatches = 0;
+                        b->insertions = 0;
+                        b->deletions = 0;
+                }
+        }
+        p5 = render(s, 5);
+        CHECK(p5 && count_of(p5, ">none detected<") == 3, "all-zero data: three labelled panels (%d)", p5 ? count_of(p5, ">none detected<") : -1);
+        CHECK(p5 && strstr(p5, ">4<") != NULL && strstr(p5, ">2<") != NULL && strstr(p5, ">0.5<") == NULL && strstr(p5, ">1.0<") == NULL,
+              "all-zero data: whole-number scale 0 2 4");
+        CHECK(p5 && strstr(p5, "labelled none detected") != NULL, "the description says what the label means");
+        free(p5);
+
+        char* p6 = render(s, 6);
+        CHECK(p6 && strstr(p6, "from 95% to 100%") != NULL, "plot 6 desc: %.400s", p6 ? p6 : "(null)");
+        CHECK(p6 && strstr(p6, ">95<") != NULL && strstr(p6, ">100<") != NULL && strstr(p6, ">101<") == NULL &&
+              strstr(p6, ">99.2<") == NULL, "plot 6 ticks are whole numbers up to 100");
+        free(p6);
+        stat_collection_free(s);
 }
 
 static void test_locale(void)
@@ -915,6 +980,7 @@ int main(int argc, char** argv)
         test_na_lines();
         test_single_length();
         test_clarity();
+        test_clarity_r2();
         test_locale();
         test_swatch();
         test_size(argc > 1 ? argv[1] : NULL);

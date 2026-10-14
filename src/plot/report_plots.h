@@ -23,7 +23,7 @@
  *   - <p class="plot-note"> carries the partial-MD note of plot 5.
  *   - The output depends only on the collection: deterministic bytes.
  *
- * The caption, the "Good:" line, the "How to read plot N" block and the plot title are the
+ * The caption, the "What good looks like:" line, the "How to read plot N" block and the plot title are the
  * caller's (report_help.c); these functions draw the figure only.
  */
 
@@ -33,16 +33,17 @@ struct stat_collection;
 
 /*
  * Palettes. The MAPQ palette is Okabe-Ito (blue, vermillion) with the orange darkened to
- * #B86E00 and a grey; every colour has at least 3:1 contrast on white (WCAG 1.4.11). Every
+ * #B86E00 and a grey; every colour has at least 3:1 contrast on white (WCAG 1.4.11), the base
+ * colours at least 5:1 (the thin dashed lines of plot 4 need the margin). Every
  * class and every base also has its own dash pattern, so the lines stay distinguishable
  * in greyscale and for colour-blind readers. The base palette shares no hex
  * value with the MAPQ palette (standard-plots.md 2.8). A dash of "" is solid.
  * Index = MAPQ class (COLLECT_MAPQ_*) or base (A C G T N).
  */
 static const char* const report_mapq_colour[4] = {"#0072B2", "#B86E00", "#D55E00", "#777777"};
-static const char* const report_mapq_dash[4] = {"", "8 4", "2 4", "12 4 2 4"};
-static const char* const report_base_colour[5] = {"#009E73", "#CC79A7", "#000000", "#8C5A00", "#2E86C1"};
-static const char* const report_base_dash[5] = {"", "6 3", "2 3", "8 3 2 3", "1 2"};
+static const char* const report_mapq_dash[4] = {"", "8 4", "3 4", "12 4 2 4"};
+static const char* const report_base_colour[5] = {"#007A5A", "#A8467F", "#000000", "#8C5A00", "#1F6FA8"};
+static const char* const report_base_dash[5] = {"", "6 3", "2 3", "8 3 2 3", "12 3"};
 
 /* Line of unaligned input (one line, "all reads"). */
 #define REPORT_ALL_READS_COLOUR "#000000"

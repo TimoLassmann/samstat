@@ -144,6 +144,15 @@ static void fmt_count(char* buf, size_t n, uint64_t v)
         snprintf(buf, n, "%s", out);
 }
 
+/* Plots 3-5 of an input with fewer reads than REPORT_MIN_POS_BASES: single reads, not a profile. */
+static int too_few_line(tld_strbuf* o, const struct stat_collection* s)
+{
+        char n[48], text[200];
+        fmt_count(n, sizeof(n), s->n_total);
+        snprintf(text, sizeof(text), report_na_too_few, n, REPORT_MIN_POS_BASES_STR);
+        return na_line(o, text);
+}
+
 /* Locale independent "%.<d>f". */
 static void fmt_dec(char* buf, size_t n, int decimals, double v)
 {
@@ -155,7 +164,7 @@ static void fmt_dec(char* buf, size_t n, int decimals, double v)
         }
 }
 
-/* Lengths as in the summary strip: bp below 10 kb, kb above. A value above 1 kb that is a bin
+/* Lengths as in the summary strip: bp below 10 kb, kb up to 1 Mb, Mb above. A value above 1 kb that is a bin
  * edge (within 1%) is marked with "~"; exact is set when the value is the true length. */
 static void fmt_len(char* buf, size_t n, uint64_t v, int exact)
 {
@@ -167,6 +176,10 @@ static void fmt_len(char* buf, size_t n, uint64_t v, int exact)
         } else if (v < 10000) {
                 fmt_count(t, sizeof(t), v);
                 snprintf(buf, n, "%s%s bp", tilde, t);
+        } else if (v >= 999950) {
+                char d[32];
+                fmt_dec(d, sizeof(d), 1, (double)v / 1000000.0);
+                snprintf(buf, n, "%s%s Mb", tilde, d);
         } else {
                 char d[32];
                 fmt_dec(d, sizeof(d), 1, (double)v / 1000.0);
@@ -248,14 +261,18 @@ struct panel_data {
         int has_vline;
         double vline;
         char vlabel[64];
+        const char* note;       /* short text inside the panel (plot 5: "none detected"), or NULL */
 };
 
-/* Top of a count axis: a little headroom over the tallest bar, and never below 4 so that a handful of
- * reads does not get ticks at 0.2 reads. */
+/* Top of a count axis: a little headroom over the tallest bar, and never below 3 (4 from 3 reads on)
+ * so that a handful of reads gets whole-number ticks, not ticks at 0.2 reads. */
 static double count_top(double ymax)
 {
         double t = svg_nice_ceil(ymax * 1.04, 5);
-        return t < 4.0 ? 4.0 : t;
+        if (t < 4.0) {
+                return ymax <= 2.0 ? 3.0 : 4.0;
+        }
+        return t;
 }
 
 static int has_values(const double* v, int n, int step)
@@ -326,6 +343,9 @@ static int figure(tld_strbuf* o, const char* id_base, const char* title, const c
                 if (d->has_vline) {
                         TRY(svg_vline(o, &p, d->vline, d->vlabel));
                 }
+                if (d->note) {
+                        TRY(svg_panel_note(o, &p, d->note));
+                }
         }
         return svg_end(o);
 ERROR:
@@ -370,8 +390,8 @@ static uint64_t pos_bin_bases(const struct stat_collection* s, const struct posa
         return t;
 }
 
-/* Is position bin i of mate r backed by enough bases to be drawn? (3.2: fewer than 10 reads on the
- * absolute axis is noise, not a measurement.) */
+/* Is position bin i of mate r backed by enough bases to be drawn? (3.2: fewer than
+ * REPORT_MIN_POS_BASES reads on the absolute axis is noise, not a measurement.) */
 static int pos_covered(const struct stat_collection* s, const struct posaxis* a, int r, int i)
 {
         return pos_bin_bases(s, a, r, i) >= a->min_bases;
@@ -379,8 +399,9 @@ static int pos_covered(const struct stat_collection* s, const struct posaxis* a,
 
 /*
  * x axis of plots 3-5 (3.2). Short layout: absolute, from position 1 to the last bin with any
- * base (over all classes and both mates). Long layout: relative, 0-100 %. Returns 0 when no
- * base was seen.
+ * base (over all classes and both mates). Long layout: relative, 0-100 %. Returns 0 when the input
+ * has fewer than REPORT_MIN_POS_BASES reads or no bin is backed by enough bases: the caller shows
+ * the "too few reads" line, so that the rule the page states is the rule that is applied.
  */
 static int pos_axis(const struct stat_collection* s, struct posaxis* a)
 {
@@ -391,20 +412,20 @@ static int pos_axis(const struct stat_collection* s, struct posaxis* a)
         snprintf(lab_abs, sizeof(lab_abs), "position in read (bp)%s", s->is_aligned ? ", aligned part" : "");
         snprintf(lab_rel, sizeof(lab_rel), "position in read (%% of length)%s", s->is_aligned ? ", aligned part" : "");
 
-        /* last bin that any mate backs with enough bases; if no bin has enough (a tiny input),
-         * every bin with a base counts */
+        /* last bin that any mate backs with enough bases */
         int last = -1;
-        a->min_bases = s->n_total >= REPORT_MIN_POS_BASES ? REPORT_MIN_POS_BASES : 1;
-        for (int pass = 0; pass < 2 && last < 0; pass++) {
-                if (pass == 1) {
-                        a->min_bases = 1;
-                }
-                for (int r = 0; r < COLLECT_N_MATE; r++) {
-                        for (int i = nb_max - 1; i > last; i--) {
-                                if (pos_bin_bases(s, a, r, i) >= a->min_bases) {
-                                        last = i;
-                                        break;
-                                }
+        a->min_bases = REPORT_MIN_POS_BASES;
+        a->nb = 0;
+        a->x0 = 1.0;
+        a->x = (svg_axis){0.5, 1.5, 0, lab_abs};
+        if (s->n_total < REPORT_MIN_POS_BASES) {
+                return 0;
+        }
+        for (int r = 0; r < COLLECT_N_MATE; r++) {
+                for (int i = nb_max - 1; i > last; i--) {
+                        if (pos_bin_bases(s, a, r, i) >= a->min_bases) {
+                                last = i;
+                                break;
                         }
                 }
         }
@@ -676,7 +697,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                 return na_line(o, help_of(3)->na_no_quality);
         }
         if (!pos_axis(s, &ax)) {
-                return na_line(o, NA_NO_READS);
+                return too_few_line(o, s);
         }
         for (int r = 0; r < nm; r++) {
                 for (int k = 0; k < nl; k++) {
@@ -723,9 +744,9 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                 list_lines(&pd, names, sizeof(names));
                 snprintf(desc, sizeof(desc),
                          "Mean base quality at each position along the read, %s%s. Lines: %s. "
-                         "Gaps mean that no base with a quality was seen%s.",
-                         range, s->is_aligned ? ", aligned part of the read" : "", names,
-                         ax.min_bases > 1 ? " or that fewer than 10 reads cover the position" : "");
+                         "Gaps mean that no base with a quality was seen or that fewer than " REPORT_MIN_POS_BASES_STR
+                         " reads cover the position.",
+                         range, s->is_aligned ? ", aligned part of the read" : "", names);
                 if (figure(o, "samstat-p3", help_of(3)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
@@ -740,7 +761,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
 static const char* const base_name[5] = {"A", "C", "G", "T", "N"};
 static const char* const base_series[5] = {"Base A", "Base C", "Base G", "Base T", "Base N"};
 static const char* const base_colour_name[5] = {"green", "reddish purple", "black", "brown", "blue"};
-static const char* const base_dash_name[5] = {"solid line", "dashed line", "dotted line", "dash-dot line", "fine dotted line"};
+static const char* const base_dash_name[5] = {"solid line", "dashed line", "dotted line", "dash-dot line", "long-dashed line"};
 
 static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
 {
@@ -752,7 +773,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                 return na_line(o, help_of(4)->na_no_sequence);
         }
         if (!pos_axis(s, &ax)) {
-                return na_line(o, NA_NO_READS);
+                return too_few_line(o, s);
         }
         /* the key: one row of five swatches above the panels */
         {
@@ -812,9 +833,9 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                 }
                 snprintf(desc, sizeof(desc),
                          "Percentage of A, C, G, T and N at each position along the read, %s%s. "
-                         "One line per base, each with its own dash pattern; the line key is above the figure.%s",
-                         range, s->is_aligned ? ", aligned part of the read" : "",
-                         ax.min_bases > 1 ? " Positions covered by fewer than 10 reads are not drawn." : "");
+                         "One line per base, each with its own dash pattern; the line key is above the figure. "
+                         "Positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads are not drawn.",
+                         range, s->is_aligned ? ", aligned part of the read" : "");
                 if (figure(o, "samstat-p4", help_of(4)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
@@ -850,8 +871,11 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
         if (mapped == 0) {
                 return na_line(o, help_of(5)->na_no_mapped);
         }
+        if (s->total_bases == 0) {
+                return na_line(o, help_of(5)->na_no_sequence);
+        }
         if (!pos_axis(s, &ax)) {
-                return na_line(o, s->total_bases == 0 ? help_of(5)->na_no_sequence : NA_NO_READS);
+                return too_few_line(o, s);
         }
         const int nl = get_lines(s, 0, li);   /* mapped classes only */
         for (int r = 0; r < COLLECT_N_MATE; r++) {
@@ -880,6 +904,8 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
 
         double* v[2][3][MAXL];
         double ymax[3] = {0.0, 0.0, 0.0};
+        double pmax[2][3] = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};   /* per mate and row, for "none detected" */
+        int seen[2][3] = {{0, 0, 0}, {0, 0, 0}};                  /* a rate was measured at some position */
         for (int r = 0; r < nm; r++) {
                 for (int row = first; row < 3; row++) {
                         for (int k = 0; k < nl; k++) {
@@ -902,8 +928,14 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                         }
                                         double x = pos_covered(s, &ax, r, i) ? err_rate(&sum, row) : NAN;
                                         v[r][row][k][i] = x;
-                                        if (isfinite(x) && x > ymax[row]) {
-                                                ymax[row] = x;
+                                        if (isfinite(x)) {
+                                                seen[r][row] = 1;
+                                                if (x > pmax[r][row]) {
+                                                        pmax[r][row] = x;
+                                                }
+                                                if (x > ymax[row]) {
+                                                        ymax[row] = x;
+                                                }
                                         }
                                 }
                         }
@@ -914,6 +946,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
         pos_range_text(&ax, range, sizeof(range));
         for (int r = 0; r < nm; r++) {
                 struct panel_data rows[3];
+                int n_none = 0;
                 memset(rows, 0, sizeof(rows));
                 for (int row = first; row < 3; row++) {
                         struct panel_data* pd = &rows[row - first];
@@ -921,7 +954,12 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                  nm == 2 ? (r ? "Read 2: " : "Read 1: ") : "", err_row_title[row]);
                         pd->title = titles[r][row];
                         pd->x = ax.x;
-                        pd->y = (svg_axis){0.0, svg_nice_ceil(ymax[row] * 1.04, 3), 0, NULL};
+                        /* all zero: a whole-number scale (0, 2, 4 %) instead of 0.0-1.0, and a label that says so */
+                        pd->y = (svg_axis){0.0, ymax[row] > 0.0 ? svg_nice_ceil(ymax[row] * 1.04, 3) : 4.0, 0, NULL};
+                        if (seen[r][row] && pmax[r][row] <= 0.0) {
+                                pd->note = "none detected";
+                                n_none++;
+                        }
                         pd->n = ax.nb;
                         pd->x0 = ax.x0;
                         pd->dx = 1.0;
@@ -934,9 +972,10 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                 list_lines(&rows[nrows - 1], names, sizeof(names));
                 snprintf(desc, sizeof(desc),
                          "%s per aligned base at each position along the read, %s, aligned part of the read, "
-                         "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. Lines: %s.%s",
+                         "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. Lines: %s.%s "
+                         "Positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads are not drawn.",
                          md_total ? "Mismatches, insertions and deletions" : "Insertions and deletions", range, names,
-                         ax.min_bases > 1 ? " Positions covered by fewer than 10 reads are not drawn." : "");
+                         n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");
                 if (figure(o, "samstat-p5", help_of(5)->title, desc, r, nm, rows, nrows, PH_ROW) != OK) {
                         return FAIL;
                 }
@@ -967,7 +1006,8 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
         }
         const int nl = get_lines(s, 0, li);
 
-        /* 1st percentile of the pooled distribution -> left end of the axis, whole percent, at most 99 */
+        /* 1st percentile of the pooled distribution -> left end of the axis, whole percent, at most 95
+         * (the axis is at least 5 points wide: whole-number ticks, and a pile at 100 is a bar, not the frame) */
         memset(all, 0, sizeof(all));
         uint64_t total = 0;
         for (int r = 0; r < COLLECT_N_MATE; r++) {
@@ -993,16 +1033,16 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                 }
         }
         int lo_pct = p1 / 10;
-        if (lo_pct > 99) {
-                lo_pct = 99;
+        if (lo_pct > 95) {
+                lo_pct = 95;
         }
 
         /*
-         * Long layout: the stored 0.1 % bins. Short layout: 1 % bins (ten stored bins summed); the
-         * exact-100 % bin stays a bin of its own. Either way the last bin is drawn just right of 100.
+         * Long layout: the stored 0.1 % bins. Short layout: 1 % bins (ten stored bins summed). The
+         * axis ends at 100 and the stored exact-100 % bin joins the last bin, [100 - bin width, 100].
          */
         const double bw = is_long ? 0.1 : 1.0;
-        const int n = is_long ? COLLECT_N_IDENT - lo_pct * 10 : (100 - lo_pct) + 1;
+        const int n = is_long ? (COLLECT_N_IDENT - 1) - lo_pct * 10 : 100 - lo_pct;
         double ymax = 0.0;
         for (int r = 0; r < nm; r++) {
                 for (int k = 0; k < nl; k++) {
@@ -1019,7 +1059,10 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                                         if (!c) {
                                                 continue;
                                         }
-                                        int d = is_long ? b - lo_pct * 10 : (b == 1000 ? n - 1 : b / 10 - lo_pct);
+                                        int d = is_long ? b - lo_pct * 10 : b / 10 - lo_pct;
+                                        if (d > n - 1) {
+                                                d = n - 1;      /* exactly 100 %: the last bin */
+                                        }
                                         h[r][k][d] += (double)c;
                                 }
                         }
@@ -1028,7 +1071,7 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                         }
                 }
         }
-        svg_axis xa = {(double)lo_pct, 100.0 + bw, 0, "identity to the reference (%)"};
+        svg_axis xa = {(double)lo_pct, 100.0, 0, "identity to the reference (%)"};
         svg_axis ya = {0.0, count_top(ymax), 0, "number of reads"};
         char names[200], desc[900], med[48];
 
@@ -1042,7 +1085,6 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                 pd.n = n;
                 pd.x0 = (double)lo_pct;
                 pd.dx = bw;
-                pd.x_tick_max = 100.0;
                 pd.nl = nl;
                 for (int k = 0; k < nl; k++) {
                         pd.li[k] = li[k];
@@ -1060,7 +1102,7 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                 snprintf(desc, sizeof(desc),
                          "Number of aligned reads by identity to the reference, from %d%% to 100%%, in bins of %s. "
                          "Lines: %s. The dashed vertical line marks the median identity, %s%%. "
-                         "The last bin holds the reads with exactly 100%% identity.",
+                         "The last bin includes the reads with exactly 100%% identity.",
                          lo_pct, is_long ? "0.1 percentage points" : "1 percentage point", names, med);
                 if (figure(o, "samstat-p6", help_of(6)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;

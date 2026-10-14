@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <zlib.h>
+#include <unistd.h>
 
 #if HAVE_PTHREADS
 #include "thread/thread_data.h"
@@ -17,6 +19,7 @@
 /* int detect_file_type(char *filename, int* type); */
 int process_sam_bam_file(struct samstat_param *p, int id);
 int process_fasta_fastq_file(struct samstat_param *p, int id);
+static int prepare_fasta_fastq_input(const char *infile, char **open_path, int *is_empty);
 
 int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
@@ -246,23 +249,102 @@ ERROR:
         return ret;
 }
 
+/* The tld parser drops a last record without a trailing newline and rejects
+ * inputs without a sequence (empty .gz, only newlines, header-only FASTA). Scan the
+ * (decompressed) input once: report such inputs as empty, and when the final
+ * newline is missing hand the parser a temporary copy that has one.
+ * *open_path is NULL or a malloc'd temporary file name the caller must remove. */
+static int prepare_fasta_fastq_input(const char *infile, char **open_path, int *is_empty)
+{
+        gzFile gz = NULL;
+        FILE *out = NULL;
+        unsigned char buf[65536];
+        int n = 0;
+        int at_line_start = 1;
+        int has_seq = 0;
+        int has_fastq_header = 0;
+        int last = '\n';
+        char *tmp = NULL;
+
+        *open_path = NULL;
+        *is_empty = 0;
+        gz = gzopen(infile, "rb");
+        ASSERT(gz != NULL, "Cannot open %s", infile);
+        while((n = gzread(gz, buf, sizeof(buf))) > 0){
+                for(int i = 0; i < n; i++){
+                        int c = buf[i];
+                        if(at_line_start && c != '\n' && c != '\r' && c != ' ' && c != '\t'){
+                                at_line_start = 0;
+                                if(c == '@'){
+                                        has_fastq_header = 1;
+                                }else if(c != '>'){
+                                        has_seq = 1;
+                                }
+                        }
+                        if(c == '\n'){
+                                at_line_start = 1;
+                        }
+                        last = c;
+                }
+        }
+        ASSERT(n == 0, "Error reading %s (corrupt gzip stream?)", infile);
+        if(!has_seq && !has_fastq_header){
+                /* a header-only FASTQ record is truncated, not empty: left to the parser to reject */
+                *is_empty = 1;
+        }else if(last != '\n'){
+                const char *tmpdir = getenv("TMPDIR");
+                size_t len = strlen(tmpdir ? tmpdir : "/tmp") + 32;
+                int fd = -1;
+                MMALLOC(tmp, len);
+                snprintf(tmp, len, "%s/samstat_XXXXXX", tmpdir ? tmpdir : "/tmp");
+                fd = mkstemp(tmp);
+                ASSERT(fd >= 0, "Cannot create a temporary file in %s", tmpdir ? tmpdir : "/tmp");
+                out = fdopen(fd, "wb");
+                ASSERT(out != NULL, "fdopen failed");
+                ASSERT(gzrewind(gz) == 0, "gzrewind failed");
+                while((n = gzread(gz, buf, sizeof(buf))) > 0){
+                        ASSERT(fwrite(buf, 1, (size_t) n, out) == (size_t) n, "Write to %s failed", tmp);
+                }
+                ASSERT(fputc('\n', out) != EOF, "Write to %s failed", tmp);
+                ASSERT(fclose(out) == 0, "Write to %s failed", tmp);
+                out = NULL;
+                *open_path = tmp;
+                tmp = NULL;
+        }
+        gzclose(gz);
+        return OK;
+ERROR:
+        if(out){
+                fclose(out);
+        }
+        if(tmp){
+                unlink(tmp);
+                MFREE(tmp);
+        }
+        if(gz){
+                gzclose(gz);
+        }
+        return FAIL;
+}
+
 int process_fasta_fastq_file(struct samstat_param* p, int id)
 {
         struct file_handler *f_handle = NULL;
         struct tl_seq_buffer* sb = NULL;
         struct alphabet* a = NULL;
         struct stat_collection* s = NULL;
+        char *tmp_path = NULL;
+        int is_empty = 0;
         uint64_t n_read = 0;
         int ret = FAIL;
 
         ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
 
-        /* the parser rejects a zero byte file - treat it as an input without reads */
-        struct stat st;
-        int is_empty = (stat(p->infile[id], &st) == 0 && st.st_size == 0);
+        /* inputs the parser rejects but that are valid and empty are reported with zero reads */
+        RUN(prepare_fasta_fastq_input(p->infile[id], &tmp_path, &is_empty));
 
         if(!is_empty){
-                RUN(open_fasta_fastq_file(&f_handle, p->infile[id], TLSEQIO_READ));
+                RUN(open_fasta_fastq_file(&f_handle, tmp_path ? tmp_path : p->infile[id], TLSEQIO_READ));
         }
         RUN(alloc_tl_seq_buffer(&sb, p->buffer_size));
         RUN(stat_collection_alloc(&s));
@@ -270,6 +352,8 @@ int process_fasta_fastq_file(struct samstat_param* p, int id)
 
         while(!is_empty){
                 RUN(read_fasta_fastq_file(f_handle, &sb, p->buffer_size));
+                /* tld resets the offset on every read and no longer detects it */
+                sb->base_quality_offset = 33;
                 if(!sb->data){
                         LOG_MSG("Setting alphabet");
                         if(sb->L == TL_SEQ_BUFFER_DNA){
@@ -328,6 +412,10 @@ ERROR:
         }
         if(f_handle){
                 close_seq_file(&f_handle);
+        }
+        if(tmp_path){
+                unlink(tmp_path);
+                MFREE(tmp_path);
         }
         return ret;
 }

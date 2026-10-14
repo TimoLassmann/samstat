@@ -35,7 +35,7 @@ grouped under one `SAMStat` heading (`parent_id: samstat`).
 Details:
 
 * Sample name = file name without directory, a trailing `.gz` and one of
-  `.sam .bam .cram .fq .fastq .fa .fasta .fna`. It is the key in `data`.
+  `.sam .bam .fq .fastq .fa .fasta .fna`. It is the key in `data`.
 * Percentages are of all counted reads (read 1 + read 2) and written with two decimals.
   Mean qualities have three decimals, computed from the raw quality count arrays over
   all MAPQ bins.

@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "../plot/plot.h"
 #include "../param/param.h"
@@ -60,20 +61,20 @@ ERROR:
    .gz and one known sequence / alignment extension. */
 int mqc_sample_name(const char *filename, char **sample)
 {
-        static const char* const ext[] = {".sam", ".bam", ".cram", ".fq", ".fastq", ".fa", ".fasta", ".fna"};
+        static const char* const ext[] = {".sam", ".bam", ".fq", ".fastq", ".fa", ".fasta", ".fna"};
         char *name = NULL;
         size_t len = strlen(filename);
 
         MMALLOC(name, len + 1);
         memcpy(name, filename, len + 1);
 
-        if(len > 3 && strcmp(name + len - 3, ".gz") == 0){
+        if(len > 3 && strcasecmp(name + len - 3, ".gz") == 0){
                 len -= 3;
                 name[len] = 0;
         }
         for(size_t i = 0; i < sizeof(ext) / sizeof(ext[0]); i++){
                 size_t l = strlen(ext[i]);
-                if(len > l && strcmp(name + len - l, ext[i]) == 0){
+                if(len > l && strcasecmp(name + len - l, ext[i]) == 0){
                         name[len - l] = 0;
                         break;
                 }

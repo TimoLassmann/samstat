@@ -11,6 +11,10 @@
 #   -DGEN_SAM=<n>                 first write OUTDIR/gen_<n>.sam with n reads, available as @GEN@
 #   -DGEN_FASTQ=<n>               likewise OUTDIR/gen_<n>.fq with n reads, available as @GENFQ@
 #   -DJSON=<file rel. OUTDIR> -DCHECKS=<list>   forwarded to check_json.cmake
+#   -DCOPY_FROM=<file> -DCOPY_AS=<name>   copy <file> to OUTDIR/<name> first, available as @COPY@
+#   -DFILE_TEXT=<text> -DFILE_TEXT_IN=<file rel. OUTDIR>   the file must contain <text> literally
+#   In ARGS, COPY_AS, EXPECT_FILES and FILE_TEXT: @Q@ is '"' and @BS@ is a backslash.
+#   -DMKDIR=<list>                directories (rel. OUTDIR) created before the run, e.g. to make an output file name unwritable
 #   -DNO_NAN=ON                   no 'nan' / 'inf' token in the files listed in EXPECT_FILES
 
 cmake_minimum_required(VERSION 3.19)
@@ -59,9 +63,28 @@ if(GEN_FASTQ)
   file(WRITE ${GENFQ} "${content}")
 endif()
 
+# characters that are awkward to pass through add_test
+function(expand_tokens var)
+  string(REPLACE "@Q@" "\"" v "${${var}}")
+  string(REPLACE "@BS@" "\\" v "${v}")
+  set(${var} "${v}" PARENT_SCOPE)
+endfunction()
+
+foreach(d IN LISTS MKDIR)
+  file(MAKE_DIRECTORY "${OUTDIR}/${d}")
+endforeach()
+
+if(COPY_FROM)
+  expand_tokens(COPY_AS)
+  file(COPY_FILE ${COPY_FROM} "${OUTDIR}/${COPY_AS}")
+  set(COPY "${OUTDIR}/${COPY_AS}")
+endif()
+
 string(REPLACE "\;" ";" ARGS "${ARGS}")
 set(run_args "")
 foreach(a IN LISTS ARGS)
+  expand_tokens(a)
+  string(REPLACE "@COPY@" "${COPY}" a "${a}")
   string(REPLACE "@OUTDIR@" "${OUTDIR}" a "${a}")
   string(REPLACE "@GEN@" "${GEN}" a "${a}")
   string(REPLACE "@GENFQ@" "${GENFQ}" a "${a}")
@@ -87,6 +110,7 @@ endif()
 
 string(REPLACE "\;" ";" EXPECT_FILES "${EXPECT_FILES}")
 foreach(f IN LISTS EXPECT_FILES)
+  expand_tokens(f)
   if(NOT EXISTS ${OUTDIR}/${f})
     message(FATAL_ERROR "expected file ${f} was not written\nstdout:\n${out}\nstderr:\n${err}")
   endif()
@@ -101,6 +125,15 @@ foreach(f IN LISTS EXPECT_FILES)
     endif()
   endif()
 endforeach()
+if(FILE_TEXT)
+  expand_tokens(FILE_TEXT)
+  expand_tokens(FILE_TEXT_IN)
+  file(READ "${OUTDIR}/${FILE_TEXT_IN}" body)
+  string(FIND "${body}" "${FILE_TEXT}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "${FILE_TEXT_IN} does not contain '${FILE_TEXT}':\n${body}")
+  endif()
+endif()
 string(REPLACE "\;" ";" EXPECT_NO_FILES "${EXPECT_NO_FILES}")
 foreach(f IN LISTS EXPECT_NO_FILES)
   if(EXISTS ${OUTDIR}/${f})
@@ -109,6 +142,7 @@ foreach(f IN LISTS EXPECT_NO_FILES)
 endforeach()
 
 if(JSON)
+  expand_tokens(JSON)
   execute_process(
     COMMAND ${CMAKE_COMMAND} -DJSON=${OUTDIR}/${JSON} "-DCHECKS=${CHECKS}" -P ${here}/check_json.cmake
     RESULT_VARIABLE rc2 ERROR_VARIABLE err2 OUTPUT_VARIABLE out2)

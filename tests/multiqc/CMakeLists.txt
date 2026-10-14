@@ -91,3 +91,104 @@ if(MULTIQC)
 else()
   message(STATUS "multiqc not found: skipping optional multiqc:run test")
 endif()
+
+# --- escaping, sample names, multiple inputs, failure paths ------------------
+# mqc_run_test(<name> <expect_rc> <args...>) - run_expect.cmake, label multiqc
+function(mqc_run_test name rc)
+  cmake_parse_arguments(T "" "REGEX;JSON;COPY_AS;FILE_TEXT;FILE_TEXT_IN" "ARGS;FILES;NO_FILES;MKDIR;CHECKS;COPY_FROM" ${ARGN})
+  string(REPLACE ";" "\;" args "${T_ARGS}")
+  string(REPLACE ";" "\;" files "${T_FILES}")
+  string(REPLACE ";" "\;" checks "${T_CHECKS}")
+  string(REPLACE ";" "\;" nofiles "${T_NO_FILES}")
+  string(REPLACE ";" "\;" mkdir "${T_MKDIR}")
+  set(cmd ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${MQC_OUT}/${name}
+    "-DARGS=${args}" -DEXPECT_RC=${rc} "-DEXPECT_FILES=${files}" -DNO_NAN=ON)
+  if(T_REGEX)
+    list(APPEND cmd "-DEXPECT_STDERR_REGEX=${T_REGEX}")
+  endif()
+  if(T_NO_FILES)
+    list(APPEND cmd "-DEXPECT_NO_FILES=${nofiles}")
+  endif()
+  if(T_MKDIR)
+    list(APPEND cmd "-DMKDIR=${mkdir}")
+  endif()
+  if(T_COPY_FROM)
+    list(APPEND cmd "-DCOPY_FROM=${T_COPY_FROM}" "-DCOPY_AS=${T_COPY_AS}")
+  endif()
+  if(T_JSON)
+    list(APPEND cmd "-DJSON=${T_JSON}" "-DCHECKS=${checks}")
+  endif()
+  if(T_FILE_TEXT)
+    list(APPEND cmd "-DFILE_TEXT=${T_FILE_TEXT}" "-DFILE_TEXT_IN=${T_FILE_TEXT_IN}")
+  endif()
+  list(APPEND cmd -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_expect.cmake)
+  add_test(NAME multiqc:${name} COMMAND ${cmd})
+  set_tests_properties(multiqc:${name} PROPERTIES LABELS multiqc)
+endfunction()
+
+# a file name with a double quote and a backslash must give valid JSON (check_json parses
+# the file) whose sample key is the JSON-escaped name
+mqc_run_test(escape_name 0
+  COPY_FROM ${SAMSTAT_FIXTURE_DIR}/small.sam COPY_AS "a@Q@b@BS@c.sam"
+  ARGS --multiqc -d @OUTDIR@ @COPY@
+  FILES "a@Q@b@BS@c.sam.samstat_mapq_mqc.json"
+  JSON "a@Q@b@BS@c.sam.samstat_mapq_mqc.json" CHECKS "id=samstat_mapq"
+  FILE_TEXT "@Q@a@BS@@Q@b@BS@@BS@c@Q@: {"
+  FILE_TEXT_IN "a@Q@b@BS@c.sam.samstat_mapq_mqc.json")
+
+# sample name = file name without directory, '.gz' and one known extension
+foreach(case "small.bam|small" "reads.fq.gz|reads" "READS.FQ|READS" "x.fa.gz|x" "y.fastq|y")
+  string(REPLACE "|" ";" parts "${case}")
+  list(GET parts 0 fname)
+  list(GET parts 1 sample)
+  if(fname MATCHES "^(small.bam|reads.fq.gz|READS.FQ)$")
+    set(src ${SAMSTAT_FIXTURE_DIR}/${fname})
+  elseif(fname STREQUAL "x.fa.gz")
+    set(src ${SAMSTAT_FIXTURE_DIR}/reads.fa.gz)
+  elseif(fname STREQUAL "y.fastq")
+    set(src ${SAMSTAT_FIXTURE_DIR}/qual.fq)
+  else()
+    continue()
+  endif()
+  mqc_run_test(sample_${fname} 0
+    COPY_FROM ${src} COPY_AS ${fname}
+    ARGS --multiqc -d @OUTDIR@ @COPY@
+    FILES ${fname}.samstat_mapq_mqc.json
+    JSON ${fname}.samstat_mapq_mqc.json CHECKS "id=samstat_mapq" "data.${sample}")
+endforeach()
+
+# several inputs and threads: four files per input, one distinct sample key each
+foreach(threads 1 4)
+  add_test(NAME multiqc:multi_input_t${threads}
+    COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${MQC_OUT}/multi_t${threads}
+      "-DARGS=-t\;${threads}\;--multiqc\;-d\;@OUTDIR@\;${SAMSTAT_FIXTURE_DIR}/small.sam\;${SAMSTAT_FIXTURE_DIR}/paired_small.sam\;${SAMSTAT_FIXTURE_DIR}/small.bam"
+      "-DEXPECT_FILES=small.sam.samstat_mapq_mqc.json\;paired_small.sam.samstat_mapq_mqc.json\;small.bam.samstat_mapq_mqc.json\;small.sam.samstat_general_mqc.json\;paired_small.sam.samstat_length_mqc.json\;small.bam.samstat_basequal_mqc.json"
+      -DJSON=paired_small.sam.samstat_mapq_mqc.json "-DCHECKS=data.paired_small.mapq_ge30=2"
+      -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_expect.cmake)
+  set_tests_properties(multiqc:multi_input_t${threads} PROPERTIES LABELS multiqc)
+endforeach()
+
+# an input without reads: general and mapq files (valid, no nan/inf); length and
+# base quality are not written (docs/multiqc.md)
+mqc_run_test(empty_input 0
+  ARGS --multiqc -d @OUTDIR@ ${SAMSTAT_FIXTURE_DIR}/empty.sam
+  FILES empty.sam.samstat_general_mqc.json empty.sam.samstat_mapq_mqc.json
+  NO_FILES empty.sam.samstat_length_mqc.json empty.sam.samstat_basequal_mqc.json
+  JSON empty.sam.samstat_general_mqc.json CHECKS "id=samstat_general" "data.empty.samstat_total_reads=0")
+
+# --json and --multiqc together write both
+mqc_run_test(with_json 0
+  ARGS --json --multiqc -d @OUTDIR@ ${SAMSTAT_FIXTURE_DIR}/small.sam
+  FILES small.sam.samstat.json small.sam.samstat_general_mqc.json small.sam.samstat.html
+  JSON small.sam.samstat.json CHECKS "summary.total_reads=20")
+
+# an output directory that does not exist is a usage error
+mqc_run_test(missing_dir 2
+  ARGS --multiqc -d @OUTDIR@/does/not/exist ${SAMSTAT_FIXTURE_DIR}/small.sam
+  REGEX "does not exist")
+
+# a MultiQC file that cannot be created (a directory has its name): exit 1 with a message
+mqc_run_test(unwritable_file 1
+  MKDIR small.sam.samstat_mapq_mqc.json
+  ARGS --multiqc -d @OUTDIR@ ${SAMSTAT_FIXTURE_DIR}/small.sam
+  REGEX "Failed to open output file")

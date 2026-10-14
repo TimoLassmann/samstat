@@ -288,7 +288,7 @@ int samstat_title(tld_strbuf *o,struct samstat_param *p , int id)
 
         RUN(tld_get_filename(p->infile[id], &n));
         RUN(tld_append(o,"<h1>"));
-        RUN(tld_append(o,n));
+        RUN(html_escape_append(o,n));
         RUN(tld_append(o,"</h1>\n"));
 
         MFREE(n);

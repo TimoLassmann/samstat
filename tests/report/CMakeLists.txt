@@ -43,3 +43,13 @@ foreach(input "xx#minimal.sam" "xx#pair.sam" "ce#1.sam" "ce#2.sam")
 endforeach()
 report_html_test(trace_type_lines_mode "${SAMSTAT_TEST_DATA_DIR}/ce#1.sam"
   "-DCONTAINS=type: 'scatter',\nmode: 'lines'")
+
+# HTML hygiene
+report_html_test(html_lang_viewport "${REPORT_SAM}"
+  "-DCONTAINS=<html lang=\"en\">|<meta charset=\"utf-8\">|<meta name=\"viewport\""
+  "-DNOT_CONTAINS=100%%")
+# A file name with '<' and '&' must be escaped in <title> and <h1> (copy made at test time).
+report_html_test(escape_filename "${REPORT_SAM}"
+  "-DAS_NAME=a<b&c.sam"
+  "-DCONTAINS=<h1>a&lt;b&amp;c.sam</h1>|a&lt;b&amp;c.sam\n</title>"
+  "-DNOT_CONTAINS=a<b&c.sam</h1>|<title>\na<b")

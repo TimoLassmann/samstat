@@ -115,7 +115,11 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         /* s->seq[s->len ] = 0; */
 
                         /* LOG_MSG("%d", qual_ptr[0]); */
-                        if(qual_ptr[0] == 0xFF){
+                        if(s->len == 0){
+                                /* SEQ '*': no bases and no qualities (qual_ptr must not be read) */
+                                buffer[0] = 0;
+                                tld_append(s->qual, buffer);
+                        }else if(qual_ptr[0] == 0xFF){
                                 /* char* fill = NULL; */
                                 /* galloc(&buffer, s->len); */
                                 memset(buffer, 0xFF, s->len);

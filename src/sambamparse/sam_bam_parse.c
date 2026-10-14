@@ -64,6 +64,13 @@ int parse_alignment(struct tl_seq *s)
                 a->aln_len = 0;
                 return OK;
         }
+        /* SEQ '*' (no bases): nothing to align, no clips */
+        a->n_clip5 = 0;
+        a->n_clip3 = 0;
+        if(s->len == 0){
+                a->aln_len = 0;
+                return OK;
+        }
         aln_len = 0;
 
         for(int i = 0;i < a->n_cigar;i++){

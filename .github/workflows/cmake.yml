@@ -69,6 +69,41 @@ jobs:
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=0
       run: ctest --output-on-failure --no-tests=error -j4
 
+  ubuntu-tsan:
+    runs-on: ubuntu-latest
+    env:
+      # read by the bundled htslib ./configure, so libhts links against the TSAN runtime
+      LDFLAGS: -fsanitize=thread
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+
+    - name: Configure (ThreadSanitizer)
+      run: >
+        cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DGIT_SUBMODULE=OFF
+        -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+
+    - name: Build
+      run: cmake --build build-tsan -j4
+
+    # TSAN aborts with "unexpected memory mapping" on recent runner kernels
+    # otherwise (https://github.com/google/sanitizers/issues/1716).
+    - name: Lower mmap randomisation for TSAN
+      run: sudo sysctl vm.mmap_rnd_bits=28
+
+    - name: Test (golden and thread tests only)
+      working-directory: build-tsan
+      env:
+        TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+      run: |
+        ctest --output-on-failure --no-tests=error -j4 -L golden
+        ctest --output-on-failure --no-tests=error -j4 -R threads
+
   ubuntu-multiqc:
     runs-on: ubuntu-latest
     steps:

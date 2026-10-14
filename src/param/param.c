@@ -477,8 +477,6 @@ int param_init(struct samstat_param **param)
         p->verbose = 0;
         p->n_infile = 0;
         p->n_threads = 4;
-        p->collect_end = 0;
-        p->norm_len_plot = 0;
         p->json = 0;
         p->multiqc = 0;
         p->infile = NULL;

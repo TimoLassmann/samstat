@@ -94,7 +94,8 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         s->len = b->core.l_qseq;
 
 
-                        if(s->len > b_len){
+                        /* buffer needs room for s->len characters plus the terminating 0 */
+                        if(s->len >= b_len){
                                 while(b_len <= s->len){
                                         b_len = b_len + 1024;
                                 }

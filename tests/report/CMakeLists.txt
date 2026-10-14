@@ -12,3 +12,26 @@ add_test(NAME report:write_failure
     -DOUTDIR=${REPORT_OUT}/write_failure
     -P ${REPORT_HELPERS}/run_write_failure.cmake)
 set_tests_properties(report:write_failure PROPERTIES LABELS report)
+
+# report_html_test(<name> <input> <check args...>)
+# Runs samstat on <input> and applies the given check_html.cmake options
+# (-DCONTAINS=... etc.). Option values use '|' as list separator.
+function(report_html_test name input)
+  add_test(NAME report:${name}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> "-DINPUT=${input}"
+      -DOUTDIR=${REPORT_OUT}/${name} ${ARGN}
+      -P ${REPORT_HELPERS}/check_html.cmake)
+  set_tests_properties(report:${name} PROPERTIES LABELS report)
+endfunction()
+
+set(REPORT_SAM "${SAMSTAT_TEST_DATA_DIR}/xx#minimal.sam")
+set(REPORT_PAIR_SAM "${SAMSTAT_TEST_DATA_DIR}/xx#pair.sam")
+set(REPORT_EMPTY_SAM "${SAMSTAT_FIXTURE_DIR}/empty.sam")
+
+report_html_test(plotly_pinned "${REPORT_SAM}"
+  "-DNOT_CONTAINS=plotly-latest"
+  "-DCONTAINS=https://cdn.plot.ly/plotly-1.58.5.min.js"
+  "-DMATCHES=plotly-[0-9]+\\.[0-9]+\\.[0-9]+\\.min\\.js")
+report_html_test(no_unused_d3 "${REPORT_SAM}"
+  "-DNOT_CONTAINS=d3js.org")

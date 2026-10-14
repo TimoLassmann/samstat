@@ -1366,8 +1366,9 @@ int html_header(tld_strbuf *out_buffer, char *filename)
         RUN(tld_append(out_buffer, "<head>\n"));
 
         RUN(tld_append(out_buffer, "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"/>\n"))
-        RUN(tld_append(out_buffer, "<script src=\"https://d3js.org/d3.v4.js\"></script>\n"));
-        RUN(tld_append(out_buffer, "<script src=\"https://cdn.plot.ly/plotly-latest.min.js\"></script>\n"));
+        /* plotly-latest.min.js has been frozen at v1.58.5 since 2021; pin it explicitly.
+           d3 was loaded here but is not used by any generated script. */
+        RUN(tld_append(out_buffer, "<script src=\"https://cdn.plot.ly/plotly-1.58.5.min.js\"></script>\n"));
 
 
         if(filename){

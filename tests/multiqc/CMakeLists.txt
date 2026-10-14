@@ -186,10 +186,10 @@ mqc_run_test(with_json 0
   FILES small.sam.samstat.json small.sam.samstat_general_mqc.json small.sam.samstat.html
   JSON small.sam.samstat.json CHECKS "summary.total_reads=20")
 
-# an output directory that does not exist is a usage error
-mqc_run_test(missing_dir 2
+# an output directory that does not exist is created (mkdir -p)
+mqc_run_test(missing_dir 0
   ARGS --multiqc -d @OUTDIR@/does/not/exist ${SAMSTAT_FIXTURE_DIR}/small.sam
-  REGEX "does not exist")
+  REGEX "does/not/exist/small.sam.samstat_mapq_mqc.json")
 
 # a MultiQC file that cannot be created (a directory has its name): exit 1 with a message
 mqc_run_test(unwritable_file 1

@@ -15,6 +15,7 @@
 #define FILE_TYPE_SAMBAM 0
 #define FILE_TYPE_FASTAQ 1
 #define FILE_TYPE_UNKNOWN 2
+#define FILE_TYPE_NOOUT 3 /* report directory not writable: input is failed up front */
 
 struct samstat_param {
         char** infile;

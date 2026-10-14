@@ -64,23 +64,18 @@ For each input file SAMStat will create a single html page named after the input
 Available options:
 
 #+begin_src bash :eval never 
-   -d/-dir            : Output directory. []
-                        NOTE: by default SAMStat will place reports in the same directory as the input files. 
-   -p/-peek           : Report stats only on the first <n> sequences. [unlimited]
-   -t                 : Number of threads. [4]
-                        will only be used when multiple input files are present. 
-   --json             : Also write <input>.samstat.json (see docs/json-format.md). []
-   --multiqc          : Also write MultiQC custom content files (see docs/multiqc.md). []
-   --plotend          : Add base and quality plots relative to the read ends. []
-   --seed             : Random number seed. [0]
-   --verbose          : Enables verbose output. []
-
-   -h/-help           : Prints help message. []
-   -v/-version        : Prints version information. []
+  -d, --dir DIR      write reports to DIR (created if missing) [next to input]
+  -p, --peek N       analyse only the first N reads (not random) [all]
+  -t, --threads N    threads; one input file per thread [4]
+      --json         also write <input>.samstat.json (see docs/json-format.md)
+      --multiqc      also write MultiQC files <input>.samstat_*_mqc.json (see docs/multiqc.md)
+      --verbose      debug output
+  -h, --help / -v, --version
 #+end_src
 
+=--nthreads= is accepted as an alias of =--threads=. The options =-l=, =--seed=, =--norm= and =--plotend= are deprecated: they are still accepted, print a warning and are ignored.
 
-
+Before reading any input SAMStat checks that every report can be written. If a report directory is not writable that input fails (exit code 1) and the message suggests =-d DIR=. Two inputs that would write the same report file are a usage error (exit code 2).
 
 * New in 2.3.0
 

@@ -1,51 +1,4 @@
 {
-"format_version": 1,
-"meta": {"samstat_version": "2.3.0", "input_file": "xx#large_aux2.sam"},
-"summary": {
-"total_reads": 10,
-"read1_reads": 10,
-"read2_reads": 0,
-"paired": 0,
-"properly_paired": 0,
-"secondary": 0,
-"supplementary": 0,
-"is_aligned": true,
-"is_partial_report": false,
-"mapq_counts": {
-"read1": {"mapq_ge30": 0, "mapq_10_29": 0, "mapq_lt10": 10, "unmapped": 0}
-}
-},
-"mapq_bins": [
-{"id": "mapq_ge30", "label": "MAPQ gt 30"},
-{"id": "mapq_10_29", "label": "MAPQ lt 30"},
-{"id": "mapq_lt10", "label": "MAPQ lt 10"},
-{"id": "unmapped", "label": "Unmapped"}
-],
-"read1": {
-"n_reads": 10,
-"length": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [0,10], "unmapped": []},
-"base_composition": {
-"mapq_ge30": {"A": [], "C": [], "G": [], "T": [], "N": []},
-"mapq_10_29": {"A": [], "C": [], "G": [], "T": [], "N": []},
-"mapq_lt10": {"A": [10], "C": [0], "G": [0], "T": [0], "N": [0]},
-"unmapped": {"A": [], "C": [], "G": [], "T": [], "N": []}
-},
-"base_quality": {
-"mapq_ge30": [],
-"mapq_10_29": [],
-"mapq_lt10": [[0], [0], [10], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0]],
-"unmapped": []
-},
-"mismatches": {
-"mapq_ge30": {"A": [], "C": [], "G": [], "T": [], "N": []},
-"mapq_10_29": {"A": [], "C": [], "G": [], "T": [], "N": []},
-"mapq_lt10": {"A": [], "C": [], "G": [], "T": [], "N": []},
-"unmapped": {"A": [], "C": [], "G": [], "T": [], "N": []}
-},
-"insertions": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []},
-"deletions": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []}
-},
-"v2": {
 "format_version": 2,
 "meta": {"samstat_version": "2.3.0", "input_file": "xx#large_aux2.sam"},
 "summary": {
@@ -112,7 +65,6 @@
 "mismatches": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []},
 "insertions": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []},
 "deletions": {"mapq_ge30": [], "mapq_10_29": [], "mapq_lt10": [], "unmapped": []}
-}
 }
 }
 }

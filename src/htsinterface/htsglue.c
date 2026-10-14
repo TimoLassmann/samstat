@@ -264,9 +264,11 @@ int close_bam(struct sam_bam_file* f_handle)
 
         status = sam_close(f_handle->in);
         if (status < 0) {
-                ERROR_MSG("Error closing input: %s.\n",f_handle->filename);
+                /* report after freeing: the struct must not leak on this path */
+                WARNING_MSG("Error closing input: %s.",f_handle->filename);
         }
         MFREE(f_handle);
+        ASSERT(status >= 0, "Error closing input");
         return OK;
 ERROR:
         return FAIL;

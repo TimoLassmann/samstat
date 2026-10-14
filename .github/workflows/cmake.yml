@@ -2,59 +2,92 @@ name: CMake
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "maintenance/**" ]
   pull_request:
     branches: [ "main" ]
 
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
-
 jobs:
-  build:
-    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
-    # You can convert this to a matrix build if you need cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  ubuntu-release:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-    - name: Install hdf5 
-      run: sudo apt-get install -y libhdf5-dev
-    
-    - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+
+    - name: Configure
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
 
     - name: Build
-      # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      run: cmake --build build -j4
 
     - name: Test
-      working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}}
-      
-  build-mac:
+      working-directory: build
+      run: ctest --output-on-failure --no-tests=error -j4
+
+  macos-release:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Install hdf5
-      run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && brew install hdf5 autoconf automake 
-    - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: brew install autoconf automake zlib
+
+    - name: Configure
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
 
     - name: Build
-      # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      run: cmake --build build -j4
 
     - name: Test
-      working-directory: ${{github.workspace}}/build
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}}
+      working-directory: build
+      run: ctest --output-on-failure --no-tests=error -j4
+
+  ubuntu-asan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+
+    - name: Configure (AddressSanitizer / UBSan)
+      run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON -DGIT_SUBMODULE=OFF
+
+    - name: Build
+      run: cmake --build build-asan -j4
+
+    - name: Test
+      working-directory: build-asan
+      env:
+        ASAN_OPTIONS: detect_leaks=1:abort_on_error=0
+      run: ctest --output-on-failure --no-tests=error -j4
+
+  ubuntu-multiqc:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+
+    - name: Install MultiQC
+      run: pip install multiqc==1.25.1
+
+    - name: Configure (MultiQC is required, so multiqc:run is registered)
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF -DSAMSTAT_REQUIRE_MULTIQC=ON
+
+    - name: Build
+      run: cmake --build build -j4
+
+    - name: Test (random order, repeated, to find tests that share output directories)
+      working-directory: build
+      run: ctest --output-on-failure --no-tests=error -j4 --schedule-random --repeat until-fail:2

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TimoLassmann/SAMStat/docs/samstat.schema.json",
+  "title": "SAMStat JSON report (format_version 1)",
+  "description": "Written by 'samstat --json' as <input>.samstat.json. See docs/json-format.md.",
+  "type": "object",
+  "required": ["format_version", "meta", "summary", "mapq_bins", "read1"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": { "const": 1 },
+    "meta": {
+      "type": "object",
+      "required": ["samstat_version", "input_file"],
+      "additionalProperties": false,
+      "properties": {
+        "samstat_version": { "type": "string" },
+        "input_file": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total_reads", "read1_reads", "read2_reads", "paired", "properly_paired",
+                   "secondary", "supplementary", "is_aligned", "is_partial_report", "mapq_counts"],
+      "additionalProperties": false,
+      "properties": {
+        "total_reads": { "$ref": "#/$defs/count" },
+        "read1_reads": { "$ref": "#/$defs/count" },
+        "read2_reads": { "$ref": "#/$defs/count" },
+        "paired": { "$ref": "#/$defs/count" },
+        "properly_paired": { "$ref": "#/$defs/count" },
+        "secondary": { "$ref": "#/$defs/count" },
+        "supplementary": { "$ref": "#/$defs/count" },
+        "is_aligned": { "type": "boolean" },
+        "is_partial_report": { "type": "boolean" },
+        "mapq_counts": {
+          "type": "object",
+          "required": ["read1"],
+          "additionalProperties": false,
+          "properties": {
+            "read1": { "$ref": "#/$defs/bin_counts" },
+            "read2": { "$ref": "#/$defs/bin_counts" }
+          }
+        }
+      }
+    },
+    "mapq_bins": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        { "$ref": "#/$defs/bin_entry" },
+        { "$ref": "#/$defs/bin_entry" },
+        { "$ref": "#/$defs/bin_entry" },
+        { "$ref": "#/$defs/bin_entry" }
+      ],
+      "items": false
+    },
+    "read1": { "$ref": "#/$defs/read" },
+    "read2": { "$ref": "#/$defs/read" }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "counts": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+    "bin_entry": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "enum": ["mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"] },
+        "label": { "type": "string" }
+      }
+    },
+    "bin_counts": {
+      "type": "object",
+      "required": ["mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"],
+      "additionalProperties": false,
+      "properties": {
+        "mapq_ge30": { "$ref": "#/$defs/count" },
+        "mapq_10_29": { "$ref": "#/$defs/count" },
+        "mapq_lt10": { "$ref": "#/$defs/count" },
+        "unmapped": { "$ref": "#/$defs/count" }
+      }
+    },
+    "per_bin_counts": {
+      "type": "object",
+      "required": ["mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"],
+      "additionalProperties": false,
+      "properties": {
+        "mapq_ge30": { "$ref": "#/$defs/counts" },
+        "mapq_10_29": { "$ref": "#/$defs/counts" },
+        "mapq_lt10": { "$ref": "#/$defs/counts" },
+        "unmapped": { "$ref": "#/$defs/counts" }
+      }
+    },
+    "base_counts": {
+      "type": "object",
+      "required": ["A", "C", "G", "T", "N"],
+      "additionalProperties": false,
+      "properties": {
+        "A": { "$ref": "#/$defs/counts" },
+        "C": { "$ref": "#/$defs/counts" },
+        "G": { "$ref": "#/$defs/counts" },
+        "T": { "$ref": "#/$defs/counts" },
+        "N": { "$ref": "#/$defs/counts" }
+      }
+    },
+    "per_bin_bases": {
+      "type": "object",
+      "required": ["mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"],
+      "additionalProperties": false,
+      "properties": {
+        "mapq_ge30": { "$ref": "#/$defs/base_counts" },
+        "mapq_10_29": { "$ref": "#/$defs/base_counts" },
+        "mapq_lt10": { "$ref": "#/$defs/base_counts" },
+        "unmapped": { "$ref": "#/$defs/base_counts" }
+      }
+    },
+    "quality_counts": {
+      "description": "Either empty (no quality data) or exactly 42 arrays, index = Q value 0-41, each indexed by position.",
+      "oneOf": [
+        { "type": "array", "maxItems": 0 },
+        { "type": "array", "minItems": 42, "maxItems": 42, "items": { "$ref": "#/$defs/counts" } }
+      ]
+    },
+    "per_bin_quality": {
+      "type": "object",
+      "required": ["mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"],
+      "additionalProperties": false,
+      "properties": {
+        "mapq_ge30": { "$ref": "#/$defs/quality_counts" },
+        "mapq_10_29": { "$ref": "#/$defs/quality_counts" },
+        "mapq_lt10": { "$ref": "#/$defs/quality_counts" },
+        "unmapped": { "$ref": "#/$defs/quality_counts" }
+      }
+    },
+    "read": {
+      "type": "object",
+      "required": ["n_reads", "length", "base_composition", "base_quality", "mismatches",
+                   "insertions", "deletions"],
+      "additionalProperties": false,
+      "properties": {
+        "n_reads": { "$ref": "#/$defs/count" },
+        "length": { "$ref": "#/$defs/per_bin_counts" },
+        "base_composition": { "$ref": "#/$defs/per_bin_bases" },
+        "base_quality": { "$ref": "#/$defs/per_bin_quality" },
+        "mismatches": { "$ref": "#/$defs/per_bin_bases" },
+        "insertions": { "$ref": "#/$defs/per_bin_counts" },
+        "deletions": { "$ref": "#/$defs/per_bin_counts" }
+      }
+    }
+  }
+}

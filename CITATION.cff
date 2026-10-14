@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use SAMStat, please cite the SAMStat 2 paper."
+title: "SAMStat"
+version: 2.3.0
+type: software
+authors:
+  - family-names: Lassmann
+    given-names: Timo
+repository-code: "https://github.com/TimoLassmann/samstat"
+license: GPL-3.0-or-later
+preferred-citation:
+  type: article
+  title: "SAMStat 2: quality control for next generation sequencing data"
+  authors:
+    - family-names: Lassmann
+      given-names: Timo
+  journal: "Bioinformatics"
+  year: 2023
+  volume: 39
+  issue: 1
+  start: btad019
+  doi: "10.1093/bioinformatics/btad019"
+references:
+  - type: article
+    title: "SAMStat: monitoring biases in next generation sequencing data"
+    authors:
+      - family-names: Lassmann
+        given-names: Timo
+      - family-names: Hayashizaki
+        given-names: Yoshihide
+      - family-names: Daub
+        given-names: Carsten O.
+    journal: "Bioinformatics"
+    year: 2011
+    volume: 27
+    issue: 1
+    start: 130
+    end: 131
+    doi: "10.1093/bioinformatics/btq614"

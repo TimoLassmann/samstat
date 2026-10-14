@@ -17,31 +17,41 @@ single html page:
 
 * How to install
 
-*SAMstat* depends on the hdf5 library. To install on linux:
+*SAMstat* needs autoconf/automake and zlib headers to build the bundled htslib. To install on linux:
 
 Ubuntu/Debian:
 
 #+begin_src bash :eval never
-sudo apt-get install -y libhdf5-dev
+sudo apt-get install -y autoconf automake zlib1g-dev
 #+end_src
 
 On a mac via [[https://brew.sh][brew]]:
 
 #+begin_src bash :eval never
-brew install hdf5
+brew install autoconf automake
 #+end_src
 
-To build *SAMstat*: 
+To build *SAMstat* (=--recursive= is required: the tld library is a git submodule):
 
-#+begin_src bash :eval never 
-git clone https://github.com/TimoLassmann/samstat.git
+#+begin_src bash :eval never
+git clone --recursive https://github.com/TimoLassmann/samstat.git
 cd samstat
-mkdir build
-cd build
-cmake ..
-make
-make install 
+cmake -S . -B build
+cmake --build build -j4
+(cd build && ctest --output-on-failure)
+cmake --install build
 #+end_src
+
+Optional CMake options: =-DSAMSTAT_USE_SYSTEM_HTSLIB=ON= (use the system htslib >= 1.16 instead of the bundled one), =-DSAMSTAT_SANITIZE=ON= (AddressSanitizer and UBSan) and =-DSAMSTAT_REQUIRE_MULTIQC=ON= (fail to configure if =multiqc= is missing, so the MultiQC integration test always runs).
+
+Some memory errors only show up in a sanitizer build, so before a release also run the whole suite with it:
+
+#+begin_src bash :eval never
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON
+cmake --build build-asan -j4 && (cd build-asan && ctest --output-on-failure -j4)
+#+end_src
+
+If you already cloned without =--recursive= run =git submodule update --init --recursive=.
 
 * Usage
 
@@ -49,7 +59,7 @@ make install
 samstat <file.sam>  <file.bam>  <file.fa>  <file.fq> ...  <options> 
 #+end_src
 
-For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix.
+For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix. Exit codes: 0 success (also for inputs without reads, with a warning), 1 at least one input failed (the others are still processed), 2 usage error.
 
 Available options:
 
@@ -59,6 +69,8 @@ Available options:
    -p/-peek           : Report stats only on the first <n> sequences. [unlimited]
    -t                 : Number of threads. [4]
                         will only be used when multiple input files are present. 
+   --json             : Also write <input>.samstat.json (see docs/json-format.md). []
+   --multiqc          : Also write MultiQC custom content files (see docs/multiqc.md). []
    --plotend          : Add base and quality plots relative to the read ends. []
    --seed             : Random number seed. [0]
    --verbose          : Enables verbose output. []
@@ -69,6 +81,13 @@ Available options:
 
 
 
+
+* New in 2.3.0
+
+- =--json= : machine-readable summary of the statistics (for pipelines and downstream tools).
+- MultiQC support: SAMStat output can be aggregated by [[https://multiqc.info][MultiQC]] (see =docs/multiqc.md=, option =--multiqc=).
+
+See =CHANGELOG.md= for details.
 
 * Please cite:
 Timo Lassmann (2023) "SAMStat 2: quality control for next generation sequencing data." Bioinformatics. (2023): btad019, https://doi.org/10.1093/bioinformatics/btad019

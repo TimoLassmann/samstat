@@ -8,6 +8,10 @@
 #define EXTERN extern
 #endif
 
+/* process exit codes */
+#define SAMSTAT_EXIT_FAILED 1 /* at least one input could not be processed */
+#define SAMSTAT_EXIT_USAGE 2 /* bad command line */
+
 #define FILE_TYPE_SAMBAM 0
 #define FILE_TYPE_FASTAQ 1
 #define FILE_TYPE_UNKNOWN 2
@@ -23,6 +27,8 @@ struct samstat_param {
         int verbose;
         uint8_t collect_end;
         uint8_t norm_len_plot;
+        uint8_t json;
+        uint8_t multiqc;
         uint64_t top_n;
         int32_t report_max_len;
         double subsample;

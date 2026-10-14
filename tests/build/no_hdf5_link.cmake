@@ -1,0 +1,18 @@
+# samstat must not link HDF5 (tld is built with TLD_USE_HDF5=OFF).
+# Required: -DSAMSTAT=<binary> -DTLD_USE_HDF5=<cache value>
+if(TLD_USE_HDF5)
+  message(FATAL_ERROR "TLD_USE_HDF5 is ${TLD_USE_HDF5}; samstat builds tld without HDF5")
+endif()
+if(APPLE)
+  set(cmd otool -L ${SAMSTAT})
+else()
+  set(cmd ldd ${SAMSTAT})
+endif()
+execute_process(COMMAND ${cmd} RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "${cmd} failed (${rc}):\n${err}")
+endif()
+string(TOLOWER "${out}" out_lc)
+if(out_lc MATCHES "hdf5")
+  message(FATAL_ERROR "samstat links HDF5:\n${out}")
+endif()

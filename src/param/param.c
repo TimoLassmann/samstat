@@ -1,6 +1,8 @@
+#include <errno.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include "misc/misc.h"
@@ -8,17 +10,20 @@
 #define PARAM_IMPORT
 #include "param.h"
 
-#include "../config.h"
+#include "config.h"
 
 #define OPT_VERBOSE 1
 /* #define OPT_SUBSAMPLE 2 */
 #define OPT_SEED 3
 #define OPT_PLOTEND 4
 #define OPT_PLOTNORM 5
+#define OPT_JSON 6
+#define OPT_MULTIQC 7
 
 
 
 int sanity_check_param(struct samstat_param *p);
+static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out);
 int detect_file_type(char *filename, int* type);
 
 int print_help(char **argv);
@@ -29,6 +34,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         int c;
         int help = 0;
         int version = 0;
+        uint64_t v = 0;
 
         RUN(param_init(&p));
 
@@ -41,6 +47,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         {"seed",required_argument,0,OPT_SEED},
                         {"plotend",0,0,OPT_PLOTEND},
                         {"norm",0,0,OPT_PLOTNORM},
+                        {"json",0,0,OPT_JSON},
+                        {"multiqc",0,0,OPT_MULTIQC},
                         {"nthreads",required_argument,0,'t'},
                         {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
@@ -69,14 +77,22 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 case OPT_PLOTNORM:
                         p->norm_len_plot = 1;
                         break;
+                case OPT_JSON:
+                        p->json = 1;
+                        break;
+                case OPT_MULTIQC:
+                        p->multiqc = 1;
+                        break;
                 case 't':
-                        p->n_threads = atoi(optarg);
+                        RUN(parse_unsigned(optarg, "-t", INT32_MAX, &v));
+                        p->n_threads = (int) v;
                         break;
                 case 'd':
                         p->outdir = optarg;
                         break;
                 case 'p':
-                        p->top_n = atoi(optarg);
+                        RUN(parse_unsigned(optarg, "-p/-peek", UINT64_MAX, &v));
+                        p->top_n = v;
                         break;
                 case 'h':
                         help = 1;
@@ -85,11 +101,13 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         version = 1;
                         break;
                 case 'l':
-                        p->report_max_len = atoi(optarg);
+                        RUN(parse_unsigned(optarg, "-l/-len", INT32_MAX, &v));
+                        p->report_max_len = (int32_t) v;
                         /* param->local_out = 1; */
                         break;
                 case '?':
-                        exit(1);
+                        /* getopt has already printed the offending option */
+                        goto ERROR;
                         break;
                 default:
                         fprintf(stderr,"default\n\n\n\n");
@@ -113,7 +131,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 print_help(argv);
                 param_free(p);
                 /* free_param(param); */
-                exit(EXIT_SUCCESS);
+                exit(SAMSTAT_EXIT_USAGE);
         }
 
         MMALLOC(p->infile,sizeof(char*)* (argc-optind));
@@ -147,14 +165,33 @@ ERROR:
         return FAIL;
 }
 
+/* Strict unsigned integer parsing: digits only (no sign, no blanks, no
+ * trailing characters), no overflow, value <= max. */
+static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out)
+{
+        char *end = NULL;
+        unsigned long long v;
+
+        ASSERT(arg != NULL, "Option %s: missing value", opt);
+        ASSERT(arg[0] >= '0' && arg[0] <= '9', "Option %s: '%s' is not a non-negative integer", opt, arg);
+        errno = 0;
+        v = strtoull(arg, &end, 10);
+        ASSERT(*end == 0, "Option %s: '%s' is not a non-negative integer", opt, arg);
+        ASSERT(errno != ERANGE && v <= max, "Option %s: value '%s' is too large", opt, arg);
+        *out = (uint64_t) v;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int sanity_check_param(struct samstat_param *p)
 {
 
         if(p->n_threads < 1){
                 ERROR_MSG("Option -t (num threads) : has to be > 0");
         }
-        if(p->top_n < 10){
-                ERROR_MSG("Option -p/-peek: has to be >= 10.");
+        if(p->top_n < 1){
+                ERROR_MSG("Option -p/-peek: has to be >= 1.");
         }
 
 
@@ -187,10 +224,10 @@ int sanity_check_param(struct samstat_param *p)
         /* check report length */
         if(p->report_max_len <= 0){
                 ERROR_MSG("Option -l/-len: the report length has to be > 0");
-        }else if(p->report_max_len > 500){
-                WARNING_MSG("Option -l/-len: the report length is > 500. This will slow down samstat considerably.");
         }else if(p->report_max_len > 10000){
                 ERROR_MSG("Option -l/-len: the report length is > 10000, the maximum currently supported.");
+        }else if(p->report_max_len > 500){
+                WARNING_MSG("Option -l/-len: the report length is > 500. This will slow down samstat considerably.");
         }
         /* check input files  */
 
@@ -200,30 +237,25 @@ int sanity_check_param(struct samstat_param *p)
         for(int i = 0; i < p->n_infile;i++){
                 if(p->file_type[i] == FILE_TYPE_UNKNOWN){
                         n_unknown++;
-                }else if(p->file_type[i] == FILE_TYPE_FASTA){
+                }else if(p->file_type[i] == FILE_TYPE_FASTAQ){
                         n_fasta++;
                 }else if(p->file_type[i] == FILE_TYPE_SAMBAM){
                         n_sam++;
                 }else {
-                        ERROR_MSG("File type %d not recognized - this should never happen");
+                        ERROR_MSG("File type %d not recognized - this should never happen", (int) p->file_type[i]);
                 }
         }
 
-        if(p->n_infile == n_unknown){
-                LOG_MSG("Could not recognize the type (fasta / sam / bam) of any input file by their file name extension:");
+        if(n_unknown){
                 for(int i = 0; i < p->n_infile;i++){
-                        LOG_MSG("   %s", p->infile[i]);
-                }
-                ERROR_MSG("Quitting");
-        }else{
-                if(n_fasta && n_sam){
-                        WARNING_MSG("Found both fasta and sam/bam files.");
-                        for(int i = 0; i < p->n_infile;i++){
-                                if(p->file_type[i] != FILE_TYPE_UNKNOWN){
-                                        LOG_MSG("   %s", p->infile[i]);
-                                }
+                        if(p->file_type[i] == FILE_TYPE_UNKNOWN){
+                                LOG_MSG("   unrecognized file name extension: %s", p->infile[i]);
                         }
                 }
+                ERROR_MSG("Could not recognize the type of %d input file(s) by their extension (supported: .sam .bam .fa .fasta .fna .fq .fastq, and .gz variants of the fasta/fastq ones).", n_unknown);
+        }
+        if(n_fasta && n_sam){
+                WARNING_MSG("Found both fasta/fastq and sam/bam files.");
         }
         /* check for identical files */
         for(int i = 0; i < p->n_infile;i++){
@@ -240,51 +272,39 @@ ERROR:
         return FAIL;
 }
 
+static int has_suffix_nocase(const char *name, const char *suffix)
+{
+        size_t n = strlen(name);
+        size_t m = strlen(suffix);
+        if(n <= m){
+                return 0;
+        }
+        return strcasecmp(name + n - m, suffix) == 0;
+}
+
 int detect_file_type(char *filename, int* type)
 {
-        if(tld_file_exists(filename)== OK){
-                tld_str f = tld_char_to_str(filename);
-                tld_str sam_suffix = tld_char_to_str(".sam");
-                tld_str bam_suffix = tld_char_to_str(".bam");
-                tld_str fasta_suffix = tld_char_to_str(".fasta");
-                tld_str fasta_suffix_short = tld_char_to_str(".fa");
-                tld_str fastq_suffix = tld_char_to_str(".fastq");
-                tld_str fastq_suffix_2 = tld_char_to_str(".fq");
+        static const char* sambam_suffix[] = {".sam", ".bam", NULL};
+        static const char* fastaq_suffix[] = {
+                ".fa", ".fasta", ".fna", ".fq", ".fastq",
+                ".fa.gz", ".fasta.gz", ".fna.gz", ".fq.gz", ".fastq.gz",
+                NULL};
 
-                tld_str fasta_suffix_gz = tld_char_to_str(".fasta.gz");
-                tld_str fasta_suffix_gz2 = tld_char_to_str(".fna.gz");
-                tld_str fastq_suffix_gz = tld_char_to_str(".fastq.gz");
-
-                if(tld_suffix_match(f, sam_suffix)){
+        *type = FILE_TYPE_UNKNOWN;
+        for(int i = 0; sambam_suffix[i]; i++){
+                if(has_suffix_nocase(filename, sambam_suffix[i])){
                         *type = FILE_TYPE_SAMBAM;
-                }else if(tld_suffix_match(f, bam_suffix)){
-                        *type = FILE_TYPE_SAMBAM;
-                }else if(tld_suffix_match(f, fasta_suffix)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_short)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix_2)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_gz)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fasta_suffix_gz2)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else if(tld_suffix_match(f, fastq_suffix_gz)){
-                        *type = FILE_TYPE_FASTAQ;
-                }else{
-                        *type = FILE_TYPE_UNKNOWN;
+                        return OK;
                 }
-
-        }else{
-                *type = FILE_TYPE_UNKNOWN;
-                ERROR_MSG("File %s not found!!!!", filename);
         }
-
+        for(int i = 0; fastaq_suffix[i]; i++){
+                if(has_suffix_nocase(filename, fastaq_suffix[i])){
+                        *type = FILE_TYPE_FASTAQ;
+                        return OK;
+                }
+        }
+        /* a missing file is reported when the file is processed (exit code 1) */
         return OK;
-ERROR:
-        return FAIL;
 }
 
 int print_help(char **argv )
@@ -297,7 +317,7 @@ int print_help(char **argv )
         fprintf(stdout,"\n");
         fprintf(stdout,"%s (v%s)\n", tmp, PACKAGE_VERSION);
         fprintf(stdout,"\n");
-        fprintf(stdout,"Copyright (C) 2011,2022 Timo Lassmann\n");
+        fprintf(stdout,"Copyright (C) 2011-2026 Timo Lassmann\n");
         fprintf(stdout,"\n");
 
 
@@ -307,7 +327,7 @@ int print_help(char **argv )
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats only on the first <n> sequences.","[unlimited]");
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats on exactly the first <n> sequences (n >= 1).","[unlimited]");
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  ); */
         /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  ); */
         /* fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  ); */
@@ -315,6 +335,8 @@ int print_help(char **argv )
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","will only be used when multiple input files are present." ,""  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--plotend","Add base and quality plots relative to the read ends." ,"[]"  );
          fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--norm","Add plots summarising statistics in 1% read length intervals." ,"[]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--json","Also write machine-readable statistics to <input>.samstat.json." ,"[]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--multiqc","Also write MultiQC custom content files <input>.samstat_*_mqc.json." ,"[]"  );
 
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--seed","Random number seed." ,"[0]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
@@ -371,6 +393,8 @@ int param_init(struct samstat_param **param)
         p->n_threads = 4;
         p->collect_end = 0;
         p->norm_len_plot = 0;
+        p->json = 0;
+        p->multiqc = 0;
         p->infile = NULL;
         p->outfile = NULL;
         p->outdir = NULL;

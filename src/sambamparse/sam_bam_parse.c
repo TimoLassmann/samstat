@@ -60,11 +60,14 @@ int parse_alignment(struct tl_seq *s)
         int aln_len;
 
         a = s->data;
+        a->n_clip5 = 0;
+        a->n_clip3 = 0;
         if(a->flag & BAM_FUNMAP){
                 a->aln_len = 0;
                 return OK;
         }
         aln_len = 0;
+        int q_len = 0;  /* number of query bases consumed by the CIGAR (M, I, S, =, X) */
 
         for(int i = 0;i < a->n_cigar;i++){
                 Op = bam_cigar_opchr(a->cigar[i]);
@@ -78,23 +81,44 @@ int parse_alignment(struct tl_seq *s)
                         /* We'll ignore hard clipping as we have nothing to work on */
                         break;
                 case 'S':
-                        if(i == 0){
-                                a->n_clip5 = bam_cigar_oplen(a->cigar[i]);
-                        }
-                        if(i == a->n_cigar - 1){
-                                a->n_clip3 = bam_cigar_oplen(a->cigar[i]);
-                        }
+                        q_len += bam_cigar_oplen(a->cigar[i]);
                         break;
                 case 'M':
                 case '=':
                 case 'X':
                 case 'I':
+                        q_len += bam_cigar_oplen(a->cigar[i]);
+                        aln_len += bam_cigar_oplen(a->cigar[i]);
+                        break;
                 case 'D':
                         Oplen = bam_cigar_oplen(a->cigar[i]);
                         aln_len += Oplen;
                         break;
                 default:
                         break;
+                }
+        }
+        /* SEQ '*' (no bases) or a CIGAR that does not fit SEQ: nothing to align. */
+        if(s->len == 0 || q_len != s->len){
+                a->aln_len = 0;
+                return OK;
+        }
+
+        /* A soft clip is the first (last) operation, ignoring hard clips. */
+        int first = 0;
+        int last = a->n_cigar - 1;
+        while(first <= last && bam_cigar_op(a->cigar[first]) == BAM_CHARD_CLIP){
+                first++;
+        }
+        while(last >= first && bam_cigar_op(a->cigar[last]) == BAM_CHARD_CLIP){
+                last--;
+        }
+        if(first <= last){
+                if(bam_cigar_op(a->cigar[first]) == BAM_CSOFT_CLIP){
+                        a->n_clip5 = bam_cigar_oplen(a->cigar[first]);
+                }
+                if(bam_cigar_op(a->cigar[last]) == BAM_CSOFT_CLIP && last != first){
+                        a->n_clip3 = bam_cigar_oplen(a->cigar[last]);
                 }
         }
         a->aln_len = aln_len;
@@ -112,10 +136,6 @@ int parse_alignment(struct tl_seq *s)
 
         genome = a->genome;
         read = a->read;
-        /* for(int i = 0;i < aln_len;i++){ */
-        /*         genome[i] = '-'; */
-        /*         read[i] = '-'; */
-        /* } */
         rp = 0;
         sp = 0;
 
@@ -133,7 +153,7 @@ int parse_alignment(struct tl_seq *s)
                         /* We'll ignore hard clipping as we have nothing to work on */
                         break;
                 case 'S':
-                        sp++;
+                        sp += Oplen;
                         break;
                 case 'M':
                 case '=':
@@ -176,27 +196,24 @@ int parse_alignment(struct tl_seq *s)
         if(l){
                 int pos = 0;
                 int i = 0;
-                char tmp_num[8];
                 char* md = TLD_STR(a->md); //->str;
-                while(i < l){
+                /* Everything below is bounded by the alignment length: an MD tag
+                 * that disagrees with the CIGAR must not reach outside genome / read. */
+                while(i < l && pos < aln_len){
                         if(isdigit((int)md[i])){
-                                int j = 0;
-                                while (isdigit(md[i])) {
-                                        tmp_num[j] = md[i];
-                                        j++;
-                                        i++;
-                                        if(i == l){
-                                                break;
+                                int c = 0;
+                                while(i < l && isdigit((int)md[i])){
+                                        /* saturate - anything above aln_len covers the whole alignment */
+                                        if(c <= aln_len){
+                                                c = c * 10 + (md[i] - '0');
                                         }
+                                        i++;
                                 }
-                                tmp_num[j] = 0;
-
-                                int c = atoi(tmp_num);
-                                for(j = 0; j < c;j++){
+                                /* c matches; insertions are not part of the reference */
+                                while(c && pos < aln_len){
                                         if(genome[pos] != '-'){
                                                 genome[pos] = read[pos];
-                                        }else{
-                                                c++;
+                                                c--;
                                         }
                                         pos++;
                                 }
@@ -204,10 +221,11 @@ int parse_alignment(struct tl_seq *s)
                                 genome[pos] = (int)md[i];
                                 pos++;
                                 i++;
-                        }else if(md[i] == '^'){
+                        }else{
+                                /* '^' or anything unexpected */
                                 i++;
                         }
-                        while(genome[pos] == '-'){
+                        while(pos < aln_len && genome[pos] == '-'){
                                 pos++;
                         }
                 }

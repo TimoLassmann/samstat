@@ -57,6 +57,7 @@ set(source_files
   
   # metrics/metrics.c
   report/stat_report.c
+  report/json_report.c
   # report/report.c
   report/lst.c
   tools/tools.c

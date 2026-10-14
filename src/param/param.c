@@ -15,6 +15,7 @@
 #define OPT_SEED 3
 #define OPT_PLOTEND 4
 #define OPT_PLOTNORM 5
+#define OPT_JSON 6
 
 
 
@@ -41,6 +42,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         {"seed",required_argument,0,OPT_SEED},
                         {"plotend",0,0,OPT_PLOTEND},
                         {"norm",0,0,OPT_PLOTNORM},
+                        {"json",0,0,OPT_JSON},
                         {"nthreads",required_argument,0,'t'},
                         {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
@@ -68,6 +70,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
 
                 case OPT_PLOTNORM:
                         p->norm_len_plot = 1;
+                        break;
+                case OPT_JSON:
+                        p->json = 1;
                         break;
                 case 't':
                         p->n_threads = atoi(optarg);
@@ -315,6 +320,7 @@ int print_help(char **argv )
         fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","will only be used when multiple input files are present." ,""  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--plotend","Add base and quality plots relative to the read ends." ,"[]"  );
          fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--norm","Add plots summarising statistics in 1% read length intervals." ,"[]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--json","Also write machine-readable statistics to <input>.samstat.json." ,"[]"  );
 
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--seed","Random number seed." ,"[0]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
@@ -371,6 +377,7 @@ int param_init(struct samstat_param **param)
         p->n_threads = 4;
         p->collect_end = 0;
         p->norm_len_plot = 0;
+        p->json = 0;
         p->infile = NULL;
         p->outfile = NULL;
         p->outdir = NULL;

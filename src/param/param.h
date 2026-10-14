@@ -23,6 +23,7 @@ struct samstat_param {
         int verbose;
         uint8_t collect_end;
         uint8_t norm_len_plot;
+        uint8_t json;
         uint64_t top_n;
         int32_t report_max_len;
         double subsample;

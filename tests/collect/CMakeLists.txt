@@ -4,8 +4,48 @@
 # collect:bounds:*      soft/hard clips, SEQ '*', end and normalised plots stay inside their arrays
 # collect:counters      summary.secondary / summary.supplementary exist
 # collect:plots:<file>  every dev/*.sam with --plotend --norm: exit 0 and valid JSON
+# collect:unit          unit_collect: the v2 collector (merge, tables, position bins, per-record
+#                       decisions, 128-bit mean Q, summary values of the long-read fixtures)
 #
 # Expected values come from the hand-computed fixtures in tests/data/README.md.
+
+# --- unit test: the collector compiled into its own executable ---------------
+# collect.c includes convert_tables.h, which the build generates with converttablegen; the
+# test makes its own copy so that it does not depend on the samstat target.
+set(COLLECT_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/gen)
+file(MAKE_DIRECTORY ${COLLECT_GEN_DIR})
+add_custom_command(
+  OUTPUT ${COLLECT_GEN_DIR}/convert_tables.h
+  COMMAND converttablegen ${COLLECT_GEN_DIR}/convert_tables.h
+  DEPENDS converttablegen)
+add_executable(unit_collect
+  unit_collect.c
+  ${PROJECT_SOURCE_DIR}/src/collect/collect.c
+  ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
+  ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c
+  ${COLLECT_GEN_DIR}/convert_tables.h)
+target_include_directories(unit_collect PRIVATE ${COLLECT_GEN_DIR})
+target_compile_definitions(unit_collect PRIVATE "COLLECT_TEST_DATA_DIR=\"${SAMSTAT_FIXTURE_DIR}\"")
+if(SAMSTAT_USE_SYSTEM_HTSLIB)
+  target_link_libraries(unit_collect PRIVATE PkgConfig::HTSLIB)
+else()
+  add_dependencies(unit_collect htslib)
+  target_include_directories(unit_collect PRIVATE ${HTSLIB_SRC_DIR})
+  target_link_libraries(unit_collect PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
+endif()
+if(Threads_FOUND)
+  target_link_libraries(unit_collect PRIVATE Threads::Threads)
+endif()
+target_link_libraries(unit_collect PRIVATE module_plot tld-dev)
+if(UNIX)
+  target_link_libraries(unit_collect PRIVATE m)
+endif()
+if(SAMSTAT_SANITIZE)
+  target_compile_options(unit_collect PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+  target_link_options(unit_collect PRIVATE -fsanitize=address,undefined)
+endif()
+add_test(NAME collect:unit COMMAND unit_collect)
+set_tests_properties(collect:unit PROPERTIES LABELS collect)
 
 set(COLLECT_HELPER ${PROJECT_SOURCE_DIR}/tests/cmake/run_collect.cmake)
 set(COLLECT_OUT ${SAMSTAT_TEST_OUT_DIR}/collect)

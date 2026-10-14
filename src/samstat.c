@@ -180,6 +180,8 @@ int process_sam_bam_file(struct samstat_param* p, int id)
                 clear_aln_data(sb);
                 reset_tl_seq_buffer(sb);
         }
+        s->n_secondary = f_handle->n_secondary;
+        s->n_supplementary = f_handle->n_supplementary;
         RUN(close_bam(f_handle));
 
         RUN(stat_report(s,p, id));

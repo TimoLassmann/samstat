@@ -4,6 +4,7 @@
 #include "tld.h"
 #include <htslib/sam.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
@@ -72,8 +73,18 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
 
         galloc(&buffer, b_len);
 
+        if(h == NULL){
+                /* empty input */
+                gfree(buffer);
+                return OK;
+        }
+
         while ((r = sam_read1(f_handle->in, h, b)) >= 0){
-                if(!(b->core.flag & BAM_FSECONDARY)){
+                if(b->core.flag & BAM_FSECONDARY){
+                        f_handle->n_secondary++;
+                }else if(b->core.flag & BAM_FSUPPLEMENTARY){
+                        f_handle->n_supplementary++;
+                }else{
                         /* if(b->core.qual >= 0){ */
                         struct tl_seq* s = NULL;
                         struct aln_data* a = NULL;
@@ -94,7 +105,8 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         s->len = b->core.l_qseq;
 
 
-                        if(s->len > b_len){
+                        /* buffer needs room for s->len characters plus the terminating 0 */
+                        if(s->len >= b_len){
                                 while(b_len <= s->len){
                                         b_len = b_len + 1024;
                                 }
@@ -114,7 +126,11 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         /* s->seq[s->len ] = 0; */
 
                         /* LOG_MSG("%d", qual_ptr[0]); */
-                        if(qual_ptr[0] == 0xFF){
+                        if(s->len == 0){
+                                /* SEQ '*': no bases and no qualities (qual_ptr must not be read) */
+                                buffer[0] = 0;
+                                tld_append(s->qual, buffer);
+                        }else if(qual_ptr[0] == 0xFF){
                                 /* char* fill = NULL; */
                                 /* galloc(&buffer, s->len); */
                                 memset(buffer, 0xFF, s->len);
@@ -184,6 +200,7 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
                         }
                 }
         }
+        ASSERT(r == -1,"Error reading alignments from %s (truncated or corrupt input?)", f_handle->filename);
         gfree(buffer);
         return OK;
 ERROR:
@@ -204,14 +221,36 @@ int open_bam(struct sam_bam_file **file, char *filename)
         f_handle->in = NULL;
         f_handle->header = NULL;
 
+        f_handle->n_secondary = 0;
+        f_handle->n_supplementary = 0;
+
         f_handle->in = sam_open(f_handle->filename, "r");
+        ASSERT(f_handle->in != NULL, "Cannot open %s as SAM/BAM (file missing, unreadable or of unknown format)", f_handle->filename);
         f_handle->header = sam_hdr_read(f_handle->in);
+        if(f_handle->header == NULL){
+                /* a zero byte file has no header but is a valid, empty input */
+                struct stat st;
+                ASSERT(stat(f_handle->filename, &st) == 0 && st.st_size == 0, "Cannot read the SAM/BAM header of %s (not a SAM/BAM file?)", f_handle->filename);
+        }
 
         f_handle->b = bam_init1();
+        ASSERT(f_handle->b != NULL, "bam_init1 failed");
 
         *file = f_handle;
         return OK;
 ERROR:
+        if(f_handle){
+                if(f_handle->b){
+                        bam_destroy1(f_handle->b);
+                }
+                if(f_handle->header){
+                        bam_hdr_destroy(f_handle->header);
+                }
+                if(f_handle->in){
+                        sam_close(f_handle->in);
+                }
+                MFREE(f_handle);
+        }
         return FAIL;
 }
 

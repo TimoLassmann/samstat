@@ -170,3 +170,30 @@ accompanied by a `reads.fq`; the lower-case FASTQ exists only inside `reads.fq.g
 - Expected: total reads 4; read1 = 2; read2 = 2; `gt30` = 2 (pairA R1+R2),
   `lt30` = 2 (pairB R1+R2); R1 length 30 x2; R2 length 25 x2; 0 mismatches;
   Q40 x 110 bases (60 from R1, 50 from R2).
+
+## n) softclip_shift.sam
+
+- Purpose: soft clip whose length is not a multiple of 4, with a read that is not
+  periodic. With `case 'S': sp++` the aligned bases are taken from the wrong place
+  in SEQ; `softclip5_md.sam` clips 5 and its sequence repeats every 4 bases, so
+  it cannot show that.
+- Read `sc3_shift` (`3S20M`, SEQ `GGG` + `ACGT` x5, `NM:i:1 MD:Z:2T17`).
+- Expected: total reads 1; length 20; exactly 1 mismatch at aligned offset 2:
+  reference `T`, read base `G` (SEQ index 5). With the bug the read base is `A`.
+
+## o) md_long_number.sam
+
+- Purpose: MD digit runs far longer than any integer (50 and 34 digits).
+- `md_long_digits` (`20M`, `MD:Z:99...9`): claims an absurd number of matches.
+  `md_mm_long_digits` (`20M`, `MD:Z:10A99...9`): one mismatch at aligned offset
+  10 (ref `A`, read `G`), then an absurd number of matches.
+- Expected: total reads 2 (`gt30` = 2); read length 20; the first read has 0
+  mismatches, the second exactly 1 (read base `G` at offset 10); no crash and no
+  out-of-bounds access (visible with `-DSAMSTAT_SANITIZE=ON`).
+
+## p) zero_bytes.sam
+
+- Purpose: a zero byte file with a `.sam` extension (no header at all, unlike
+  `empty.sam`).
+- Expected: total reads 0; a report is written; exit 0. It is the only input
+  without a readable header that is accepted (`not_a_bam.bam` is rejected).

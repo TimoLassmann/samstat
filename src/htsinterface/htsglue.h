@@ -37,7 +37,8 @@ struct sam_bam_file {
         bam_hdr_t* header;
         bam1_t *b;
         char* filename;
-
+        uint64_t n_secondary;     /* skipped secondary alignments (0x100) */
+        uint64_t n_supplementary; /* skipped supplementary alignments (0x800) */
 };
 
 

@@ -20,11 +20,11 @@
 
 #define TRY(EXP) do { if ((EXP) != OK) { goto ERROR; } } while (0)
 
-/* One panel is FIG_W units wide. A figure is shown at its natural size when the container is at
- * least that wide and shrinks with its text below that: at a 360 px screen (328 px of content)
- * the 13 unit text is about 11.8 px. */
-#define FIG_W 420.0
-#define FONT 14.0
+/* One panel is FIG_W units wide. The page scales a figure to its container (width:100%), up to
+ * about 512 px for a single figure and half the column for a pair. Below FIG_W it shrinks with
+ * its text: at a 360 px screen (328 px of content) the 15 unit text is 12.3 px. */
+#define FIG_W 400.0
+#define FONT 15.0
 #define PH_ONE 215.0      /* plotting height of a single-row figure */
 #define PH_ROW 96.0       /* plotting height of one row of plot 5 */
 
@@ -155,17 +155,18 @@ static void fmt_dec(char* buf, size_t n, int decimals, double v)
         }
 }
 
-/* Lengths as in the summary strip: exact below 1 kb, "~" above (the value is a bin edge, within
- * 1%), bp below 10 kb, kb above. */
-static void fmt_len(char* buf, size_t n, uint64_t v)
+/* Lengths as in the summary strip: bp below 10 kb, kb above. A value above 1 kb that is a bin
+ * edge (within 1%) is marked with "~"; exact is set when the value is the true length. */
+static void fmt_len(char* buf, size_t n, uint64_t v, int exact)
 {
         char t[48];
+        const char* tilde = (v < 1000 || exact) ? "" : "~";
         if (v < 1000) {
                 fmt_count(t, sizeof(t), v);
                 snprintf(buf, n, "%s bp", t);
         } else if (v < 10000) {
                 fmt_count(t, sizeof(t), v);
-                snprintf(buf, n, "~%s bp", t);
+                snprintf(buf, n, "%s%s bp", tilde, t);
         } else {
                 char d[32];
                 fmt_dec(d, sizeof(d), 1, (double)v / 1000.0);
@@ -175,7 +176,7 @@ static void fmt_len(char* buf, size_t n, uint64_t v)
                 char ip[32];
                 snprintf(ip, sizeof(ip), "%.*s", (int)il, d);
                 fmt_count(t, sizeof(t), (uint64_t)strtoull(ip, NULL, 10));
-                snprintf(buf, n, "~%s%s kb", t, dot ? dot : "");
+                snprintf(buf, n, "%s%s%s kb", tilde, t, dot ? dot : "");
         }
 }
 
@@ -354,7 +355,27 @@ struct posaxis {
         int nb;                 /* bins drawn */
         double x0;              /* x of the first bin */
         svg_axis x;
+        uint64_t min_bases;     /* a bin backed by fewer bases than this (all classes, one mate) is a gap */
 };
+
+static uint64_t pos_bin_bases(const struct stat_collection* s, const struct posaxis* a, int r, int i)
+{
+        uint64_t t = 0;
+        for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                const struct collect_pos_bin* b = a->rel ? &s->acc->pos_rel[r][m][i] : &s->acc->pos_abs[r][m][i];
+                for (int c = 0; c < COLLECT_N_BASE; c++) {
+                        t += b->comp[c];
+                }
+        }
+        return t;
+}
+
+/* Is position bin i of mate r backed by enough bases to be drawn? (3.2: fewer than 10 reads on the
+ * absolute axis is noise, not a measurement.) */
+static int pos_covered(const struct stat_collection* s, const struct posaxis* a, int r, int i)
+{
+        return pos_bin_bases(s, a, r, i) >= a->min_bases;
+}
 
 /*
  * x axis of plots 3-5 (3.2). Short layout: absolute, from position 1 to the last bin with any
@@ -363,44 +384,35 @@ struct posaxis {
  */
 static int pos_axis(const struct stat_collection* s, struct posaxis* a)
 {
-        const struct collect_acc* acc = s->acc;
         static char lab_abs[64], lab_rel[64];
+        const int nb_max = (s->layout == COLLECT_LAYOUT_LONG) ? COLLECT_REL_BINS : COLLECT_ABS_BINS;
 
         a->rel = (s->layout == COLLECT_LAYOUT_LONG);
         snprintf(lab_abs, sizeof(lab_abs), "position in read (bp)%s", s->is_aligned ? ", aligned part" : "");
         snprintf(lab_rel, sizeof(lab_rel), "position in read (%% of length)%s", s->is_aligned ? ", aligned part" : "");
-        if (a->rel) {
-                int any = 0;
-                for (int r = 0; r < COLLECT_N_MATE && !any; r++) {
-                        for (int m = 0; m < COLLECT_N_MAPQ && !any; m++) {
-                                for (int i = 0; i < COLLECT_REL_BINS && !any; i++) {
-                                        const struct collect_pos_bin* b = &acc->pos_rel[r][m][i];
-                                        for (int c = 0; c < COLLECT_N_BASE; c++) {
-                                                any |= b->comp[c] != 0;
-                                        }
-                                }
-                        }
-                }
-                a->nb = COLLECT_REL_BINS;
-                a->x0 = 0.5;
-                a->x = (svg_axis){0.0, 100.0, 0, lab_rel};
-                return any;
-        }
+
+        /* last bin that any mate backs with enough bases; if no bin has enough (a tiny input),
+         * every bin with a base counts */
         int last = -1;
-        for (int r = 0; r < COLLECT_N_MATE; r++) {
-                for (int m = 0; m < COLLECT_N_MAPQ; m++) {
-                        for (int i = COLLECT_ABS_BINS - 1; i > last; i--) {
-                                const struct collect_pos_bin* b = &acc->pos_abs[r][m][i];
-                                uint64_t t = 0;
-                                for (int c = 0; c < COLLECT_N_BASE; c++) {
-                                        t += b->comp[c];
-                                }
-                                if (t) {
+        a->min_bases = s->n_total >= REPORT_MIN_POS_BASES ? REPORT_MIN_POS_BASES : 1;
+        for (int pass = 0; pass < 2 && last < 0; pass++) {
+                if (pass == 1) {
+                        a->min_bases = 1;
+                }
+                for (int r = 0; r < COLLECT_N_MATE; r++) {
+                        for (int i = nb_max - 1; i > last; i--) {
+                                if (pos_bin_bases(s, a, r, i) >= a->min_bases) {
                                         last = i;
                                         break;
                                 }
                         }
                 }
+        }
+        if (a->rel) {
+                a->nb = COLLECT_REL_BINS;
+                a->x0 = 0.5;
+                a->x = (svg_axis){0.0, 100.0, 0, lab_rel};
+                return last >= 0;
         }
         a->nb = last + 1;
         a->x0 = 1.0;
@@ -461,6 +473,9 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
         int bmin = nb, bmax = -1;
         double ymax = 0.0;
 
+        if (s->total_bases == 0) {
+                return na_line(o, help_of(1)->na_no_sequence);
+        }
         for (int r = 0; r < nm; r++) {
                 for (int k = 0; k < nl; k++) {
                         cnt[r][k] = pool_alloc(pl, (size_t)nb);
@@ -528,9 +543,9 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
         svg_axis ya = {0.0, count_top(ymax), 0, "number of reads"};
 
         char lo_s[48], hi_s[48], n50_s[48], names[200], desc[900];
-        fmt_len(lo_s, sizeof(lo_s), s->min_length);
-        fmt_len(hi_s, sizeof(hi_s), s->max_length);
-        fmt_len(n50_s, sizeof(n50_s), s->n50);
+        fmt_len(lo_s, sizeof(lo_s), s->min_length, 1);
+        fmt_len(hi_s, sizeof(hi_s), s->max_length, 1);
+        fmt_len(n50_s, sizeof(n50_s), s->n50_best, s->n50_exact);
 
         for (int r = 0; r < nm; r++) {
                 struct panel_data pd;
@@ -546,9 +561,9 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                         pd.li[k] = li[k];
                         pd.v[k] = has_values(cnt[r][k] + bmin, n, 1) ? cnt[r][k] + bmin : NULL;
                 }
-                if (s->n50 > 0) {
+                if (s->n50_best > 0) {
                         pd.has_vline = 1;
-                        pd.vline = (double)s->n50;
+                        pd.vline = (double)s->n50_best;
                         snprintf(pd.vlabel, sizeof(pd.vlabel), "N50 %s", n50_s);
                 }
                 list_lines(&pd, names, sizeof(names));
@@ -605,7 +620,7 @@ static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct poo
                 return na_line(o, help_of(2)->na_no_quality);
         }
         const int n = qmax + 1;
-        svg_axis xa = {0.0, (double)n, 0, "mean base quality of the read (Phred Q)"};
+        svg_axis xa = {0.0, (double)n, 0, "average base quality of the read (Q)"};
         svg_axis ya = {0.0, count_top(ymax), 0, "number of reads"};
         char names[200], desc[700];
 
@@ -679,7 +694,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                                                 err += (collect_u128)pb->qual_error_sum;
                                         }
                                 }
-                                double q = collect_mean_q(err, bases);   /* NaN when there is no base */
+                                double q = pos_covered(s, &ax, r, i) ? collect_mean_q(err, bases) : NAN;   /* NaN = gap */
                                 v[r][k][i] = q;
                                 if (isfinite(q) && q > qmax) {
                                         qmax = q;
@@ -687,7 +702,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                         }
                 }
         }
-        svg_axis ya = {0.0, fmax(10.0, ceil(qmax / 10.0 - 1e-9) * 10.0), 0, "mean base quality (Phred Q)"};
+        svg_axis ya = {0.0, fmax(10.0, ceil(qmax / 10.0 - 1e-9) * 10.0), 0, "mean base quality (Q)"};
         char names[200], desc[800], range[96];
         pos_range_text(&ax, range, sizeof(range));
 
@@ -708,8 +723,9 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                 list_lines(&pd, names, sizeof(names));
                 snprintf(desc, sizeof(desc),
                          "Mean base quality at each position along the read, %s%s. Lines: %s. "
-                         "Gaps mean that no base with a quality was seen.",
-                         range, s->is_aligned ? ", aligned part of the read" : "", names);
+                         "Gaps mean that no base with a quality was seen%s.",
+                         range, s->is_aligned ? ", aligned part of the read" : "", names,
+                         ax.min_bases > 1 ? " or that fewer than 10 reads cover the position" : "");
                 if (figure(o, "samstat-p3", help_of(3)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
@@ -723,7 +739,8 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
 
 static const char* const base_name[5] = {"A", "C", "G", "T", "N"};
 static const char* const base_series[5] = {"Base A", "Base C", "Base G", "Base T", "Base N"};
-static const char* const base_colour_name[5] = {"green", "reddish purple", "black", "brown", "sky blue"};
+static const char* const base_colour_name[5] = {"green", "reddish purple", "black", "brown", "blue"};
+static const char* const base_dash_name[5] = {"solid line", "dashed line", "dotted line", "dash-dot line", "fine dotted line"};
 
 static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
 {
@@ -731,6 +748,9 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
         struct posaxis ax;
         double* v[2][5];
 
+        if (s->total_bases == 0) {
+                return na_line(o, help_of(4)->na_no_sequence);
+        }
         if (!pos_axis(s, &ax)) {
                 return na_line(o, NA_NO_READS);
         }
@@ -742,7 +762,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                 for (int b = 0; b < 5; b++) {
                         items[b] = (svg_swatch_item){base_name[b], report_base_colour[b], report_base_dash[b]};
                         l += snprintf(desc + l, sizeof(desc) - (size_t)l, "%s %s %s, %s", b ? ";" : "", base_name[b],
-                                      base_colour_name[b], report_base_dash[b][0] ? "dashed line" : "solid line");
+                                      base_colour_name[b], base_dash_name[b]);
                 }
                 if (tld_append(o, "<p class=\"plot-key\">") != OK ||
                     svg_swatch_row(o, "samstat-p4-key", items, 5, FONT, "Line key for the base composition plot", desc) != OK ||
@@ -769,7 +789,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                                 tot += c[b];
                         }
                         for (int b = 0; b < 5; b++) {
-                                v[r][b][i] = tot ? 100.0 * (double)c[b] / (double)tot : NAN;
+                                v[r][b][i] = (tot && tot >= ax.min_bases) ? 100.0 * (double)c[b] / (double)tot : NAN;
                         }
                 }
         }
@@ -792,8 +812,9 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                 }
                 snprintf(desc, sizeof(desc),
                          "Percentage of A, C, G, T and N at each position along the read, %s%s. "
-                         "One line per base; the line key is above the figure.",
-                         range, s->is_aligned ? ", aligned part of the read" : "");
+                         "One line per base, each with its own dash pattern; the line key is above the figure.%s",
+                         range, s->is_aligned ? ", aligned part of the read" : "",
+                         ax.min_bases > 1 ? " Positions covered by fewer than 10 reads are not drawn." : "");
                 if (figure(o, "samstat-p4", help_of(4)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
@@ -830,7 +851,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                 return na_line(o, help_of(5)->na_no_mapped);
         }
         if (!pos_axis(s, &ax)) {
-                return na_line(o, NA_NO_READS);
+                return na_line(o, s->total_bases == 0 ? help_of(5)->na_no_sequence : NA_NO_READS);
         }
         const int nl = get_lines(s, 0, li);   /* mapped classes only */
         for (int r = 0; r < COLLECT_N_MATE; r++) {
@@ -879,7 +900,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                                         sum.aligned_md += pb->aligned_md;
                                                 }
                                         }
-                                        double x = err_rate(&sum, row);
+                                        double x = pos_covered(s, &ax, r, i) ? err_rate(&sum, row) : NAN;
                                         v[r][row][k][i] = x;
                                         if (isfinite(x) && x > ymax[row]) {
                                                 ymax[row] = x;
@@ -913,8 +934,9 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                 list_lines(&rows[nrows - 1], names, sizeof(names));
                 snprintf(desc, sizeof(desc),
                          "%s per aligned base at each position along the read, %s, aligned part of the read, "
-                         "as percent of aligned bases. One panel per error type, sharing the position axis. Lines: %s.",
-                         md_total ? "Mismatches, insertions and deletions" : "Insertions and deletions", range, names);
+                         "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. Lines: %s.%s",
+                         md_total ? "Mismatches, insertions and deletions" : "Insertions and deletions", range, names,
+                         ax.min_bases > 1 ? " Positions covered by fewer than 10 reads are not drawn." : "");
                 if (figure(o, "samstat-p5", help_of(5)->title, desc, r, nm, rows, nrows, PH_ROW) != OK) {
                         return FAIL;
                 }
@@ -1102,15 +1124,16 @@ int report_mapq_swatch(tld_strbuf* o, int mapq_class)
 {
         static const char* const colour_name[4] = {"blue", "orange", "vermillion", "grey"};
         static const char* const dash_name[4] = {"solid", "dashed", "dotted", "dash-dot"};
-        char id[32], desc[96];
+        char id[32], title[64], desc[96];
 
         if (!o || mapq_class < 0 || mapq_class >= COLLECT_N_MAPQ) {
                 ERROR_MSG("report_mapq_swatch: bad arguments");
         }
+        /* The class name is the row header next to the swatch: the figure names only the style */
         snprintf(id, sizeof(id), "samstat-mapq-%d", mapq_class);
+        snprintf(title, sizeof(title), "%s %s line", dash_name[mapq_class], colour_name[mapq_class]);
         snprintf(desc, sizeof(desc), "Line sample: %s, %s.", colour_name[mapq_class], dash_name[mapq_class]);
-        return svg_swatch(o, id, report_mapq_colour[mapq_class], report_mapq_dash[mapq_class],
-                          report_mapq_help[mapq_class].label, desc);
+        return svg_swatch(o, id, report_mapq_colour[mapq_class], report_mapq_dash[mapq_class], title, desc);
 ERROR:
         return FAIL;
 }

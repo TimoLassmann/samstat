@@ -181,7 +181,7 @@ plot_set_test(partial_absent "${LONGREAD}/ont_like.sam"
 
 # header line (1.1) and summary strip (1.2)
 plot_set_test(header_line:aligned_long "${LONGREAD}/ont_like.bam"
-  "-DCONTAINS=<h1>ont_like.bam</h1>|BAM &middot|long layout (median length ~1,422 bp|long when &gt;= 1 kb) &middot|SAMStat "
+  "-DCONTAINS=<h1>ont_like.bam</h1>|BAM &middot|long layout (median length 1,434 bp|long when &gt;= 1 kb) &middot|SAMStat "
   "-DTITLES=<dt>Reads</dt>|<dt>Bases</dt>|<dt>N50</dt>|<dt>Mean Q</dt>|<dt>% mapped</dt>|<dt>% MAPQ &gt;= 30</dt>|<dt>% bases clipped</dt>|<dt>Median identity</dt>")
 plot_set_test(header_line:aligned_short "${SAMSTAT_FIXTURE_DIR}/paired_small.sam"
   "-DCONTAINS=short layout (median length |<dt>Reads (R1+R2)</dt>|<th scope=\"col\" class=\"num\">Read 1</th>")
@@ -197,3 +197,57 @@ plot_set_test(header_line:fasta "${SAMSTAT_FIXTURE_DIR}/reads.fa.gz"
 plot_set_test(footer:plain "${LONGREAD}/ont_like.bam"
   "-DCONTAINS=<footer>|btad019"
   "-DNOT_CONTAINS=<a href|command line")
+
+# =============================================================================
+# Clarity round 1: wording, tiles, captions by input type, exact lengths, degenerate inputs
+# (standard-plots.md sections 1.2, 1.3, 2 and 5)
+# =============================================================================
+
+# The "Good:" line of every plot is visible under the figure; the collapsed block names its plot.
+plot_set_test(clarity:good_and_howto "${LONGREAD}/ont_like.bam"
+  "-DMATCHES=<p class=\"good\"><strong>Good:</strong> One peak where@@<summary>How to read plot 1</summary>@@<summary>How to read plot 6</summary>@@</svg>\n</div>\n<p class=\"good\">"
+  "-DNOT_CONTAINS=How to read this|<details>\n<summary>How to read plot 1</summary>\n<div class=\"howto\">\n<p><strong>Good:")
+# the three percent tiles carry a percent sign; Bases is written in bases
+plot_set_test(clarity:tiles "${LONGREAD}/ont_like.bam"
+  "-DMATCHES=<dt>% mapped</dt><dd>[0-9.]+%</dd>@@<dt>% MAPQ &gt;= 30</dt><dd>[0-9.]+%</dd>@@<dt>% bases clipped</dt><dd>[0-9.]+%<span class=\"sub\">trimmed by the aligner@@<dt>Bases</dt><dd>89\\.5 kb<span class=\"sub\">89,490</span>@@<dt>N50</dt><dd>[^<]*<span class=\"sub\">half of all bases are in reads at least this long"
+  "-DNOT_CONTAINS=89.5 k<")
+# the caption of plot 3 names MAPQ classes only for aligned input
+plot_set_test(clarity:caption_aligned "${LONGREAD}/ont_like.bam"
+  "-DCONTAINS=one line per MAPQ class (see the table above)")
+plot_set_test(clarity:caption_unaligned "${LONGREAD}/long.fq"
+  "-DCONTAINS=Mean base quality at each position along the read.</p>"
+  "-DNOT_CONTAINS=MAPQ|mapping-quality")
+# plain wording instead of jargon in the visible text; the statistics note is in the collapsed block once
+plot_set_test(clarity:wording "${LONGREAD}/ont_like.bam"
+  "-DCONTAINS=Q20 = 1 error in 100 bases|how closely they match the reference (100% = perfect)|How it is calculated:|A few very long reads can dominate a line.|Each panel has its own vertical scale."
+  "-DNOT_CONTAINS=Phred Q|multimappers|error probabilities, so it reads lower|mapping-quality class|(as in FastQC)")
+# accessibility of the MAPQ table: the class name only in the row header, the table is not named twice
+plot_set_test(clarity:mapq_table_a11y "${LONGREAD}/ont_like.bam"
+  "-DCONTAINS=<table>|<title id=\"samstat-mapq-0-t\">solid blue line</title>"
+  "-DNOT_MATCHES=<table aria-labelledby@@<title id=\"samstat-mapq-[0-9]-t\">MAPQ")
+# the page layout: summary values wrap, figures scale to the column, one column on a phone
+plot_set_test(clarity:css "${LONGREAD}/ont_like.bam"
+  "-DCONTAINS=clamp(1.25rem,5vw,1.75rem)|overflow-wrap:anywhere|@media (max-width:24rem)|.figs svg{display:block;width:100%"
+  "-DNOT_CONTAINS=white-space:nowrap")
+plot_set_test(clarity:paired_figs "${SAMSTAT_FIXTURE_DIR}/paired_small.sam"
+  "-DCONTAINS=<div class=\"figs paired\">")
+# few reads: a note (the masking of thin positions is tested in report_plots_test)
+plot_set_test(clarity:few_reads "${LONGREAD}/ubam_like.sam"
+  "-DCONTAINS=Few reads (6): per-position plots are noisy")
+# an empty file says so and shows nothing else
+plot_set_test(clarity:empty_banner "${REPORT_EMPTY_SAM}"
+  "-DCONTAINS=<p class=\"banner\">This file contains no reads.</p>|<footer>"
+  "-DNOT_CONTAINS=<dl class|n/a|No reads.|<svg|How long are the reads?|How well did reads map?")
+# reads without sequence: n/a instead of 0, one note, N/A lines instead of empty axes
+plot_set_test(clarity:no_sequence "${SAMSTAT_FIXTURE_DIR}/seq_star_softclip.sam"
+  "-DCONTAINS=<dt>Bases</dt><dd>n/a</dd>|<dt>N50</dt><dd>n/a</dd>|Reads have no stored sequence (SEQ is *)|Not available: the input has no sequence."
+  "-DNOT_CONTAINS=<dd>0 bp|layout (median|No reads.")
+
+# N50 and median of one 1 Mb read are exact, not a bin edge (run_html_size.cmake MODE=ultralong)
+add_test(NAME report:ultralong_exact
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
+    -DOUTDIR=${REPORT_OUT}/ultralong_exact -DMODE=ultralong
+    "-DCONTAINS=<dt>N50</dt><dd>1,000.0 kb|median length 1,000.0 kb|N50 1,000.0 kb"
+    "-DNOT_CONTAINS=~"
+    -P ${REPORT_HELPERS}/run_html_size.cmake)
+set_tests_properties(report:ultralong_exact PROPERTIES LABELS report)

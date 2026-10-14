@@ -6,6 +6,8 @@
 #                              (worst case for the number of plotted points, short layout)
 #           -DMODE=ultralong   one aligned read of 1 Mb (long layout)
 # Optional: -DMAX_BYTES=<n>    default 1000000
+#           -DCONTAINS=a|b     strings that must occur in the report
+#           -DNOT_CONTAINS=a|b strings that must not occur
 
 cmake_minimum_required(VERSION 3.19)
 
@@ -85,4 +87,23 @@ if(NOT size LESS ${MAX_BYTES})
   message(FATAL_ERROR "${MODE}: HTML report is ${size} bytes, expected < ${MAX_BYTES}")
 endif()
 message(STATUS "${MODE}: HTML report ${size} bytes (< ${MAX_BYTES})")
+file(READ ${report} html)
+set(failed "")
+string(REPLACE "|" ";" must "${CONTAINS}")
+foreach(item IN LISTS must)
+  string(FIND "${html}" "${item}" pos)
+  if(pos EQUAL -1)
+    string(APPEND failed "  missing: ${item}\n")
+  endif()
+endforeach()
+string(REPLACE "|" ";" mustnot "${NOT_CONTAINS}")
+foreach(item IN LISTS mustnot)
+  string(FIND "${html}" "${item}" pos)
+  if(NOT pos EQUAL -1)
+    string(APPEND failed "  unexpected: ${item}\n")
+  endif()
+endforeach()
 file(REMOVE ${sam})
+if(failed)
+  message(FATAL_ERROR "${MODE}: report check failed:\n${failed}")
+endif()

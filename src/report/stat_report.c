@@ -130,17 +130,22 @@ static void fmt_dec(char *buf, size_t n, int decimals, double v)
         }
 }
 
-/* Counts: exact with thousands separators below 10,000, then one decimal and an SI suffix
- * (12.4 M). */
-static void fmt_si(char *buf, size_t n, uint64_t v)
+/* Counts and bases: exact with thousands separators below 10,000, then one decimal and an SI
+ * suffix (12.4 M reads, 12.4 Mb). unit is "" for reads and "b" for bases; bases below 10,000 get
+ * " bp". */
+static void fmt_si_unit(char *buf, size_t n, uint64_t v, const char *unit)
 {
-        static const char *const unit[] = {"k", "M", "G", "T", "P", "E"};
+        static const char *const prefix[] = {"k", "M", "G", "T", "P", "E"};
         double x;
         int u = -1;
         char d[32];
 
         if(v < 10000){
                 fmt_count(buf, n, v);
+                if(unit[0]){
+                        size_t l = strlen(buf);
+                        snprintf(buf + l, n - l, " bp");
+                }
                 return;
         }
         x = (double) v / 1000.0;
@@ -151,20 +156,26 @@ static void fmt_si(char *buf, size_t n, uint64_t v)
                 u++;
         }
         fmt_dec(d, sizeof(d), 1, x);
-        snprintf(buf, n, "%s %s", d, unit[u]);
+        snprintf(buf, n, "%s %s%s", d, prefix[u], unit);
 }
 
-/* Lengths: exact below 1 kb; a bin edge (within 1%) above, marked with "~"; bp below 10 kb,
- * kb above. */
-static void fmt_len(char *buf, size_t n, uint64_t v)
+static void fmt_si(char *buf, size_t n, uint64_t v)
+{
+        fmt_si_unit(buf, n, v, "");
+}
+
+/* Lengths: bp below 10 kb, kb above. Above 1 kb a value that is a bin edge (within 1%) is marked
+ * with "~"; exact is set when the value is the true length. */
+static void fmt_len(char *buf, size_t n, uint64_t v, int exact)
 {
         char t[48];
+        const char *tilde = (v < 1000 || exact) ? "" : "~";
         if(v < 1000){
                 fmt_count(t, sizeof(t), v);
                 snprintf(buf, n, "%s bp", t);
         }else if(v < 10000){
                 fmt_count(t, sizeof(t), v);
-                snprintf(buf, n, "~%s bp", t);
+                snprintf(buf, n, "%s%s bp", tilde, t);
         }else{
                 char d[32];
                 char ip[32];
@@ -175,17 +186,19 @@ static void fmt_len(char *buf, size_t n, uint64_t v)
                 il = dot ? (size_t) (dot - d) : strlen(d);
                 snprintf(ip, sizeof(ip), "%.*s", (int) il, d);
                 fmt_count(t, sizeof(t), (uint64_t) strtoull(ip, NULL, 10));
-                snprintf(buf, n, "~%s%s kb", t, dot ? dot : "");
+                snprintf(buf, n, "%s%s%s kb", tilde, t, dot ? dot : "");
         }
 }
 
-/* percent with one decimal, or "n/a" for a value that does not apply */
-static void fmt_pct(char *buf, size_t n, double v)
+/* percent with one decimal and a percent sign, or "n/a" for a value that does not apply */
+static void fmt_pct_tile(char *buf, size_t n, double v)
 {
+        char d[32];
         if(COLLECT_IS_NA(v)){
                 snprintf(buf, n, "n/a");
         }else{
-                fmt_dec(buf, n, 1, v);
+                fmt_dec(d, sizeof(d), 1, v);
+                snprintf(buf, n, "%s%%", d);
         }
 }
 
@@ -275,17 +288,24 @@ int stat_report(struct stat_collection *s, struct samstat_param *p, int id)
         RUN(app(out, "<body>\n<div class=\"page\">\n"));
         RUN(page_header(out, n, format, s));
         RUN(app(out, "<main>\n"));
-        RUN(page_strip(out, s));
-        RUN(page_notes(out, s));
-        if(s->is_aligned){
-                RUN(page_mapq_table(out, s));
-        }
-        for(int plot_id = 1; plot_id <= 6; plot_id++){
-                /* plots 5 and 6 exist for aligned input only; nothing is written otherwise */
-                if(plot_id >= 5 && !s->is_aligned){
-                        continue;
+        if(s->n_total == 0){
+                /* an empty input is valid: say so and leave out the tiles, table and plots */
+                RUN(app(out, "<p class=\"banner\">"));
+                RUN(esc(out, report_banner_no_reads));
+                RUN(app(out, "</p>\n"));
+        }else{
+                RUN(page_strip(out, s));
+                RUN(page_notes(out, s));
+                if(s->is_aligned){
+                        RUN(page_mapq_table(out, s));
                 }
-                RUN(page_plot(out, s, plot_id));
+                for(int plot_id = 1; plot_id <= 6; plot_id++){
+                        /* plots 5 and 6 exist for aligned input only; nothing is written otherwise */
+                        if(plot_id >= 5 && !s->is_aligned){
+                                continue;
+                        }
+                        RUN(page_plot(out, s, plot_id));
+                }
         }
         RUN(app(out, "</main>\n"));
         RUN(page_footer(out, n, s));
@@ -361,13 +381,13 @@ ERROR:
 }
 
 /* <head> with the whole style sheet. Light theme only, system fonts, nothing external. */
-static const char page_css[] =
+static const char page_css_1[] =
         ":root{--ink:#1a1a1a;--muted:#555555;--line:#c9cdd3;--wash:#f4f5f7;--accent:#0b4f8a;--accent-bg:#eaf1f8}\n"
         "*{box-sizing:border-box}\n"
         "html{-webkit-text-size-adjust:100%;text-size-adjust:100%}\n"
         "body{margin:0;background:#ffffff;color:var(--ink);"
         "font:16px/1.55 system-ui,-apple-system,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,sans-serif}\n"
-        ".page{max-width:62rem;margin:0 auto;padding:28px 16px 48px}\n"
+        ".page{max-width:52rem;margin:0 auto;padding:28px 16px 48px}\n"
         "h1,h2{line-height:1.25;overflow-wrap:anywhere}\n"
         "h1{font-size:1.75rem;margin:0 0 .25rem}\n"
         "h2{font-size:1.3rem;margin:0 0 .35rem}\n"
@@ -381,13 +401,16 @@ static const char page_css[] =
         /* summary strip */
         ".strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:0}\n"
         "@media (max-width:42rem){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}}\n"
+        "@media (max-width:24rem){.strip{grid-template-columns:minmax(0,1fr)}}\n"
         ".strip>div{margin:0;padding:12px 14px;background:var(--wash);border:1px solid var(--line);border-radius:8px}\n"
         ".strip dt{margin:0;font-size:.9rem;color:var(--muted)}\n"
-        ".strip dd{margin:.1rem 0 0;font-size:1.75rem;line-height:1.2;font-weight:650;"
-        "font-variant-numeric:tabular-nums;white-space:nowrap}\n"
+        ".strip dd{margin:.1rem 0 0;font-size:clamp(1.25rem,5vw,1.75rem);line-height:1.2;font-weight:650;"
+        "font-variant-numeric:tabular-nums;overflow-wrap:anywhere}\n"
         ".strip .sub{display:block;font-size:.85rem;font-weight:400;color:var(--muted)}\n"
-        /* notes */
+        /* notes and the banner of an empty file */
         ".notes{list-style:none;padding:0}\n"
+        ".banner{margin:1.75rem 0 0;padding:.9rem 1.1rem;background:var(--wash);border-left:5px solid var(--muted);"
+        "border-radius:0 6px 6px 0;font-size:1.15rem;font-weight:600}\n"
         ".notes li{margin:0 0 8px;padding:.6rem .9rem;background:var(--wash);border-left:5px solid var(--muted);"
         "border-radius:0 6px 6px 0}\n"
         /* table */
@@ -398,11 +421,21 @@ static const char page_css[] =
         "thead th{border-bottom:2px solid var(--ink);font-size:.9rem}\n"
         "td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}\n"
         "td svg{display:block}\n"
+        ;
+
+/* second half of the style sheet (a string literal is limited to 4095 characters) */
+static const char page_css_2[] =
         /* plots */
         ".plot h2 .num{display:inline-block;min-width:1.6rem;color:var(--accent)}\n"
-        ".figs{margin:0 0 .5rem}\n"
-        ".figs svg{margin:0 0 12px 0}\n"
-        "@media (min-width:58rem){.figs svg{margin-right:20px}}\n"
+        /* a figure fills its column up to about 512 px; a pair shares the column side by side */
+        ".figs{margin:0 0 .5rem;max-width:32rem}\n"
+        ".figs svg{display:block;width:100%;margin:0 0 12px 0}\n"
+        ".figs .plot-key svg{width:auto}\n"
+        ".figs.paired{max-width:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}\n"
+        ".figs.paired>p{grid-column:1/-1}\n"
+        ".figs.paired svg{max-width:32rem}\n"
+        "@media (max-width:40rem){.figs.paired{grid-template-columns:minmax(0,1fr)}}\n"
+        ".good{max-width:48rem;margin:0 0 .6rem}\n"
         ".plot-na{display:inline-block;margin:0 0 .75rem;padding:.6rem .9rem;border:2px dashed var(--muted);border-radius:6px}\n"
         ".plot-note{margin:0 0 .75rem;padding:.5rem .9rem;background:var(--wash);border-left:5px solid var(--muted);"
         "border-radius:0 6px 6px 0;max-width:48rem}\n"
@@ -422,7 +455,7 @@ static const char page_css[] =
         "@media print{\n"
         "body{font-size:11pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n"
         ".page{max-width:none;padding:0}\n"
-        "main>section,.strip>div,.notes li,details,table,tr,.figs,.plot-na,.plot-note{break-inside:avoid}\n"
+        "main>section,.strip>div,.notes li,details,table,tr,.figs,.plot-na,.plot-note,.good{break-inside:avoid}\n"
         "h1,h2,summary{break-after:avoid}\n"
         "section.plot{break-inside:avoid-page}\n"
         "details>*:not(summary){display:block!important}\n"
@@ -442,7 +475,8 @@ static int page_head(tld_strbuf *o, const char *name)
         RUN(esc(o, name));
         RUN(app(o, " - SAMStat report</title>\n"));
         RUN(app(o, "<style>\n"));
-        RUN(app(o, page_css));
+        RUN(app(o, page_css_1));
+        RUN(app(o, page_css_2));
         RUN(app(o, "</style>\n</head>\n"));
         return OK;
 ERROR:
@@ -462,8 +496,8 @@ static int page_header(tld_strbuf *o, const char *name, const char *format, stru
                 RUN(esc(o, format));
                 RUN(app(o, " &middot; "));
         }
-        if(s->n_total){
-                fmt_len(len, sizeof(len), s->median_length);
+        if(s->n_total && s->total_bases){
+                fmt_len(len, sizeof(len), s->median_best, s->median_exact);
                 RUN(app(o, s->layout == COLLECT_LAYOUT_LONG ? "long" : "short"));
                 RUN(app(o, " layout (median length "));
                 RUN(esc(o, len));
@@ -506,6 +540,7 @@ static int page_strip(tld_strbuf *o, struct stat_collection *s)
         char v[MAX_NUM];
         char sub[MAX_NUM];
         char tmp[MAX_NUM];
+        const int has_seq = s->total_bases > 0;
 
         RUN(app(o, "<dl class=\"strip\" aria-label=\"Summary\">\n"));
 
@@ -516,19 +551,24 @@ static int page_strip(tld_strbuf *o, struct stat_collection *s)
         }
         RUN(strip_item(o, is_paired(s) ? "Reads (R1+R2)" : "Reads", v, sub));
 
-        fmt_si(v, sizeof(v), s->total_bases);
+        /* no sequence (SEQ is * in every read): length values do not exist, they are not 0 */
         sub[0] = 0;
-        if(s->total_bases >= 10000){
-                fmt_count(sub, sizeof(sub), s->total_bases);
-        }
-        RUN(strip_item(o, "Bases", v, sub));
-
-        if(s->n_total){
-                fmt_len(v, sizeof(v), s->n50);
+        if(has_seq){
+                fmt_si_unit(v, sizeof(v), s->total_bases, "b");
+                if(s->total_bases >= 10000){
+                        fmt_count(sub, sizeof(sub), s->total_bases);
+                }
         }else{
                 snprintf(v, sizeof(v), "n/a");
         }
-        RUN(strip_item(o, "N50", v, NULL));
+        RUN(strip_item(o, "Bases", v, sub));
+
+        if(has_seq){
+                fmt_len(v, sizeof(v), s->n50_best, s->n50_exact);
+        }else{
+                snprintf(v, sizeof(v), "n/a");
+        }
+        RUN(strip_item(o, "N50", v, has_seq ? report_tile_n50_sub : NULL));
 
         /* mean Q is left out when no base has a quality (FASTA) */
         if(s->qual_bases_all > 0){
@@ -537,12 +577,12 @@ static int page_strip(tld_strbuf *o, struct stat_collection *s)
         }
 
         if(s->is_aligned){
-                fmt_pct(v, sizeof(v), s->pct_mapped);
+                fmt_pct_tile(v, sizeof(v), s->pct_mapped);
                 RUN(strip_item(o, "% mapped", v, NULL));
-                fmt_pct(v, sizeof(v), s->pct_mapq_ge30);
+                fmt_pct_tile(v, sizeof(v), s->pct_mapq_ge30);
                 RUN(strip_item(o, "% MAPQ >= 30", v, NULL));
-                fmt_pct(v, sizeof(v), s->pct_clipped);
-                RUN(strip_item(o, "% bases clipped", v, NULL));
+                fmt_pct_tile(v, sizeof(v), s->pct_clipped);
+                RUN(strip_item(o, "% bases clipped", v, COLLECT_IS_NA(s->pct_clipped) ? NULL : report_tile_clipped_sub));
                 if(COLLECT_IS_NA(s->median_identity)){
                         snprintf(v, sizeof(v), "n/a");
                 }else{
@@ -577,16 +617,25 @@ static int page_notes(tld_strbuf *o, struct stat_collection *s)
         int no_md = s->reads_without_md > 0;
         int ident_na = s->identity_na > 0;
         int beyond = (s->layout == COLLECT_LAYOUT_SHORT && s->bases_beyond_position_axis > 0);
+        int no_seq = (s->n_total > 0 && s->total_bases == 0);
+        int few = (!no_seq && s->n_total > 0 && s->n_total < REPORT_FEW_READS);
         uint64_t in_axis = 0;
         double pct = 0.0;
 
-        if(!(partial || no_md || ident_na || beyond)){
+        if(!(partial || no_md || ident_na || beyond || no_seq || few)){
                 return OK;
         }
         RUN(app(o, "<ul class=\"notes\" aria-label=\"Notes\">\n"));
         if(partial){
                 fmt_count(a, sizeof(a), s->n_total);
                 RUN(note_item(o, report_note_partial, a, NULL));
+        }
+        if(no_seq){
+                RUN(note_item(o, report_note_no_sequence, NULL, NULL));
+        }
+        if(few){
+                fmt_count(a, sizeof(a), s->n_total);
+                RUN(note_item(o, report_note_few_reads, a, NULL));
         }
         if(no_md){
                 fmt_count(a, sizeof(a), s->reads_without_md);
@@ -636,7 +685,7 @@ static int page_mapq_table(tld_strbuf *o, struct stat_collection *s)
         RUN(esc(o, report_mapq_title));
         RUN(app(o, "</h2>\n<p class=\"caption\">"));
         RUN(esc(o, report_mapq_caption));
-        RUN(app(o, "</p>\n<div class=\"table-wrap\">\n<table aria-labelledby=\"mapq-title\">\n<thead><tr>"));
+        RUN(app(o, "</p>\n<div class=\"table-wrap\">\n<table>\n<thead><tr>"));
         RUN(app(o, "<th scope=\"col\">Line in plots</th><th scope=\"col\">Class</th>"));
         RUN(app(o, "<th scope=\"col\" class=\"num\">Reads</th><th scope=\"col\" class=\"num\">% of reads</th>"));
         if(paired){
@@ -676,7 +725,7 @@ ERROR:
         return FAIL;
 }
 
-/* One plot: question, one-sentence caption, the figure(s), collapsed explanation. */
+/* One plot: question, one-sentence caption, the figure(s), the "Good:" line, collapsed explanation. */
 static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
 {
         const struct report_plot_help *h = &report_plot_help[plot_id - 1];
@@ -696,8 +745,8 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
         RUN(app(o, ".</span> "));
         RUN(esc(o, h->title));
         RUN(app(o, "</h2>\n<p class=\"caption\">"));
-        RUN(esc(o, h->caption));
-        RUN(app(o, "</p>\n<div class=\"figs\">\n"));
+        RUN(esc(o, report_plot_caption(plot_id, s->is_aligned)));
+        RUN(app(o, is_paired(s) ? "</p>\n<div class=\"figs paired\">\n" : "</p>\n<div class=\"figs\">\n"));
         start = o->len;
         RUN(report_plot_render(o, s, plot_id));
         has_figure = (strstr(TLD_STR(o) + start, "<svg") != NULL);
@@ -705,14 +754,16 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
 
         /* an N/A line stands alone: the explanation would describe a figure that is not there */
         if(has_figure){
-                RUN(app(o, "<details>\n<summary>"));
-                RUN(esc(o, report_how_to_read_label));
-                RUN(app(o, "</summary>\n<div class=\"howto\">\n"));
-                RUN(app(o, "<p><strong>"));
+                RUN(app(o, "<p class=\"good\"><strong>"));
                 RUN(esc(o, report_good_label));
                 RUN(app(o, "</strong> "));
                 RUN(esc(o, h->good));
-                RUN(app(o, "</p>\n<p><strong>"));
+                RUN(app(o, "</p>\n<details>\n<summary>"));
+                RUN(esc(o, report_how_to_read_label));
+                RUN(app(o, " "));
+                RUN(app(o, num));
+                RUN(app(o, "</summary>\n<div class=\"howto\">\n"));
+                RUN(app(o, "<p><strong>"));
                 RUN(esc(o, report_look_label));
                 RUN(app(o, "</strong> "));
                 RUN(esc(o, h->look));
@@ -720,7 +771,15 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
                 RUN(esc(o, report_benign_label));
                 RUN(app(o, "</strong> "));
                 RUN(esc(o, h->benign));
-                RUN(app(o, "</p>\n</div>\n</details>\n"));
+                RUN(app(o, "</p>\n"));
+                if(h->note){
+                        RUN(app(o, "<p><strong>"));
+                        RUN(esc(o, report_note_label));
+                        RUN(app(o, "</strong> "));
+                        RUN(esc(o, h->note));
+                        RUN(app(o, "</p>\n"));
+                }
+                RUN(app(o, "</div>\n</details>\n"));
         }
         RUN(app(o, "</section>\n"));
         return OK;

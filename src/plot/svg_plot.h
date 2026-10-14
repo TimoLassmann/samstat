@@ -21,8 +21,11 @@
  * Sizes are in SVG user units, which equal CSS px when the <svg> is shown at
  * its natural width. The root carries max-width:100%, so a figure wider than
  * its container shrinks together with its text. Callers that need >= 12 px
- * text at a 360 px viewport should therefore build figures that are at most
- * about 330 units wide, or stack them.
+ * text at a 360 px viewport (328 px of content) should therefore keep
+ * width * 12 / font <= 328 (the report uses 400 units with 15 unit text), or
+ * stack the figures. A page may also scale a figure up with CSS width:100%.
+ * A histogram bin with no drawn neighbour is at least 2 units wide and 1 unit
+ * high (svg_step), so a lone bin on a log axis is not a hairline.
  *
  * Colours are passed as "#rrggbb" strings and dash patterns as
  * stroke-dasharray strings ("6 3"); NULL or "" means solid. The caller owns

@@ -10,6 +10,7 @@
 #define  STAT_REPORT_IMPORT
 #include "stat_report.h"
 #include "json_report.h"
+#include "mqc_report.h"
 
 static int samstat_title(tld_strbuf *o, struct samstat_param *p, int id);
 static int samstat_file_stat_section(tld_strbuf *o, char *filename);
@@ -235,6 +236,9 @@ int stat_report(struct stat_collection* s, struct samstat_param *p, int id)
         RUN(write_buffer(out, p,id));
         if(p->json){
                 RUN(json_report_write(s, p, id));
+        }
+        if(p->multiqc){
+                RUN(mqc_report_write(s, p, id));
         }
 
         tld_strbuf_free(out);

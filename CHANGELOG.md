@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `--multiqc` option: writes MultiQC custom content files `<input>.samstat_{general,mapq,length,basequal}_mqc.json` (see `docs/multiqc.md`).
 - `--json` option: writes a machine-readable `<input>.samstat.json` next to the HTML report (format in `docs/json-format.md`, schema in `docs/samstat.schema.json`).
 - `SAMSTAT_SANITIZE` CMake option (AddressSanitizer and UBSan) and `SAMSTAT_USE_SYSTEM_HTSLIB` option.
 - CTest areas: `build`, `json`, `packaging`, and `golden` (baseline reports of the pre-fix behaviour; regenerate with the `update-goldens` target). Hand-written edge-case fixtures in `tests/data/`.

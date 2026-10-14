@@ -117,7 +117,7 @@ void *samstat_worker(void *data)
         pthread_exit(0);
         return NULL;
 ERROR:
-        LOG_MSG("Thread %d done due to error.");
+        LOG_MSG("Worker thread done due to error.");
         pthread_exit(0);
         return NULL;
 }

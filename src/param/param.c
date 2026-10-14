@@ -210,7 +210,7 @@ int sanity_check_param(struct samstat_param *p)
                 }else if(p->file_type[i] == FILE_TYPE_SAMBAM){
                         n_sam++;
                 }else {
-                        ERROR_MSG("File type %d not recognized - this should never happen");
+                        ERROR_MSG("File type %d not recognized - this should never happen", (int) p->file_type[i]);
                 }
         }
 

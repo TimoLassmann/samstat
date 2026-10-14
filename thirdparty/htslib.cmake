@@ -1,4 +1,4 @@
-# htslib: bundled 1.16 release tarball (default) or the system library.
+# htslib: bundled 1.24 release tarball (default) or the system library.
 if(SAMSTAT_USE_SYSTEM_HTSLIB)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(HTSLIB REQUIRED IMPORTED_TARGET htslib>=1.16)
@@ -8,8 +8,8 @@ else()
   include(ExternalProject)
 
   set(htslib_PREFIX ${CMAKE_BINARY_DIR}/htslib)
-  set(htslib_URL ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/htslib-1.16.tar.bz2)
-  set(htslib_URL_MD5 d31777ef90d1369a52049ba0ac3c0375)
+  set(htslib_URL ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/htslib-1.24.tar.bz2)
+  set(htslib_URL_HASH SHA256=28a8de191381c7a97a35675ceac76fa1ea95e7b678d6a2e9d600a7874e4077de)
 
   # htslib is built independently of the samstat target flags (e.g. sanitizers).
   set(htslib_CFLAGS "-O2 -fPIC ${CMAKE_C_FLAGS}")
@@ -17,7 +17,7 @@ else()
   ExternalProject_Add(htslib
         BUILD_IN_SOURCE 1
         URL ${htslib_URL}
-        URL_MD5 ${htslib_URL_MD5}
+        URL_HASH ${htslib_URL_HASH}
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         PREFIX ${htslib_PREFIX}
         UPDATE_COMMAND ""

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.19)
 
 project(SAMStat LANGUAGES C VERSION "2.2.3")
 
@@ -60,7 +60,7 @@ add_subdirectory(src)
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
   include(CTest)  
-#  add_subdirectory(tests)
+  add_subdirectory(tests)
 endif()
 #add_subdirectory(src/tld/tests)
 

@@ -35,7 +35,7 @@ jobs:
         submodules: recursive
 
     - name: Install dependencies
-      run: brew install autoconf automake zlib
+      run: brew install autoconf automake zlib xz
 
     - name: Configure
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF

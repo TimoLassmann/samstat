@@ -62,6 +62,14 @@ int parse_alignment(struct tl_seq *s)
         a = s->data;
         a->n_clip5 = 0;
         a->n_clip3 = 0;
+        a->m_bases = 0;
+        a->i_ev = 0;
+        a->i_bases = 0;
+        a->d_ev = 0;
+        a->d_bases = 0;
+        a->s_bases = 0;
+        a->x_ops = 0;
+        a->has_md_or_x = 0;
         if(a->flag & BAM_FUNMAP){
                 a->aln_len = 0;
                 return OK;
@@ -82,16 +90,27 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 case 'S':
                         q_len += bam_cigar_oplen(a->cigar[i]);
+                        a->s_bases += bam_cigar_oplen(a->cigar[i]);
                         break;
+                case 'X':
+                        a->x_ops += bam_cigar_oplen(a->cigar[i]);
+                        /* fall through: an X op is also aligned bases */
                 case 'M':
                 case '=':
-                case 'X':
+                        a->m_bases += bam_cigar_oplen(a->cigar[i]);
+                        q_len += bam_cigar_oplen(a->cigar[i]);
+                        aln_len += bam_cigar_oplen(a->cigar[i]);
+                        break;
                 case 'I':
+                        a->i_ev++;
+                        a->i_bases += bam_cigar_oplen(a->cigar[i]);
                         q_len += bam_cigar_oplen(a->cigar[i]);
                         aln_len += bam_cigar_oplen(a->cigar[i]);
                         break;
                 case 'D':
                         Oplen = bam_cigar_oplen(a->cigar[i]);
+                        a->d_ev++;
+                        a->d_bases += (uint32_t)Oplen;
                         aln_len += Oplen;
                         break;
                 default:
@@ -101,6 +120,18 @@ int parse_alignment(struct tl_seq *s)
         /* SEQ '*' (no bases) or a CIGAR that does not fit SEQ: nothing to align. */
         if(s->len == 0 || q_len != s->len){
                 a->aln_len = 0;
+                if(s->len != 0){
+                        /* CIGAR disagrees with SEQ: the counts cannot be trusted */
+                        a->m_bases = 0;
+                        a->i_ev = 0;
+                        a->i_bases = 0;
+                        a->d_ev = 0;
+                        a->d_bases = 0;
+                        a->s_bases = 0;
+                        a->x_ops = 0;
+                }
+                /* SEQ '*': the CIGAR counts stay valid, there is just nothing to align */
+                a->has_md_or_x = (s->len == 0 && (a->x_ops > 0 || (a->md != NULL && a->md->len > 0))) ? 1 : 0;
                 return OK;
         }
 
@@ -138,6 +169,12 @@ int parse_alignment(struct tl_seq *s)
         read = a->read;
         rp = 0;
         sp = 0;
+        int l = 0;
+        if(a->md != NULL){
+                l = a->md->len;
+        }
+        /* MD wins; without it X ops are the only source of mismatches */
+        a->has_md_or_x = (l > 0 || a->x_ops > 0) ? 1 : 0;
 
         seq = s->seq->str;
         for(int i = 0;i < a->n_cigar;i++){
@@ -157,10 +194,21 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 case 'M':
                 case '=':
+                        for(int j = 0; j < Oplen;j++){
+                                read[rp] = seq[sp];
+                                genome[rp] = read[rp];
+                                sp++;
+                                rp++;
+                        }
+                        break;
                 case 'X':
                         for(int j = 0; j < Oplen;j++){
                                 read[rp] = seq[sp];
                                 genome[rp] = read[rp];
+                                if(!l){
+                                        /* no MD: the reference base is unknown but differs */
+                                        genome[rp] = (read[rp] == 'N') ? 'A' : 'N';
+                                }
                                 sp++;
                                 rp++;
                         }
@@ -187,12 +235,6 @@ int parse_alignment(struct tl_seq *s)
         /* LOG_MSG("RP: %d", rp); */
         aln_len = rp;
         /* fprintf(stdout,"%s - genome\n%s - read\n", genome , read); */
-        int l = 0;
-        if(a->md == NULL){
-                l = 0;
-        }else{
-                l = a->md->len;
-        }
         if(l){
                 int pos = 0;
                 int i = 0;

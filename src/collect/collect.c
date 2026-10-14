@@ -1,6 +1,6 @@
 #include "tld.h"
 
-#include "plot.h"
+#include "../plot/plot.h"
 #include "sam.h"
 #include "../htsinterface/htsglue.h"
 #include "../param/param.h"

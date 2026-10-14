@@ -3,7 +3,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "lst.h"
-#include "plot.h"
+#include "../plot/plot.h"
 #include "../param/param.h"
 #include "../collect/collect.h"
 #include "../config.h"

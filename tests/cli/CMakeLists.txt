@@ -69,3 +69,18 @@ cli_test(nonexistent_file
 cli_test(all_good_rc0
   ARGS -t 2 -d ${D} ${FX}/small.sam ${FX}/small.bam
   FILES small.sam.samstat.html small.bam.samstat.html)
+
+# --- usage errors exit 2, help / version exit 0 --------------------------------
+cli_test(no_args ARGS "" RC 2 REGEX "Usage")
+cli_test(help_short ARGS -h RC 0 REGEX "Usage")
+cli_test(help_long ARGS -help RC 0 REGEX "Usage")
+cli_test(version_short ARGS -v RC 0 REGEX "[0-9]+\\.[0-9]+")
+cli_test(version_long ARGS -version RC 0 REGEX "[0-9]+\\.[0-9]+")
+cli_test(only_options ARGS -t 2 RC 2 REGEX "Usage")
+cli_test(unknown_option ARGS --bogus ${FX}/small.sam RC 2 NO_FILES small.sam.samstat.html)
+cli_test(missing_option_value ARGS ${FX}/small.sam -t RC 2)
+cli_test(duplicate_input
+  ARGS -d ${D} ${FX}/small.sam ${FX}/small.sam
+  RC 2 REGEX "Duplicated input" NO_FILES small.sam.samstat.html)
+cli_test(outdir_missing
+  ARGS -d ${D}/nope ${FX}/small.sam RC 2 REGEX "does not exist")

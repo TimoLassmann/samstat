@@ -94,7 +94,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         /* param->local_out = 1; */
                         break;
                 case '?':
-                        exit(1);
+                        /* getopt has already printed the offending option */
+                        goto ERROR;
                         break;
                 default:
                         fprintf(stderr,"default\n\n\n\n");
@@ -118,7 +119,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 print_help(argv);
                 param_free(p);
                 /* free_param(param); */
-                exit(EXIT_SUCCESS);
+                exit(SAMSTAT_EXIT_USAGE);
         }
 
         MMALLOC(p->infile,sizeof(char*)* (argc-optind));

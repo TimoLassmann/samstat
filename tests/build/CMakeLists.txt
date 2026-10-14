@@ -22,3 +22,8 @@ add_test(NAME build:config_h_in_build_tree
   COMMAND ${CMAKE_COMMAND} -DFILE=${PROJECT_BINARY_DIR}/config.h
     -P ${CMAKE_CURRENT_SOURCE_DIR}/has_file.cmake)
 set_tests_properties(build:config_h_in_build_tree PROPERTIES LABELS build)
+
+add_test(NAME build:no_hdf5_link
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DTLD_USE_HDF5=${TLD_USE_HDF5}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/no_hdf5_link.cmake)
+set_tests_properties(build:no_hdf5_link PROPERTIES LABELS build)

@@ -15,7 +15,7 @@ jobs:
         submodules: recursive
 
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libhdf5-dev autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Configure
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
@@ -35,7 +35,7 @@ jobs:
         submodules: recursive
 
     - name: Install dependencies
-      run: brew install hdf5 autoconf automake zlib
+      run: brew install autoconf automake zlib
 
     - name: Configure
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
@@ -55,7 +55,7 @@ jobs:
         submodules: recursive
 
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libhdf5-dev autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Configure (AddressSanitizer / UBSan)
       run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON -DGIT_SUBMODULE=OFF
@@ -77,7 +77,7 @@ jobs:
         submodules: recursive
 
     - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libhdf5-dev autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Install MultiQC
       run: pip install multiqc==1.25.1

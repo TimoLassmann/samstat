@@ -1,5 +1,6 @@
 #include "tld.h"
 
+#include <inttypes.h>
 #include <sys/stat.h>
 #include <time.h>
 #include "lst.h"

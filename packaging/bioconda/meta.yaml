@@ -24,13 +24,10 @@ requirements:
     - autoconf
     - automake
   host:
-    - hdf5
     - zlib
     - bzip2
     - xz
     - libcurl
-  run:
-    - hdf5
 
 test:
   commands:

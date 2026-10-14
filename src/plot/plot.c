@@ -3,6 +3,7 @@
 #include "plot_interval.h"
 #include "plot_group.h"
 #include <ctype.h>
+#include <inttypes.h>
 #define  PLOT_IMPORT
 #include "plot.h"
 

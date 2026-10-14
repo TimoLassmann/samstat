@@ -1,3 +1,5 @@
+# samstat never uses tld's hdf5 wrapper; keep it out of the build and the link.
+set(TLD_USE_HDF5 OFF CACHE BOOL "Enable HDF5 support in tld" FORCE)
 add_subdirectory(tld)
 add_subdirectory(plot)
 

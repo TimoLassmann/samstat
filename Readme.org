@@ -17,18 +17,18 @@ single html page:
 
 * How to install
 
-*SAMstat* depends on the hdf5 library (plus autoconf/automake and zlib headers to build the bundled htslib). To install on linux:
+*SAMstat* needs autoconf/automake and zlib headers to build the bundled htslib. To install on linux:
 
 Ubuntu/Debian:
 
 #+begin_src bash :eval never
-sudo apt-get install -y libhdf5-dev autoconf automake zlib1g-dev
+sudo apt-get install -y autoconf automake zlib1g-dev
 #+end_src
 
 On a mac via [[https://brew.sh][brew]]:
 
 #+begin_src bash :eval never
-brew install hdf5 autoconf automake
+brew install autoconf automake
 #+end_src
 
 To build *SAMstat* (=--recursive= is required: the tld library is a git submodule):

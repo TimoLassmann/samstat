@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reads are taken from SAM, BAM, FASTA and FASTQ through htslib; `-` reads standard input.
 - Mismatches are taken from X operations in the CIGAR when a read has no MD tag. A note in the report states how many mapped reads lack MD. bwa-mem and bwa-mem2 write MD by default; STAR and minimap2 (without `--MD`) do not.
 
+- Each input now prints one summary line on stderr (format, reads, N50, mean Q, % mapped, layout, time); a progress counter is shown only when stderr is a terminal.
+
+### Added
+
+- CRAM input. The reference is found through `REF_PATH` or `REF_CACHE` only (no network access); a CRAM whose reference cannot be found fails that file with exit 1 and a message naming both variables. The bundled htslib is built with bzip2 and xz support.
+
 ### Removed
 
 - Plotly and all JavaScript from the HTML report.

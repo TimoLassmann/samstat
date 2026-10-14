@@ -73,7 +73,11 @@ int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb)
         galloc(&buffer, b_len);
 
         while ((r = sam_read1(f_handle->in, h, b)) >= 0){
-                if(!(b->core.flag & BAM_FSECONDARY)){
+                if(b->core.flag & BAM_FSECONDARY){
+                        f_handle->n_secondary++;
+                }else if(b->core.flag & BAM_FSUPPLEMENTARY){
+                        f_handle->n_supplementary++;
+                }else{
                         /* if(b->core.qual >= 0){ */
                         struct tl_seq* s = NULL;
                         struct aln_data* a = NULL;
@@ -209,6 +213,9 @@ int open_bam(struct sam_bam_file **file, char *filename)
         f_handle->b = NULL;
         f_handle->in = NULL;
         f_handle->header = NULL;
+
+        f_handle->n_secondary = 0;
+        f_handle->n_supplementary = 0;
 
         f_handle->in = sam_open(f_handle->filename, "r");
         ASSERT(f_handle->in != NULL, "Cannot open %s as SAM/BAM (file missing, unreadable or of unknown format)", f_handle->filename);

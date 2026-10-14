@@ -35,6 +35,13 @@ reader_json_test(seq_star_softclip seq_star_softclip.sam
   "read1.length.mapq_ge30#len=1"
   "read1.length.mapq_ge30.0=1")
 
+# secondary (0x100) and supplementary (0x800) records are not reads
+reader_json_test(supplementary supplementary.sam
+  "summary.total_reads=1"
+  "summary.mapq_counts.read1.mapq_ge30=1"
+  "summary.mapq_counts.read1.mapq_lt10=0"
+  "read1.length.mapq_ge30.50=1")
+
 # --- rejected inputs -------------------------------------------------------
 # reader_error_test(<name> <fixture> <regex>)
 function(reader_error_test name input regex)

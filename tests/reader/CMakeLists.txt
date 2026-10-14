@@ -35,3 +35,15 @@ reader_json_test(seq_star_softclip seq_star_softclip.sam
   "read1.length.mapq_ge30#len=1"
   "read1.length.mapq_ge30.0=1")
 
+# --- rejected inputs -------------------------------------------------------
+# reader_error_test(<name> <fixture> <regex>)
+function(reader_error_test name input regex)
+  add_test(NAME reader:error:${name}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${SAMSTAT_FIXTURE_DIR}/${input}
+      -DOUTDIR=${READER_OUT}/err_${name} "-DEXPECT_REGEX=${regex}"
+      -P ${READER_HELPERS}/run_expect_error.cmake)
+  set_tests_properties(reader:error:${name} PROPERTIES LABELS reader)
+endfunction()
+
+reader_error_test(not_a_bam not_a_bam.bam "Cannot read the SAM/BAM header")

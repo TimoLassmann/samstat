@@ -210,13 +210,28 @@ int open_bam(struct sam_bam_file **file, char *filename)
         f_handle->header = NULL;
 
         f_handle->in = sam_open(f_handle->filename, "r");
+        ASSERT(f_handle->in != NULL, "Cannot open %s as SAM/BAM (file missing, unreadable or of unknown format)", f_handle->filename);
         f_handle->header = sam_hdr_read(f_handle->in);
+        ASSERT(f_handle->header != NULL, "Cannot read the SAM/BAM header of %s (not a SAM/BAM file?)", f_handle->filename);
 
         f_handle->b = bam_init1();
+        ASSERT(f_handle->b != NULL, "bam_init1 failed");
 
         *file = f_handle;
         return OK;
 ERROR:
+        if(f_handle){
+                if(f_handle->b){
+                        bam_destroy1(f_handle->b);
+                }
+                if(f_handle->header){
+                        bam_hdr_destroy(f_handle->header);
+                }
+                if(f_handle->in){
+                        sam_close(f_handle->in);
+                }
+                MFREE(f_handle);
+        }
         return FAIL;
 }
 

@@ -606,6 +606,7 @@ int samstat_footer(tld_strbuf *out_buffer)
         RUN(tld_append(out_buffer, "<p>SAMStat was developed by Timo Lassmann.</p>\n"));
         RUN(tld_append(out_buffer, "<h3>Please cite:</h3>\n"));
 
+        RUN(tld_append(out_buffer, "<p>Lassmann T. (2023) SAMStat 2. Bioinformatics doi:10.1093/bioinformatics/btad019</p>\n"));
         RUN(tld_append(out_buffer, "<p>Lassmann et al. (2011) \"SAMStat: monitoring biases in next generation sequencing data.\" Bioinformatics doi:10.1093/bioinformatics/btq614 [<a href =\"http://www.ncbi.nlm.nih.gov/pubmed/21088025/\">PMID: 21088025</a>] </p>\n"));
         RUN(tld_append(out_buffer, "</section>\n"));
         RUN(tld_append(out_buffer, "<section id=\"blogroll\">\n"));

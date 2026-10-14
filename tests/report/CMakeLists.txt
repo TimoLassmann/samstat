@@ -53,3 +53,7 @@ report_html_test(escape_filename "${REPORT_SAM}"
   "-DAS_NAME=a<b&c.sam"
   "-DCONTAINS=<h1>a&lt;b&amp;c.sam</h1>|a&lt;b&amp;c.sam\n</title>"
   "-DNOT_CONTAINS=a<b&c.sam</h1>|<title>\na<b")
+
+# Footer citations: SAMStat 2 (2023) and the original 2011 paper.
+report_html_test(citation "${REPORT_SAM}"
+  "-DCONTAINS=10.1093/bioinformatics/btad019|10.1093/bioinformatics/btq614")

@@ -17,31 +17,32 @@ single html page:
 
 * How to install
 
-*SAMstat* depends on the hdf5 library. To install on linux:
+*SAMstat* depends on the hdf5 library (plus autoconf/automake and zlib headers to build the bundled htslib). To install on linux:
 
 Ubuntu/Debian:
 
 #+begin_src bash :eval never
-sudo apt-get install -y libhdf5-dev
+sudo apt-get install -y libhdf5-dev autoconf automake zlib1g-dev
 #+end_src
 
 On a mac via [[https://brew.sh][brew]]:
 
 #+begin_src bash :eval never
-brew install hdf5
+brew install hdf5 autoconf automake
 #+end_src
 
-To build *SAMstat*: 
+To build *SAMstat* (=--recursive= is required: the tld library is a git submodule):
 
-#+begin_src bash :eval never 
-git clone https://github.com/TimoLassmann/samstat.git
+#+begin_src bash :eval never
+git clone --recursive https://github.com/TimoLassmann/samstat.git
 cd samstat
-mkdir build
-cd build
-cmake ..
-make
-make install 
+cmake -S . -B build
+cmake --build build -j4
+(cd build && ctest --output-on-failure)
+cmake --install build
 #+end_src
+
+If you already cloned without =--recursive= run =git submodule update --init --recursive=.
 
 * Usage
 
@@ -69,6 +70,13 @@ Available options:
 
 
 
+
+* New in 2.3.0
+
+- =--json= : machine-readable summary of the statistics (for pipelines and downstream tools).
+- MultiQC support: SAMStat output can be aggregated by [[https://multiqc.info][MultiQC]] (in development for 2.3.0).
+
+See =CHANGELOG.md= for details.
 
 * Please cite:
 Timo Lassmann (2023) "SAMStat 2: quality control for next generation sequencing data." Bioinformatics. (2023): btad019, https://doi.org/10.1093/bioinformatics/btad019

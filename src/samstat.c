@@ -97,6 +97,9 @@ static int process_file(struct samstat_param *p, int id)
                 RUN(process_fasta_fastq_file(p, id));
         }else if(p->file_type[id] == FILE_TYPE_SAMBAM){
                 RUN(process_sam_bam_file(p, id));
+        }else if(p->file_type[id] == FILE_TYPE_NOOUT){
+                /* already reported up front by param.c: fail this input silently */
+                goto ERROR;
         }else{
                 ERROR_MSG("File type of %s not recognized.", p->infile[id]);
         }

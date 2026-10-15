@@ -6,16 +6,22 @@
  * as one header. It replaces the src/tld git submodule.
  *
  *   - error handling: OK / FAIL, RUN, ASSERT, ERROR_MSG, WARNING_MSG, LOG_MSG
- *   - allocation: MMALLOC, MMALLOC_ALIGNED, MREALLOC, MFREE, galloc / gfree (1D and 2D arrays)
+ *   - allocation: MMALLOC, MREALLOC, MFREE, galloc / gfree (1D and 2D arrays)
  *   - growable strings: tld_strbuf, tld_append, tld_append_char, TLD_STR, TLD_STRLEN
  *   - files: tld_file_exists, tld_get_filename
  *   - sequence buffers: struct tl_seq, struct tl_seq_buffer, reverse complement
  *
- * Names and behaviour are those of tld, so code written against tld compiles unchanged.
+ * Names follow tld, so code written against tld compiles unchanged. Unlike tld, messages go to
+ * stderr as "samstat: error: ..." without time stamps or source locations, and RUN prints
+ * nothing (the function that failed has already said why).
  * tld and samstat have the same author; this copy is distributed under samstat's MIT license
  * (COPYING).
  * Single-header style: every file includes this header; exactly one .c file (tldlite.c)
  * defines TLDLITE_IMPLEMENTATION before including it, which compiles the functions.
+ *
+ * Every statement-like macro (RUN, ASSERT, ERROR_MSG, MFREE, MMALLOC, MREALLOC, galloc) is a
+ * single statement written as do { ... } while (0): it must be followed by ';' and is safe as
+ * the body of an if / else without braces.
  */
 
 #include <float.h>
@@ -44,75 +50,60 @@
 #define MESSAGE_TYPE_WARNING 1
 #define MESSAGE_TYPE_ERROR 2
 
-#define ASSERT(TEST,...)  if(!(TEST)) {                         \
-                tld_message(MESSAGE_TYPE_ERROR, #TEST );        \
-                tld_message(MESSAGE_TYPE_ERROR, __VA_ARGS__ );  \
-                goto ERROR;                                     \
-        }
+/* Only the message is printed: the stringified test is code, not a message, and passing it
+ * as a format would be undefined behaviour for a test such as (n % 2 == 0). */
+#define ASSERT(TEST,...) do {                                   \
+                if(!(TEST)) {                                   \
+                        tld_message(MESSAGE_TYPE_ERROR, __VA_ARGS__ ); \
+                        goto ERROR;                             \
+                }                                               \
+        } while (0)
 
 #define LOG_MSG(...) (tld_message(MESSAGE_TYPE_MSG, __VA_ARGS__ ))
 #define WARNING_MSG(...) (tld_message(MESSAGE_TYPE_WARNING, __VA_ARGS__ ))
 #define ERROR_MSG(...) do {                                     \
                 tld_message(MESSAGE_TYPE_ERROR, __VA_ARGS__ );  \
                 goto ERROR;                                     \
-        }while (0)
+        } while (0)
 
-#define ADDFAILED(x)  "Function \"" tld_tostring(x) "\" failed."
-#define RUN(EXP)                                \
-        if((EXP) != OK){                        \
-                tld_message(MESSAGE_TYPE_ERROR,ADDFAILED(EXP)); \
-                goto ERROR;                                     \
-        }
+/* RUN prints nothing: the function that failed has printed the cause with ERROR_MSG / ASSERT.
+ * (tld printed "Function \"<code>\" failed." with the code text as the printf format.) */
+#define RUN(EXP) do {                                           \
+                if((EXP) != OK){                                \
+                        goto ERROR;                             \
+                }                                               \
+        } while (0)
 
-/* One line on stdout: time stamp, LOG / WARNING / ERROR, the message. */
-extern void tld_message(uint8_t type, const char *format, ...);
+/* One line on stderr, written in one piece: "samstat: <msg>" (LOG), "samstat: warning: <msg>"
+ * or "samstat: error: <msg>". */
+extern void tld_message(uint8_t type, const char *format, ...) __attribute__((format(printf, 2, 3)));
 
 /* ------------------------------------------------------------------ */
 /* allocation                                                           */
 /* ------------------------------------------------------------------ */
 
-#define MFREE(p)                                        \
-        if (p) {                                        \
-                free(p);                                \
-                (p) = NULL;                             \
-        } else {                                        \
-                WARNING_MSG("free on a null pointer");  \
-        }
+/* Frees p and sets it to NULL; a NULL p is a no-op, as for free(). */
+#define MFREE(p) do {                                           \
+                if (p) {                                        \
+                        free(p);                                \
+                        (p) = NULL;                             \
+                }                                               \
+        } while (0)
 
-#define MMALLOC(p, size)                                        \
-        if ((p) != NULL) {                                      \
-                ERROR_MSG("malloc on a nun-null pointer");      \
-                goto ERROR;                                     \
-        }                                                       \
-        if ((size) == 0) {                                      \
-                ERROR_MSG("malloc of size %d failed", (int)(size)); \
-                goto ERROR;                                     \
-        }                                                       \
-        if (((p) = malloc(size)) == NULL) {                     \
-                ERROR_MSG("malloc of size %d failed", (int)(size)); \
-                goto ERROR;                                     \
-        }                                                       \
-        memset(p, 0, size);
-
-/* For a struct declared with more alignment than malloc guarantees (the sequence structs below):
- * plain malloc would break the promise the declaration makes to the compiler. The size is rounded
- * up to a multiple of the alignment (C11 aligned_alloc). Freed with free(), so MFREE works. */
-#define MMALLOC_ALIGNED(p, size, align)                                         \
-        if ((p) != NULL) {                                                      \
-                ERROR_MSG("malloc on a nun-null pointer");                      \
-                goto ERROR;                                                     \
-        }                                                                       \
-        if ((size) == 0) {                                                      \
-                ERROR_MSG("malloc of size %d failed", (int)(size));             \
-                goto ERROR;                                                     \
-        }                                                                       \
-        if (((p) = aligned_alloc((align),                                       \
-                                 (((size) + (align) - 1) / (align)) * (align))) == NULL) { \
-                ERROR_MSG("aligned malloc of size %d (alignment %d) failed",    \
-                          (int)(size), (int)(align));                           \
-                goto ERROR;                                                     \
-        }                                                                       \
-        memset(p, 0, size);
+/* p must be NULL; on success it points to size zeroed bytes. size is evaluated once. */
+#define MMALLOC(p, size) do {                                   \
+                size_t tld_mm_size_ = (size_t) (size);          \
+                if ((p) != NULL) {                              \
+                        ERROR_MSG("malloc on a non-null pointer"); \
+                }                                               \
+                if (tld_mm_size_ == 0) {                        \
+                        ERROR_MSG("malloc of size 0");          \
+                }                                               \
+                if (((p) = malloc(tld_mm_size_)) == NULL) {     \
+                        ERROR_MSG("malloc of size %zu failed", tld_mm_size_); \
+                }                                               \
+                memset((p), 0, tld_mm_size_);                   \
+        } while (0)
 
 #define MREALLOC(p, size)                                               \
         do {                                                            \
@@ -136,8 +127,8 @@ extern void tld_message(uint8_t type, const char *format, ...);
 
 /*
  * galloc(&p, n) allocates n zeroed elements of *p's type; galloc(&p, n, m) an n x m array
- * (p[i][j], rows contiguous in one block). gfree(p) frees either. A small header in front of
- * the block records the dimensions. Both jump to ERROR on failure.
+ * (p[i][j], rows contiguous in one block). gfree(p) frees either; gfree(NULL) is a no-op.
+ * A small header in front of the block records the dimensions. Both jump to ERROR on failure.
  */
 #define tld_valid_1D(x)                                                 \
         _Generic((x), char ** : 1, int8_t ** : 1, uint8_t ** : 1, int16_t ** : 1, \
@@ -159,30 +150,32 @@ extern void tld_message(uint8_t type, const char *format, ...);
                 if (!tld_valid_1D((a))) {                               \
                         ERROR_MSG("Wrong pointer type for 1D alloc");   \
                 }                                                       \
-                *(a) = galloc_hlp(sizeof(__typeof__(**(a))), (b), 0);   \
+                *(a) = galloc_hlp(sizeof(**(a)), 0, (b), 0);            \
                 if (*(a) == NULL) {                                     \
                         ERROR_MSG("Could not alloc 1D");                \
                 }                                                       \
-        } while (0);
+        } while (0)
 
+/* The row pointers have the size sizeof(**a); the data block holds b * c elements of
+ * sizeof(***a) (sizing it with the pointer size overflows for 8-byte elements on 32-bit). */
 #define XGALLOC_ARGS_3(a, b, c)                                         \
         do {                                                            \
                 if (!tld_valid_2D((a))) {                               \
                         ERROR_MSG("Wrong pointer type for 2D alloc");   \
                 }                                                       \
-                __typeof__(*(a)) ptr_t = NULL;                          \
-                ptr_t = galloc_hlp(sizeof(__typeof__(**(a))), (b), (c)); \
-                if (ptr_t == NULL) {                                    \
+                __typeof__(*(a)) tld_galloc_rows_ = NULL;               \
+                tld_galloc_rows_ = galloc_hlp(sizeof(**(a)), sizeof(***(a)), (b), (c)); \
+                if (tld_galloc_rows_ == NULL) {                         \
                         ERROR_MSG("Could not alloc 2D");                \
                 }                                                       \
-                void *__tld_internal_p = NULL;                          \
-                get_ptr(ptr_t, &__tld_internal_p);                      \
-                ptr_t[0] = (__typeof__(**(a)))__tld_internal_p;         \
-                for (int i = 1; i < (b); i++) {                         \
-                        ptr_t[i] = ptr_t[0] + (c)*i;                    \
+                void *tld_galloc_data_ = NULL;                          \
+                get_ptr(tld_galloc_rows_, &tld_galloc_data_);           \
+                tld_galloc_rows_[0] = (__typeof__(**(a))) tld_galloc_data_; \
+                for (int tld_galloc_i_ = 1; tld_galloc_i_ < (b); tld_galloc_i_++) { \
+                        tld_galloc_rows_[tld_galloc_i_] = tld_galloc_rows_[0] + (size_t) (c) * (size_t) tld_galloc_i_; \
                 }                                                       \
-                *(a) = ptr_t;                                           \
-        } while (0);
+                *(a) = tld_galloc_rows_;                                \
+        } while (0)
 
 #define XXGALLOC_ARGS(N, ...) XGALLOC_ARGS_##N(__VA_ARGS__)
 #define XGALLOC_ARGS(N, ...) XXGALLOC_ARGS(N, __VA_ARGS__)
@@ -191,7 +184,9 @@ extern void tld_message(uint8_t type, const char *format, ...);
 #define gfree(a) tld_free(a)
 
 extern int galloc_too_few(void);
-extern void *galloc_hlp(size_t tsize, int dim1, int dim2);
+/* dim1 elements of tsize bytes; with dim2 > 0 also a data block of dim1 * dim2 elements of
+ * esize bytes (reached with get_ptr). NULL on failure. */
+extern void *galloc_hlp(size_t tsize, size_t esize, int dim1, int dim2);
 extern void tld_free(void *p);
 extern int get_ptr(void *ptr, void **d);
 
@@ -236,7 +231,7 @@ struct tl_seq{
         tld_strbuf* qual;
         void* data;
         int len;
-} __attribute__((aligned(64)));
+};
 
 struct tl_seq_buffer{
         struct tl_seq** sequences;
@@ -248,7 +243,7 @@ struct tl_seq_buffer{
         int max_len;
         int is_fastq;
         int L;
-} __attribute__((aligned(64)));
+};
 
 extern int alloc_tl_seq_buffer(struct tl_seq_buffer** seq_buf, int size);
 extern int reset_tl_seq_buffer(struct tl_seq_buffer* sb);      /* every length to 0, num_seq to 0 */
@@ -273,71 +268,83 @@ extern int rev_comp_tl_seq(struct tl_seq* s);
 #define TLDLITE_IMPLEMENTATION_DONE
 
 #include <sys/stat.h>
-#include <time.h>
 
 /* --- messages --- */
 
-#define TLD_TYPE_MARGIN 8
-#define TLD_MESSAGE_MARGIN 22
-#define TLD_AT __FILE__ " line " tld_tostring(__LINE__)
-
-static int tld_get_time(char* time_ptr, int size)
-{
-        struct tm newtime;
-        time_t ltime = 0;
-
-        ltime = time(&ltime);
-        localtime_r(&ltime, &newtime);
-        if(!strftime(time_ptr, size, "[%F %H:%M:%S] ", &newtime)){
-                fprintf(stderr,"%*s: ",TLD_TYPE_MARGIN,"ERROR ");
-                fprintf(stderr, "Could not get the time");
-                fprintf(stderr," (%s)\n",TLD_AT);
-                return FAIL;
-        }
-        return OK;
-}
+/* Messages from worker threads must not interleave: the whole line is formatted first and
+ * written with one fwrite under the stream lock. Most lines fit the stack buffer; a longer
+ * one is formatted again into a heap buffer (and truncated if even that fails). */
+#define TLD_MESSAGE_BUF 1024
 
 static void tld_vlog(uint8_t type, FILE* f_ptr, const char *format, va_list argp)
 {
-        char time_string[BUFSIZ];
+        char stack_buf[TLD_MESSAGE_BUF] = {0};
+        char* heap_buf = NULL;
+        char* line = stack_buf;
+        const char* prefix = NULL;
+        size_t prefix_len = 0;
+        size_t len = 0;
+        int n = 0;
+        va_list again;
 
-        if(tld_get_time(time_string,BUFSIZ) != OK){
-                fprintf(stderr,"notime");
-        }
-        fprintf(f_ptr,"%*s: ",TLD_MESSAGE_MARGIN,time_string);
         switch (type) {
-        case MESSAGE_TYPE_MSG:
-                fprintf(f_ptr,"%*s: ",TLD_TYPE_MARGIN,"LOG ");
-                vfprintf(f_ptr, format, argp);
-                fprintf(f_ptr,"\n");
-                break;
         case MESSAGE_TYPE_WARNING:
-                fprintf(f_ptr,"%*s: ",TLD_TYPE_MARGIN,"WARNING ");
-                vfprintf(f_ptr, format, argp);
-                fprintf(f_ptr,"\n");
+                prefix = "samstat: warning: ";
                 break;
         case MESSAGE_TYPE_ERROR:
-                fprintf(f_ptr,"%*s: ",TLD_TYPE_MARGIN,"ERROR ");
-                vfprintf(f_ptr, format, argp);
-                fprintf(f_ptr," (%s)\n",TLD_AT);
+                prefix = "samstat: error: ";
                 break;
         default:
-                fprintf(f_ptr,"Unrecognized Message type (in tld) - this should never happen");
+                prefix = "samstat: ";
                 break;
         }
+        prefix_len = strlen(prefix);
+        memcpy(stack_buf, prefix, prefix_len);
+
+        va_copy(again, argp);
+        /* room for the newline and the terminating 0 */
+        n = vsnprintf(stack_buf + prefix_len, sizeof(stack_buf) - prefix_len - 1, format, argp);
+        if(n < 0){
+                static const char bad[] = "(message could not be formatted)";
+                memcpy(stack_buf + prefix_len, bad, sizeof(bad));
+                len = prefix_len + sizeof(bad) - 1;
+        }else if((size_t) n < sizeof(stack_buf) - prefix_len - 1){
+                len = prefix_len + (size_t) n;
+        }else{
+                size_t need = prefix_len + (size_t) n + 2;
+                heap_buf = malloc(need);
+                if(heap_buf != NULL){
+                        memcpy(heap_buf, prefix, prefix_len);
+                        vsnprintf(heap_buf + prefix_len, need - prefix_len - 1, format, again);
+                        line = heap_buf;
+                        len = prefix_len + (size_t) n;
+                }else{
+                        len = sizeof(stack_buf) - 2;   /* the truncated message */
+                }
+        }
+        va_end(again);
+        line[len] = '\n';
+        line[len + 1] = 0;
+
+        flockfile(f_ptr);
+        fwrite(line, 1, len + 1, f_ptr);
         fflush(f_ptr);
+        funlockfile(f_ptr);
+        free(heap_buf);
 }
 
 void tld_message(uint8_t type, const char *format, ...)
 {
         va_list argp;
         va_start(argp, format);
-        tld_vlog(type,stdout,format, argp);
+        tld_vlog(type, stderr, format, argp);
         va_end(argp);
 }
 
 /* --- allocation --- */
 
+/* aligned(16): the header is 16 bytes on 32- and 64-bit, so the elements after it keep
+ * malloc's alignment */
 typedef struct {
         uint32_t aligned : 1;
         uint32_t dim1 : 31;
@@ -350,7 +357,7 @@ typedef struct {
 int get_ptr(void* ptr, void** d)
 {
         if(ptr){
-                tld_mem_i* h = (tld_mem_i*) ((size_t)ptr - tld_mem_shift);
+                tld_mem_i* h = (tld_mem_i*) (void*) ((char*) ptr - tld_mem_shift);
                 *d = h->ptr;
                 return OK;
         }
@@ -365,22 +372,29 @@ ERROR:
         return FAIL;
 }
 
-void* galloc_hlp(size_t tsize, int dim1, int dim2)
+void* galloc_hlp(size_t tsize, size_t esize, int dim1, int dim2)
 {
         tld_mem_i* h = NULL;
         void* tmp = NULL;
 
         ASSERT(dim1 >= 1,"DIM1 is too small: %d",dim1);
-        MMALLOC(tmp, dim1 * tsize + tld_mem_shift);
+        ASSERT(dim2 >= 0,"DIM2 is negative: %d",dim2);
+        ASSERT(tsize > 0 && (size_t) dim1 <= (SIZE_MAX - tld_mem_shift) / tsize,
+               "galloc: %d elements of %zu bytes do not fit in memory", dim1, tsize);
+        if(dim2){
+                ASSERT(esize > 0 && (size_t) dim2 <= SIZE_MAX / esize / (size_t) dim1,
+                       "galloc: %d x %d elements of %zu bytes do not fit in memory", dim1, dim2, esize);
+        }
+        MMALLOC(tmp, (size_t) dim1 * tsize + tld_mem_shift);
         h = (tld_mem_i*)(tmp);
         h->aligned = 0u;
-        h->dim1 = dim1;
-        h->dim2 = dim2;
+        h->dim1 = (uint32_t) dim1;
+        h->dim2 = (uint32_t) dim2;
         h->ptr = NULL;
         if(dim2){
-                MMALLOC(h->ptr, (size_t) dim1 * (size_t) dim2 * tsize);
+                MMALLOC(h->ptr, (size_t) dim1 * (size_t) dim2 * esize);
         }
-        return (void *)((size_t)tmp + tld_mem_shift);
+        return (void *)((char*) tmp + tld_mem_shift);
 ERROR:
         if(tmp){
                 free(tmp);
@@ -388,13 +402,16 @@ ERROR:
         return NULL;
 }
 
+/* gfree(NULL) is a no-op, as for free() */
 void tld_free(void* p)
 {
-        tld_mem_i* h = (tld_mem_i*) ((size_t)p - tld_mem_shift);
-        if(h->ptr){
-                MFREE(h->ptr);
+        tld_mem_i* h = NULL;
+        if(p == NULL){
+                return;
         }
-        MFREE(h);
+        h = (tld_mem_i*) (void*) ((char*) p - tld_mem_shift);
+        free(h->ptr);
+        free(h);
 }
 
 /* --- growable strings --- */
@@ -429,7 +446,7 @@ void tld_strbuf_free(tld_strbuf *b)
         }
 }
 
-static int tld_strbuf_resize(tld_strbuf *b, int new_size)
+static int tld_strbuf_resize(tld_strbuf *b, int32_t new_size)
 {
         uint8_t* tmp = NULL;
         if(new_size > b->alloc_len){
@@ -448,13 +465,20 @@ ERROR:
         return FAIL;
 }
 
-/* room for size more bytes and the terminating 0; capacity at least doubles, so n appends cost O(n) */
-static int tld_strbuf_ensure_size(tld_strbuf *b, int size)
+/* Room for size more bytes and the terminating 0; capacity at least doubles, so n appends
+ * cost O(n). The arithmetic is in size_t: len and alloc_len are int32_t, so alloc_len * 2
+ * overflowed in int above 1 GiB. A buffer is capped at INT32_MAX bytes; more fails cleanly. */
+static int tld_strbuf_ensure_size(tld_strbuf *b, size_t size)
 {
-        int space = b->alloc_len - b->len;
-        if(space <= size){
-                int new_size = MACRO_MAX(b->alloc_len*2, b->alloc_len + (size - space) + 1);
-                RUN(tld_strbuf_resize(b, new_size));
+        size_t len = (size_t) b->len;
+        size_t cap = (size_t) b->alloc_len;
+
+        if(cap - len <= size){
+                ASSERT(size < (size_t) INT32_MAX - len,
+                       "String buffer: %zu more bytes do not fit (%zu used, at most %d)", size, len, INT32_MAX);
+                size_t new_size = MACRO_MAX(cap * 2, len + size + 1);
+                new_size = MACRO_MIN(new_size, (size_t) INT32_MAX);
+                RUN(tld_strbuf_resize(b, (int32_t) new_size));
         }
         return OK;
 ERROR:
@@ -473,11 +497,12 @@ ERROR:
 
 int tld_append(tld_strbuf *b, char *content)
 {
-        int size = (int) strlen(content);
+        size_t size = strlen(content);
 
+        /* fails if b would grow past INT32_MAX bytes, so the int32_t len cannot overflow */
         RUN(tld_strbuf_ensure_size(b, size));
         memcpy(b->str+b->len,content, size);
-        b->len += size;
+        b->len += (int32_t) size;
         b->str[b->len] = 0;
         return OK;
 ERROR:
@@ -538,7 +563,7 @@ ERROR:
 int alloc_tl_seq(struct tl_seq** sequence)
 {
         struct tl_seq* s = NULL;
-        MMALLOC_ALIGNED(s, sizeof(struct tl_seq), _Alignof(struct tl_seq));
+        MMALLOC(s, sizeof(struct tl_seq));
         s->len = 0;
         s->seq = NULL;
         s->qual = NULL;
@@ -574,7 +599,7 @@ int alloc_tl_seq_buffer(struct tl_seq_buffer** seq_buf, int size)
 {
         struct tl_seq_buffer* sb = NULL;
         ASSERT(size > 0, "Size of sequence buffer is %d",size);
-        MMALLOC_ALIGNED(sb, sizeof(struct tl_seq_buffer), _Alignof(struct tl_seq_buffer));
+        MMALLOC(sb, sizeof(struct tl_seq_buffer));
         sb->malloc_num = size;
         sb->max_len = 0;
         sb->num_seq = 0;

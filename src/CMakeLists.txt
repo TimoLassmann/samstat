@@ -1,28 +1,10 @@
 add_subdirectory(util)
 add_subdirectory(plot)
 
-option(USE_PTHREADS    "Use pthreads for parallelization" ON)
-
-if(USE_PTHREADS)
-  find_package(Threads REQUIRED)
-  if(Threads_FOUND)
-    message(STATUS "pthreads is enabled.")
-    add_definitions (-DHAVE_PTHREADS)
-  else(Threads_FOUND)
-    message(STATUS "pthreads not enabled")
-  endif(Threads_FOUND)
-endif(USE_PTHREADS)
-
-add_executable(converttablegen
-  convert_tables.c
-  )
-target_link_libraries(converttablegen PRIVATE tldlite)
-
-add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
-  COMMAND converttablegen ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
-  DEPENDS converttablegen
-  )
+# collect.c includes collect/convert_tables.h, which is committed to the source tree: it used to
+# be written at build time by converttablegen (convert_tables.c), which cannot run on the build
+# host of a cross build. The test build:convert_tables_in_sync builds and runs the generator and
+# fails if its output differs from the committed header.
 
 set(source_files
   samstat.c
@@ -34,12 +16,8 @@ set(source_files
   report/stat_report.c
   report/json_report.c
   report/mqc_report.c
-  ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
+  thread/thread_data.c
   )
-
-if(Threads_FOUND)
-  list(APPEND source_files thread/thread_data.c)
-endif(Threads_FOUND)
 
 add_executable(samstat)
 
@@ -48,22 +26,11 @@ target_sources(samstat
   ${source_files}
   )
 
-target_include_directories(samstat PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+# htslib needs pthreads in any case (htslib.cmake requires them), so samstat always runs its
+# reader and workers in threads; there is no build without them.
+target_compile_definitions(samstat PRIVATE HAVE_PTHREADS)
 
-if(SAMSTAT_USE_SYSTEM_HTSLIB)
-  target_link_libraries(samstat PRIVATE PkgConfig::HTSLIB)
-else()
-  add_dependencies(samstat htslib)
-  target_include_directories(samstat PRIVATE ${HTSLIB_SRC_DIR})
-  target_link_directories(samstat PRIVATE  ${HTSLIB_SRC_DIR})
-  target_link_libraries(samstat PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
-endif()
-
-if(Threads_FOUND)
-  target_link_libraries(samstat PRIVATE Threads::Threads)
-endif()
-
-target_link_libraries(samstat PRIVATE tldlite module_plot)
+target_link_libraries(samstat PRIVATE htslib::hts Threads::Threads tldlite module_plot)
 
 if(SAMSTAT_SANITIZE)
   target_compile_options(samstat PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)

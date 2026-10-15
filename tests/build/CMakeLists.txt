@@ -24,6 +24,21 @@ add_test(NAME build:config_h_in_build_tree
 set_tests_properties(build:config_h_in_build_tree PROPERTIES LABELS build)
 
 add_test(NAME build:no_hdf5_link
-  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DTLD_USE_HDF5=${TLD_USE_HDF5}
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
     -P ${CMAKE_CURRENT_SOURCE_DIR}/no_hdf5_link.cmake)
 set_tests_properties(build:no_hdf5_link PROPERTIES LABELS build)
+
+# build:convert_tables_in_sync  the committed src/collect/convert_tables.h is what
+# src/convert_tables.c generates. The generator is built for the tests only (samstat no longer
+# runs it) and has to run on the build host, so the test is skipped in a cross build.
+if(NOT CMAKE_CROSSCOMPILING)
+  add_executable(converttablegen ${PROJECT_SOURCE_DIR}/src/convert_tables.c)
+  target_link_libraries(converttablegen PRIVATE tldlite)
+  add_test(NAME build:convert_tables_in_sync
+    COMMAND ${CMAKE_COMMAND}
+      -DGEN=$<TARGET_FILE:converttablegen>
+      -DOUT=${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
+      -DREF=${PROJECT_SOURCE_DIR}/src/collect/convert_tables.h
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/tables_in_sync.cmake)
+  set_tests_properties(build:convert_tables_in_sync PROPERTIES LABELS build TIMEOUT 120)
+endif()

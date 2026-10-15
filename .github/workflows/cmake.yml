@@ -2,9 +2,9 @@ name: CMake
 
 on:
   push:
-    branches: [ "main", "maintenance/**" ]
+    branches: [ "main", "maintenance/**", "develop/**" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "develop/**" ]
 
 jobs:
   ubuntu-release:
@@ -14,6 +14,48 @@ jobs:
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+
+    - name: Configure
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build -j4
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --no-tests=error -j4
+
+  # Ninja generator: htslib is built with GNU make from inside a Ninja build, and Ninja needs
+  # to know that the htslib step writes libhts.a (BUILD_BYPRODUCTS).
+  ubuntu-ninja:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev ninja-build
+
+    - name: Configure
+      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build -j4
+
+    - name: Test
+      working-directory: build
+      run: ctest --output-on-failure --no-tests=error -j4
+
+  # gcc 14, which rejects implicit function declarations: catches POSIX functions used without
+  # their feature macros. CC is passed on to the bundled htslib as well.
+  ubuntu-gcc:
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-14
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev gcc-14
 
     - name: Configure
       run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

@@ -31,10 +31,10 @@ On a mac via [[https://brew.sh][brew]]:
 brew install autoconf automake xz
 #+end_src
 
-To build *SAMstat* (=--recursive= is required: the tld library is a git submodule):
+To build *SAMstat*:
 
 #+begin_src bash :eval never
-git clone --recursive https://github.com/TimoLassmann/samstat.git
+git clone https://github.com/TimoLassmann/samstat.git
 cd samstat
 cmake -S . -B build
 cmake --build build -j4
@@ -50,8 +50,6 @@ Some memory errors only show up in a sanitizer build, so before a release also r
 cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON
 cmake --build build-asan -j4 && (cd build-asan && ctest --output-on-failure -j4)
 #+end_src
-
-If you already cloned without =--recursive= run =git submodule update --init --recursive=.
 
 * Usage
 

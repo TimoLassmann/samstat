@@ -1,6 +1,6 @@
 
 #include "sam.h"
-#include "tld.h"
+#include "tldlite.h"
 #include "../htsinterface/htsglue.h"
 #include <ctype.h>
 #include <stdint.h>

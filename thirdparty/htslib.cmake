@@ -7,11 +7,14 @@ if(SAMSTAT_USE_SYSTEM_HTSLIB)
 else()
   include(ExternalProject)
 
-  # libhts.a needs the CRAM codec libraries; they go at the end of every link line
-  # (the targets link libhts.a by path, so they cannot carry the dependency themselves)
+  # libhts.a needs zlib, the CRAM codec libraries and pthreads; they go at the end of every link
+  # line (the targets link libhts.a by path, so they cannot carry the dependency themselves)
+  find_package(ZLIB REQUIRED)
   find_package(BZip2 REQUIRED)
   find_package(LibLZMA REQUIRED)
-  set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} ${BZIP2_LIBRARIES} ${LIBLZMA_LIBRARIES}")
+  find_package(Threads REQUIRED)
+  set(CMAKE_C_STANDARD_LIBRARIES
+    "${CMAKE_C_STANDARD_LIBRARIES} ${BZIP2_LIBRARIES} ${LIBLZMA_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}")
 
   set(htslib_PREFIX ${CMAKE_BINARY_DIR}/htslib)
   set(htslib_URL ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/htslib-1.24.tar.bz2)

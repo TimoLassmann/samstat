@@ -5,11 +5,6 @@ add_test(NAME packaging:metadata
     -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/check_packaging.cmake)
 set_tests_properties(packaging:metadata PROPERTIES LABELS packaging)
 
-add_test(NAME packaging:tld_pin
-  COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/check_tld_pin.cmake)
-set_tests_properties(packaging:tld_pin PROPERTIES LABELS packaging)
-
 # Fixture budget: tests/data must stay at or below 1 MB (see docs/plan-v2.4, T1).
 set(FIXTURE_BUDGET_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/fixture_budget.cmake)
 file(WRITE ${FIXTURE_BUDGET_SCRIPT} [=[

@@ -27,7 +27,7 @@
  * caller's (report_help.c); these functions draw the figure only.
  */
 
-#include "tld.h"
+#include "tldlite.h"
 
 struct stat_collection;
 

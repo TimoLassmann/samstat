@@ -3,6 +3,7 @@
 
 #include <inttypes.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 #ifdef THREAD_DATA_IMPORT
 #define EXTERN
@@ -11,16 +12,28 @@
 #endif
 
 struct thread_data {
-        uint8_t* active;
+        /* The next input file to take. Each thread claims a file with one atomic
+         * fetch-and-add, so there is no lock to take or give back (and no error path
+         * that could leave one held). */
+        atomic_int next_file;
         uint8_t* ok;            /* per input file: 1 if processed successfully */
-        pthread_mutex_t lock;
         int n_threads;
         struct samstat_param* p;
 
         pthread_t* threads;
-        pthread_attr_t attr;
+        pthread_attr_t attr;    /* the file threads start with it (samstat_thread_attr_init) */
 };
 struct samstat_param;
+
+/* Stack size of the threads samstat starts. A file thread decodes CRAM itself when
+ * there is no htslib pool, and htslib's rANS codecs need more than 2 MiB of stack
+ * (htslib gives its own pool threads at least 3 MiB). The default for a secondary thread
+ * is 512 KiB on macOS and 8 MiB on most Linux systems: ask for 8 MiB everywhere, the
+ * same as a main thread gets. It is address space, reserved, not memory used. */
+#define SAMSTAT_THREAD_STACK ((size_t) 8 * 1024 * 1024)
+
+/* <attr> for a samstat thread: at least SAMSTAT_THREAD_STACK of stack. */
+EXTERN int samstat_thread_attr_init(pthread_attr_t *attr);
 
 /* Bounded queue between the reader of one input file and its workers (WP4.1). A fixed
  * set of items (batches) moves around a circle: free -> reader fills -> filled ->

@@ -1,6 +1,7 @@
 #include "report_plots.h"
 
 #include "svg_plot.h"
+#include "report_fmt.h"
 #include "../collect/collect.h"
 #include "../report/report_help.h"
 
@@ -130,23 +131,6 @@ static int na_line(tld_strbuf* o, const char* text)
         return html_para(o, "plot-na", NULL, text);
 }
 
-/* 1234567 -> "1,234,567" */
-static void fmt_count(char* buf, size_t n, uint64_t v)
-{
-        char raw[32];
-        char out[48];
-        int len = snprintf(raw, sizeof(raw), "%" PRIu64, v);
-        int k = 0;
-        for (int i = 0; i < len; i++) {
-                if (i > 0 && (len - i) % 3 == 0) {
-                        out[k++] = ',';
-                }
-                out[k++] = raw[i];
-        }
-        out[k] = 0;
-        snprintf(buf, n, "%s", out);
-}
-
 /* Plots 3-5 of an input with fewer reads than REPORT_MIN_POS_BASES: single reads, not a profile. */
 static int too_few_line(tld_strbuf* o, const struct stat_collection* s)
 {
@@ -154,46 +138,6 @@ static int too_few_line(tld_strbuf* o, const struct stat_collection* s)
         fmt_count(n, sizeof(n), s->n_total);
         snprintf(text, sizeof(text), report_na_too_few, n, REPORT_MIN_POS_BASES_STR);
         return na_line(o, text);
-}
-
-/* Locale independent "%.<d>f". */
-static void fmt_dec(char* buf, size_t n, int decimals, double v)
-{
-        snprintf(buf, n, "%.*f", decimals, v);
-        for (char* c = buf; *c; c++) {
-                if (*c == ',') {
-                        *c = '.';
-                }
-        }
-}
-
-/* Lengths as in the summary strip: bp below 10 kb, kb up to 1 Mb, Mb above. A value above 1 kb that is a bin
- * edge (within 1%) is marked with "~"; exact is set when the value is the true length. */
-static void fmt_len(char* buf, size_t n, uint64_t v, int exact)
-{
-        char t[48];
-        const char* tilde = (v < 1000 || exact) ? "" : "~";
-        if (v < 1000) {
-                fmt_count(t, sizeof(t), v);
-                snprintf(buf, n, "%s bp", t);
-        } else if (v < 10000) {
-                fmt_count(t, sizeof(t), v);
-                snprintf(buf, n, "%s%s bp", tilde, t);
-        } else if (v >= 999950) {
-                char d[32];
-                fmt_dec(d, sizeof(d), 1, (double)v / 1000000.0);
-                snprintf(buf, n, "%s%s Mb", tilde, d);
-        } else {
-                char d[32];
-                fmt_dec(d, sizeof(d), 1, (double)v / 1000.0);
-                /* thousands separators in the integer part of the kb value */
-                char* dot = strchr(d, '.');
-                size_t il = dot ? (size_t)(dot - d) : strlen(d);
-                char ip[32];
-                snprintf(ip, sizeof(ip), "%.*s", (int)il, d);
-                fmt_count(t, sizeof(t), (uint64_t)strtoull(ip, NULL, 10));
-                snprintf(buf, n, "%s%s%s kb", tilde, t, dot ? dot : "");
-        }
 }
 
 static int mates(const struct stat_collection* s)

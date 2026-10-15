@@ -66,7 +66,7 @@ counted separately and are not reads.
 | `properly_paired` | Reads flagged as properly paired (0x2). |
 | `secondary`, `supplementary` | Secondary (0x100) and supplementary (0x800) alignments seen. With `-p` only those up to the cutoff. |
 | `is_aligned` | `true` if the header has at least one `@SQ` line or at least one primary record is mapped; always `false` for FASTA/FASTQ. When `false` every read is in `unmapped` and the alignment statistics are empty. |
-| `is_partial_report` | `true` if reading stopped early because of `-p/--peek`; counts then cover only the reads seen. |
+| `is_partial_report` | `true` if reading stopped early because of `-p/--peek` and at least one more primary read follows the cutoff (or the rest of the file cannot be read); counts then cover only the reads seen. To find out, samstat reads on past the cutoff (through any secondary and supplementary records, without counting them, up to the end of the file if only those follow); `false` when no primary read follows. |
 | `total_bases`, `min_length`, `max_length` | Bases and shortest / longest read, full read length (clipped bases included). `min_length` is 0 when there are no reads. |
 | `n50`, `median_length` | Lower edge of the storage length bin where the cumulative fraction of bases (N50, counted from the longest reads) or of reads (median) first reaches 50%. Exact below 1000 bp. |
 | `mean_q` | Mean base quality over all bases with a quality (clipped bases included), taken over error probabilities, not over Phred values. `null` without qualities. |

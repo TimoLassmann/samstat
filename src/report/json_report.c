@@ -10,6 +10,7 @@
 #include "config.h"
 #define  JSON_REPORT_IMPORT
 #include "json_report.h"
+#include "outfile.h"
 
 #define JSON_N_BASE 5
 #define JSON_N_BIN 4
@@ -46,9 +47,9 @@ int json_report_write(struct stat_collection *s, struct samstat_param *p, int id
 {
         struct jout out = {NULL, NULL};
         struct jout *o = &out;
+        struct outfile *of = NULL;
         char *filename = NULL;
-        char path[1024];
-        int n;
+        char *path = NULL;
 
         ASSERT(s != NULL, "No stat collection");
         ASSERT(s->mapq_map->n_bin == JSON_N_BIN, "Unexpected number of mapq bins");
@@ -56,34 +57,36 @@ int json_report_write(struct stat_collection *s, struct samstat_param *p, int id
         RUN(tld_get_filename((char *) samstat_output_stem(p, id), &filename));
 
         if(p->outdir){
-                n = snprintf(path, 1024, "%s/%s.samstat.json", p->outdir, filename);
+                RUN(outfile_path(&path, "%s/%s.samstat.json", p->outdir, filename));
         }else{
-                n = snprintf(path, 1024, "%s.samstat.json", samstat_output_stem(p, id));
+                RUN(outfile_path(&path, "%s.samstat.json", samstat_output_stem(p, id)));
         }
-        ASSERT(n > 0 && n < 1024, "Output path too long");
         if(p->verbose){
                 LOG_MSG("Writing to: %s", path);
         }
-        out.f = fopen(path, "w");
-        ASSERT(out.f != NULL, "Failed to open output file: %s", path);
+        RUN(outfile_open(&of, path));
+        out.f = of->f;
         RUN(tld_strbuf_alloc(&out.b, JSON_BUF_BYTES));
 
         RUN(json_v2(o, s, filename));
         RUN(json_append(o, "\n"));
 
         RUN(json_flush(o));
-        ASSERT(fclose(out.f) == 0, "Failed to close %s", path);
-        out.f = NULL;
+        RUN(outfile_commit(&of));
 
         tld_strbuf_free(out.b);
+        MFREE(path);
         MFREE(filename);
         return OK;
 ERROR:
-        if(out.f){
-                fclose(out.f);
-        }
+        outfile_abort(&of);
         tld_strbuf_free(out.b);
-        MFREE(filename);
+        if(path){
+                MFREE(path);
+        }
+        if(filename){
+                MFREE(filename);
+        }
         return FAIL;
 }
 

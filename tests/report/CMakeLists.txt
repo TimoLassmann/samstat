@@ -13,6 +13,19 @@ add_test(NAME report:write_failure
     -P ${REPORT_HELPERS}/run_write_failure.cmake)
 set_tests_properties(report:write_failure PROPERTIES LABELS report)
 
+# report:atomic:*   reports are written to a temporary file and renamed (src/report/outfile.c):
+#   symlink  a symlink at a report name is replaced, its target is not written
+#   nodir    without -d the temporary files are next to the input and removed
+#   fail     a report that cannot be written leaves no temporary file and no later report
+foreach(mode symlink nodir fail)
+  add_test(NAME report:atomic:${mode}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> "-DINPUT=${SAMSTAT_FIXTURE_DIR}/small.sam"
+      -DOUTDIR=${REPORT_OUT}/atomic_${mode} -DMODE=${mode}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/run_atomic_write.cmake)
+  set_tests_properties(report:atomic:${mode} PROPERTIES LABELS report)
+endforeach()
+
 # report_html_test(<name> <input> <check args...>)
 # Runs samstat on <input> and applies the given check_html.cmake options
 # (-DCONTAINS=... etc.). Option values use '|' as list separator.

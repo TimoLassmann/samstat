@@ -9,6 +9,17 @@ set(CLI_HELPERS ${PROJECT_SOURCE_DIR}/tests/cmake)
 # the test-only environment limits can only lower the built-in values (param.c)
 add_executable(unit_param unit_param.c ${PROJECT_SOURCE_DIR}/src/param/param.c)
 target_include_directories(unit_param PRIVATE ${PROJECT_BINARY_DIR})
+# param.c sets htslib's log level
+if(SAMSTAT_USE_SYSTEM_HTSLIB)
+  target_link_libraries(unit_param PRIVATE PkgConfig::HTSLIB)
+else()
+  add_dependencies(unit_param htslib)
+  target_include_directories(unit_param PRIVATE ${HTSLIB_SRC_DIR})
+  target_link_libraries(unit_param PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
+endif()
+if(Threads_FOUND)
+  target_link_libraries(unit_param PRIVATE Threads::Threads)
+endif()
 target_link_libraries(unit_param PRIVATE tldlite)
 add_test(NAME cli:unit_param COMMAND unit_param)
 set_tests_properties(cli:unit_param PROPERTIES LABELS cli)
@@ -17,10 +28,12 @@ set(CLI_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
 file(MAKE_DIRECTORY ${CLI_GEN})
 
 # cli_test(<name> ARGS <args...> [RC n] [REGEX re] [NO_REGEX re] [FILES f...]
-#          [NO_FILES f...] [GEN_SAM n] [JSON file CHECKS c...] [NO_NAN])
-# Arguments may use @OUTDIR@ (scratch dir of the test) and @GEN@ (generated SAM) and @GENFQ@ (generated FASTQ).
+#          [NO_FILES f...] [GEN_SAM n] [JSON file CHECKS c...] [NO_NAN]
+#          [COPY_FROM file COPY_AS name])
+# Arguments may use @OUTDIR@ (scratch dir of the test) and @GEN@ (generated SAM) and @GENFQ@ (generated FASTQ),
+# and @COPY@ (COPY_FROM copied to OUTDIR/COPY_AS before the run).
 function(cli_test name)
-  cmake_parse_arguments(T "NO_NAN" "RC;REGEX;NO_REGEX;GEN_SAM;GEN_FASTQ;GEN_BLOB;JSON" "ARGS;FILES;NO_FILES;CHECKS;ENV" ${ARGN})
+  cmake_parse_arguments(T "NO_NAN" "RC;REGEX;NO_REGEX;GEN_SAM;GEN_FASTQ;GEN_BLOB;JSON;COPY_FROM;COPY_AS" "ARGS;FILES;NO_FILES;CHECKS;ENV" ${ARGN})
   if(NOT DEFINED T_RC)
     set(T_RC 0)
   endif()
@@ -63,6 +76,9 @@ function(cli_test name)
   if(T_NO_NAN)
     list(APPEND cmd -DNO_NAN=ON)
   endif()
+  if(T_COPY_FROM)
+    list(APPEND cmd "-DCOPY_FROM=${T_COPY_FROM}" "-DCOPY_AS=${T_COPY_AS}")
+  endif()
   list(APPEND cmd -P ${CLI_HELPERS}/run_expect.cmake)
   add_test(NAME cli:${name} COMMAND ${cmd})
   set_tests_properties(cli:${name} PROPERTIES LABELS cli)
@@ -85,7 +101,12 @@ foreach(threads 1 4)
 endforeach()
 cli_test(nonexistent_file
   ARGS -d ${D} ${FX}/does_not_exist.bam
-  RC 1 REGEX "does_not_exist\\.bam")
+  RC 1 REGEX "input [^\n]*does_not_exist\\.bam does not exist")
+# a missing input in a missing directory (no -d): the input is reported as missing, not its
+# report as unwritable
+cli_test(nonexistent_file_in_missing_dir
+  ARGS ${CLI_OUT}/no_such_dir/missing.sam
+  RC 1 REGEX "input [^\n]*no_such_dir/missing\\.sam does not exist" NO_REGEX "cannot write")
 cli_test(all_good_rc0
   ARGS -t 2 -d ${D} ${FX}/small.sam ${FX}/small.bam
   FILES small.sam.samstat.html small.bam.samstat.html)
@@ -93,9 +114,19 @@ cli_test(all_good_rc0
 # --- usage errors exit 2, help / version exit 0 --------------------------------
 cli_test(no_args ARGS "" RC 2 REGEX "Usage")
 cli_test(help_short ARGS -h RC 0 REGEX "Usage")
-cli_test(help_long ARGS -help RC 0 REGEX "Usage")
+cli_test(help_long ARGS --help RC 0 REGEX "Usage")
 cli_test(version_short ARGS -v RC 0 REGEX "[0-9]+\\.[0-9]+")
-cli_test(version_long ARGS -version RC 0 REGEX "[0-9]+\\.[0-9]+")
+cli_test(version_long ARGS --version RC 0 REGEX "[0-9]+\\.[0-9]+")
+# long options need two dashes (getopt_long): the 2.3 single-dash spellings are a usage error
+# naming the two-dash form, never read as clustered short options ("-dir" = "-d ir",
+# "-verbose" = "-v ...")
+foreach(o json dir verbose help version multiqc)
+  cli_test(single_dash_long_${o} ARGS -${o} ${FX}/small.sam
+    RC 2 REGEX "long options need two dashes \\(--${o}\\)" NO_FILES small.sam.samstat.html)
+endforeach()
+# after "--" everything is an input, also a name that looks like an option
+cli_test(single_dash_after_double_dash ARGS -d ${D} -- -json
+  RC 1 REGEX "input -json does not exist")
 cli_test(threads_long ARGS --threads 2 -d ${D} ${FX}/small.sam FILES small.sam.samstat.html)
 cli_test(nthreads_alias ARGS --nthreads 2 -d ${D} ${FX}/small.sam FILES small.sam.samstat.html)
 cli_test(only_options ARGS -t 2 RC 2 REGEX "Usage")
@@ -103,6 +134,10 @@ cli_test(unknown_option ARGS --bogus ${FX}/small.sam RC 2 NO_FILES small.sam.sam
 cli_test(missing_option_value ARGS ${FX}/small.sam -t RC 2)
 cli_test(duplicate_input
   ARGS -d ${D} ${FX}/small.sam ${FX}/small.sam
+  RC 2 REGEX "Duplicated input" NO_FILES small.sam.samstat.html)
+# the same file under another spelling of its path (compared as files, not as strings)
+cli_test(duplicate_input_other_path
+  ARGS -d ${D} ${FX}/small.sam ${FX}/./small.sam
   RC 2 REGEX "Duplicated input" NO_FILES small.sam.samstat.html)
 # -d creates the directory (mkdir -p)
 cli_test(dir_created
@@ -168,7 +203,18 @@ cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
 # Never test with a large accepted-looking value (e.g. -t 100000): if the cap ever broke, the
 # test itself would start that many threads. 65 is just over the cap; a value beyond 32 bits
 # is rejected by the number parser, independently of the cap.
-cli_test(threads_max_ok ARGS -d ${D} -t 64 ${FX}/small.sam FILES small.sam.samstat.html)
+# -t within 1..64 but above the number of online CPUs is reduced to it (a note with --verbose)
+cmake_host_system_information(RESULT cli_n_cpu QUERY NUMBER_OF_LOGICAL_CORES)
+if(cli_n_cpu LESS 64)
+  set(cpu_rx "-t 64: only [0-9]+ CPUs online, using [0-9]+ threads")
+else()
+  set(cpu_rx "")
+endif()
+cli_test(threads_max_ok ARGS --verbose -d ${D} -t 64 ${FX}/small.sam FILES small.sam.samstat.html
+  REGEX "${cpu_rx}")
+# without --verbose there is no note
+cli_test(threads_capped_quiet ARGS -d ${D} -t 64 ${FX}/small.sam FILES small.sam.samstat.html
+  NO_REGEX "CPUs online")
 cli_test(threads_over_max_65 ARGS -d ${D} -t 65 ${FX}/small.sam
   RC 2 REGEX "at most 64 threads" NO_FILES small.sam.samstat.html)
 cli_test(threads_not_a_32bit_number ARGS -d ${D} -t 99999999999 ${FX}/small.sam
@@ -312,13 +358,18 @@ deprecated_test(seed --seed 7)
 deprecated_test(norm --norm "")
 deprecated_test(plotend --plotend "")
 
-# unwritable report directories fail that input (exit 1), quickly, naming -d DIR
+# Unwritable report directories, quickly and before any input is read:
+# - -d DIR that exists but is not writable, or cannot be created (in a read-only parent): a
+#   usage error, exit 2, the same for both;
+# - no -d, the directory of the input is not writable: that input fails (exit 1), naming -d DIR.
 file(WRITE ${CLI_GEN}/run_perm.cmake [=[
-# -DSAMSTAT -DOUTDIR -DINPUT -DMODE=outdir|input_dir
+# -DSAMSTAT -DOUTDIR -DINPUT -DMODE=outdir|outdir_new|input_dir
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR}/ro)
 if(MODE STREQUAL "outdir")
   set(args -d ${OUTDIR}/ro ${INPUT})
+elseif(MODE STREQUAL "outdir_new")
+  set(args -d ${OUTDIR}/ro/new ${INPUT})
 else()
   file(COPY_FILE ${INPUT} ${OUTDIR}/ro/small.sam)
   set(args ${OUTDIR}/ro/small.sam)
@@ -338,15 +389,25 @@ string(TIMESTAMP t1 "%s")
 file(CHMOD ${OUTDIR}/ro PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 math(EXPR dt "${t1}-${t0}")
 set(msg "")
-if(NOT rc EQUAL 1)
-  set(msg "exit code ${rc}, expected 1")
-elseif(NOT "${out}${err}" MATCHES "cannot write [^\n]*; use -d DIR")
-  set(msg "message lacks 'use -d DIR'")
+if(MODE STREQUAL "input_dir")
+  set(want_rc 1)
+  set(want_rx "cannot write [^\n]*; use -d DIR")
+elseif(MODE STREQUAL "outdir")
+  set(want_rc 2)
+  set(want_rx "Option -d/--dir: cannot write to ")
+else()
+  set(want_rc 2)
+  set(want_rx "Option -d/--dir: cannot create output directory ")
+endif()
+if(NOT rc EQUAL want_rc)
+  set(msg "exit code ${rc}, expected ${want_rc}")
+elseif(NOT "${out}${err}" MATCHES "${want_rx}")
+  set(msg "message does not match '${want_rx}'")
 elseif(dt GREATER 1)
   set(msg "took ${dt} s")
 endif()
-if(MODE STREQUAL "outdir")
-  file(GLOB made ${OUTDIR}/ro/*.samstat.html)
+if(NOT MODE STREQUAL "input_dir")
+  file(GLOB_RECURSE made ${OUTDIR}/ro/*.samstat.html)
   if(made)
     set(msg "${msg} report written")
   endif()
@@ -357,10 +418,12 @@ if(msg)
   message(FATAL_ERROR "${msg}\nstdout:\n${out}\nstderr:\n${err}")
 endif()
 ]=])
-foreach(mode outdir input_dir)
+foreach(mode outdir outdir_new input_dir)
   set(tname outdir_unwritable)
   if(mode STREQUAL "input_dir")
     set(tname input_dir_readonly)
+  elseif(mode STREQUAL "outdir_new")
+    set(tname outdir_not_creatable)
   endif()
   add_test(NAME cli:${tname}
     COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DOUTDIR=${CLI_OUT}/perm_${mode}
@@ -375,6 +438,77 @@ file(COPY_FILE ${FX}/small.sam ${CLI_OUT}/collide/b/same.sam ONLY_IF_DIFFERENT)
 cli_test(output_collision
   ARGS -d ${D} ${CLI_OUT}/collide/a/same.sam ${CLI_OUT}/collide/b/same.sam
   RC 2 REGEX "collide/a/same\\.sam.*collide/b/same\\.sam" NO_FILES same.sam.samstat.html)
+# report names that differ only in case collide too: the default file systems of macOS and
+# Windows ignore case (own directory c/: on such a file system b/SAME.sam is b/same.sam)
+file(MAKE_DIRECTORY ${CLI_OUT}/collide/c)
+file(COPY_FILE ${FX}/small.sam ${CLI_OUT}/collide/c/SAME.sam ONLY_IF_DIFFERENT)
+cli_test(output_collision_case
+  ARGS -d ${D} ${CLI_OUT}/collide/a/same.sam ${CLI_OUT}/collide/c/SAME.sam
+  RC 2 REGEX "Output collision: [^\n]*collide/a/same\\.sam and [^\n]*collide/c/SAME\\.sam"
+  NO_FILES same.sam.samstat.html SAME.sam.samstat.html)
+# a report file that is one of the inputs would overwrite it while it is read: exit 2
+cli_test(output_overwrites_input
+  COPY_FROM ${FX}/small.sam COPY_AS small.sam.samstat.html
+  ARGS -d ${D} ${FX}/small.sam @COPY@
+  RC 2 REGEX "the report [^\n]*small\\.sam\\.samstat\\.html of [^\n]*small\\.sam would overwrite the input")
+cli_test(output_overwrites_input_mqc
+  COPY_FROM ${FX}/small.sam COPY_AS small.sam.samstat_mapq_mqc.json
+  ARGS --multiqc -d ${D} ${FX}/small.sam @COPY@
+  RC 2 REGEX "would overwrite the input [^\n]*small\\.sam\\.samstat_mapq_mqc\\.json")
+# without --multiqc that file is not written: no collision
+cli_test(output_not_written_no_collision
+  COPY_FROM ${FX}/small.sam COPY_AS small.sam.samstat_mapq_mqc.json
+  ARGS -d ${D} ${FX}/small.sam @COPY@
+  FILES small.sam.samstat.html small.sam.samstat_mapq_mqc.json.samstat.html)
+
+# --- usage on stderr, help on stdout ----------------------------------------------------
+# no inputs or a bad option: the short usage on stderr (exit 2), nothing on stdout that looks
+# like help; -h: the help on stdout (exit 0)
+file(WRITE ${CLI_GEN}/run_usage.cmake [=[
+# -DSAMSTAT -DINPUT
+function(expect name want_rc want_out_rx no_out_rx want_err_rx no_err_rx)
+  execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} ${ARGN}
+    RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+  set(msg "")
+  if(NOT "${rc}" STREQUAL "${want_rc}")
+    set(msg "exit code ${rc}, expected ${want_rc}")
+  elseif(want_out_rx AND NOT out MATCHES "${want_out_rx}")
+    set(msg "stdout does not match '${want_out_rx}'")
+  elseif(no_out_rx AND out MATCHES "${no_out_rx}")
+    set(msg "stdout matches '${no_out_rx}'")
+  elseif(want_err_rx AND NOT err MATCHES "${want_err_rx}")
+    set(msg "stderr does not match '${want_err_rx}'")
+  elseif(no_err_rx AND err MATCHES "${no_err_rx}")
+    set(msg "stderr matches '${no_err_rx}'")
+  endif()
+  if(msg)
+    message(FATAL_ERROR "${name}: ${msg}\nstdout:\n${out}\nstderr:\n${err}")
+  endif()
+endfunction()
+expect(no_args 2 "" "Usage" "Usage: [^\n]*\nTry '[^']*--help' for more information" "")
+expect(only_options 2 "" "Usage" "Usage: [^\n]*\nTry '[^']*--help'" "" -t 2)
+expect(bad_option 2 "" "Usage" "Usage: [^\n]*\nTry '[^']*--help'" "" --bogus ${INPUT})
+expect(bad_value 2 "" "Usage" "Usage: " "" -t abc ${INPUT})
+expect(help 0 "Usage: .*-t, --threads N" "" "" "Usage" -h)
+]=])
+add_test(NAME cli:usage_streams
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${FX}/does_not_exist.sam
+    -P ${CLI_GEN}/run_usage.cmake)
+set_tests_properties(cli:usage_streams PROPERTIES LABELS cli)
+
+# --- htslib's own warnings ----------------------------------------------------------------
+# A reference name missing from the header makes htslib warn once per record (gigabytes of log
+# on a large file): its warnings are shown only with --verbose, its errors always.
+file(WRITE ${CLI_GEN}/unknown_ref.sam
+  "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:2000\n"
+  "r1\t0\tchr2\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n"
+  "r2\t0\tchr2\t20\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n")
+cli_test(hts_warnings_quiet
+  ARGS -d ${D} ${CLI_GEN}/unknown_ref.sam
+  NO_REGEX "unrecognized reference name" FILES unknown_ref.sam.samstat.html)
+cli_test(hts_warnings_verbose
+  ARGS --verbose -d ${D} ${CLI_GEN}/unknown_ref.sam
+  REGEX "unrecognized reference name" FILES unknown_ref.sam.samstat.html)
 
 cli_test(version_regex ARGS -v RC 0 REGEX "(^|\n)SAMStat [0-9]+\\.[0-9]+\\.[0-9]+\n")
 

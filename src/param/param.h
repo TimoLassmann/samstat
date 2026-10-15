@@ -27,13 +27,14 @@
 /* name of the input that stands for standard input */
 #define SAMSTAT_STDIN "-"
 
-#define SAMSTAT_MAX_THREADS 64 /* -t above this is a usage error */
+#define SAMSTAT_MAX_THREADS 64 /* -t above this is a usage error; within it, -t is reduced to
+                                * the number of online CPUs */
 
 struct samstat_param {
         char** infile;
-        char* outfile;
-        char* outdir;
-        uint8_t* no_output;     /* 1: report directory not writable, input is failed up front */
+        char* outdir;           /* -d: owned, the resolved path after parse_param() */
+        uint8_t* no_output;     /* 1: input missing / unreadable or its report directory not
+                                 * writable: reported up front, the input fails (exit 1) */
         int buffer_size;        /* reader batch: records */
         uint64_t batch_bases;   /* reader batch: bases */
         uint64_t max_read_len;  /* longer records fail the input */
@@ -44,10 +45,6 @@ struct samstat_param {
         uint8_t json;
         uint8_t multiqc;
         uint64_t top_n;
-        int32_t report_max_len;
-        double subsample;
-        uint64_t seed;
-        /* uint8_t pst; */
 };
 
 EXTERN int parse_param(int argc, char *argv[], struct samstat_param **param);

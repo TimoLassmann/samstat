@@ -1,7 +1,7 @@
-# DRAFT bioconda recipe for SAMStat - not submitted.
+# Bioconda recipe for SAMStat.
 # The sha256 below is a placeholder: after tagging a release, replace it with
 # the value from samstat-<version>.tar.gz.sha256 attached to the GitHub release.
-{% set version = "2.3.0" %}
+{% set version = "2.4.0" %}
 
 package:
   name: samstat
@@ -27,11 +27,13 @@ requirements:
     - zlib
     - bzip2
     - xz
-    - libcurl
 
 test:
   commands:
     - samstat -v
+    - printf '@r1\nACGTACGTAC\n+\nIIIIIIIIII\n@r2\nACGTACGTAC\n+\nIIIIIIIIII\n@r3\nACGTACGTAC\n+\nIIIIIIIIII\n' > test.fq
+    - samstat test.fq
+    - test -s test.fq.samstat.html
 
 about:
   home: https://github.com/TimoLassmann/samstat

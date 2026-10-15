@@ -1,25 +1,17 @@
 #include "tld.h"
 
 #include <inttypes.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "../plot/plot.h"
 #include "../param/param.h"
 #include "../collect/collect.h"
 #include "config.h"
 #define  JSON_REPORT_IMPORT
 #include "json_report.h"
 
-/* Layout of the raw counts in struct stat_collection:
- *   len_dist      data[bin][length]
- *   base_comp     data[5  * bin + base][position]   (A,C,G,T,N)
- *   qual_comp     data[42 * bin + q][position]
- *   mis           data[5  * bin + base][position]
- *   ins / del     data[bin][position]
- */
 #define JSON_N_BASE 5
-#define JSON_N_QUAL 42
 #define JSON_N_BIN 4
 
 static const char* const bin_id[JSON_N_BIN] = {"mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"};
@@ -40,13 +32,15 @@ static int json_flush(struct jout *o);
 static int json_str(struct jout *o, const char *s);
 static int json_u64(struct jout *o, uint64_t v);
 static int json_key(struct jout *o, const char *key);
-static int json_array(struct jout *o, uint64_t *row, int n);
-static int json_width(uint64_t **rows, int n_rows, int len);
 
 static int json_bin_counts(struct jout *o, uint64_t *counts);
-static int json_read(struct jout *o, struct stat_collection *s, int read);
-static int json_section_simple(struct jout *o, struct plot_data *pd, const char *name);
-static int json_section_grouped(struct jout *o, struct plot_data *pd, const char *name, int group, int is_qual);
+static int json_double(struct jout *o, double v);
+static int json_strided(struct jout *o, const char *base, size_t stride, int n);
+static int json_v2(struct jout *o, struct stat_collection *s, const char *filename);
+static int json_v2_summary(struct jout *o, struct stat_collection *s);
+static int json_v2_read(struct jout *o, struct stat_collection *s, int r);
+static int json_v2_per_class(struct jout *o, const char *base, size_t class_stride, size_t stride, int n);
+static int json_v2_pos_block(struct jout *o, const struct collect_pos_bin *bins, int n_bins);
 
 int json_report_write(struct stat_collection *s, struct samstat_param *p, int id)
 {
@@ -59,70 +53,23 @@ int json_report_write(struct stat_collection *s, struct samstat_param *p, int id
         ASSERT(s != NULL, "No stat collection");
         ASSERT(s->mapq_map->n_bin == JSON_N_BIN, "Unexpected number of mapq bins");
 
-        RUN(tld_get_filename(p->infile[id], &filename));
+        RUN(tld_get_filename((char *) samstat_output_stem(p, id), &filename));
 
         if(p->outdir){
                 n = snprintf(path, 1024, "%s/%s.samstat.json", p->outdir, filename);
         }else{
-                n = snprintf(path, 1024, "%s.samstat.json", p->infile[id]);
+                n = snprintf(path, 1024, "%s.samstat.json", samstat_output_stem(p, id));
         }
         ASSERT(n > 0 && n < 1024, "Output path too long");
-        LOG_MSG("Writing to: %s", path);
+        if(p->verbose){
+                LOG_MSG("Writing to: %s", path);
+        }
         out.f = fopen(path, "w");
         ASSERT(out.f != NULL, "Failed to open output file: %s", path);
         RUN(tld_strbuf_alloc(&out.b, JSON_BUF_BYTES));
 
-        RUN(json_append(o, "{\n\"format_version\": 1,\n"));
-        RUN(json_append(o, "\"meta\": {\"samstat_version\": "));
-        RUN(json_str(o, PACKAGE_VERSION));
-        RUN(json_append(o, ", \"input_file\": "));
-        RUN(json_str(o, filename));
-        RUN(json_append(o, "},\n"));
-
-        RUN(json_append(o, "\"summary\": {\n"));
-        RUN(json_append(o, "\"total_reads\": "));
-        RUN(json_u64(o, s->n_total));
-        RUN(json_append(o, ",\n\"read1_reads\": "));
-        RUN(json_u64(o, s->n_read1));
-        RUN(json_append(o, ",\n\"read2_reads\": "));
-        RUN(json_u64(o, s->n_read2));
-        RUN(json_append(o, ",\n\"paired\": "));
-        RUN(json_u64(o, s->n_paired));
-        RUN(json_append(o, ",\n\"properly_paired\": "));
-        RUN(json_u64(o, s->n_proper_paired));
-        RUN(json_append(o, ",\n\"secondary\": "));
-        RUN(json_u64(o, s->n_secondary));
-        RUN(json_append(o, ",\n\"supplementary\": "));
-        RUN(json_u64(o, s->n_supplementary));
-        RUN(json_append(o, ",\n\"is_aligned\": "));
-        RUN(json_append(o, s->is_aligned ? "true" : "false"));
-        RUN(json_append(o, ",\n\"is_partial_report\": "));
-        RUN(json_append(o, s->is_partial_report ? "true" : "false"));
-        RUN(json_append(o, ",\n\"mapq_counts\": {\n\"read1\": "));
-        RUN(json_bin_counts(o, s->basic_nums[0]));
-        if(s->n_read2){
-                RUN(json_append(o, ",\n\"read2\": "));
-                RUN(json_bin_counts(o, s->basic_nums[1]));
-        }
-        RUN(json_append(o, "\n}\n},\n"));
-
-        RUN(json_append(o, "\"mapq_bins\": [\n"));
-        for(int i = 0; i < JSON_N_BIN; i++){
-                RUN(json_append(o, "{\"id\": "));
-                RUN(json_str(o, bin_id[i]));
-                RUN(json_append(o, ", \"label\": "));
-                RUN(json_str(o, s->mapq_map->description[i]));
-                RUN(json_append(o, i + 1 < JSON_N_BIN ? "},\n" : "}\n"));
-        }
-        RUN(json_append(o, "],\n"));
-
-        RUN(json_append(o, "\"read1\": "));
-        RUN(json_read(o, s, 1));
-        if(s->n_read2){
-                RUN(json_append(o, ",\n\"read2\": "));
-                RUN(json_read(o, s, 2));
-        }
-        RUN(json_append(o, "\n}\n"));
+        RUN(json_v2(o, s, filename));
+        RUN(json_append(o, "\n"));
 
         RUN(json_flush(o));
         ASSERT(fclose(out.f) == 0, "Failed to close %s", path);
@@ -137,6 +84,222 @@ ERROR:
         }
         tld_strbuf_free(out.b);
         MFREE(filename);
+        return FAIL;
+}
+
+/* ---- format_version 2 (standard-plots.md section 7) ---- */
+
+int json_v2(struct jout *o, struct stat_collection *s, const char *filename)
+{
+        ASSERT(s->acc != NULL, "No v2 accumulators");
+        RUN(json_append(o, "{\n\"format_version\": 2,\n"));
+        RUN(json_append(o, "\"meta\": {\"samstat_version\": "));
+        RUN(json_str(o, PACKAGE_VERSION));
+        RUN(json_append(o, ", \"input_file\": "));
+        RUN(json_str(o, filename));
+        RUN(json_append(o, "},\n"));
+        RUN(json_v2_summary(o, s));
+        RUN(json_append(o, ",\n\"mapq_bins\": [\n"));
+        for(int i = 0; i < JSON_N_BIN; i++){
+                RUN(json_append(o, "{\"id\": "));
+                RUN(json_str(o, bin_id[i]));
+                RUN(json_append(o, ", \"label\": "));
+                RUN(json_str(o, s->mapq_map->description[i]));
+                RUN(json_append(o, i + 1 < JSON_N_BIN ? "},\n" : "}\n"));
+        }
+        RUN(json_append(o, "],\n\"axes\": {\n\"length_edges\": ["));
+        for(int i = 0; i < COLLECT_N_LEN_BINS; i++){
+                if(i){
+                        RUN(json_char(o, ','));
+                }
+                RUN(json_u64(o, collect_length_edge(i)));
+        }
+        RUN(json_append(o, "],\n\"absolute\": {\"bins\": "));
+        RUN(json_u64(o, COLLECT_ABS_BINS));
+        RUN(json_append(o, ", \"label\": \"position in read (bp)\"},\n"));
+        RUN(json_append(o, "\"relative\": {\"bins\": "));
+        RUN(json_u64(o, COLLECT_REL_BINS));
+        RUN(json_append(o, ", \"label\": \"position in read (% of length)\"},\n"));
+        RUN(json_append(o, "\"identity_bins\": "));
+        RUN(json_u64(o, COLLECT_N_IDENT));
+        RUN(json_append(o, ",\n\"quality_error_scale\": "));
+        RUN(json_u64(o, COLLECT_QUAL_ONE));
+        RUN(json_append(o, "\n},\n\"read1\": "));
+        RUN(json_v2_read(o, s, 0));
+        if(s->n_read2){
+                RUN(json_append(o, ",\n\"read2\": "));
+                RUN(json_v2_read(o, s, 1));
+        }
+        RUN(json_append(o, "\n}"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+#define V2_U(name, val) do{ RUN(json_append(o, "\"" name "\": ")); RUN(json_u64(o, (val))); RUN(json_append(o, ",\n")); }while(0)
+#define V2_B(name, val) do{ RUN(json_append(o, "\"" name "\": ")); RUN(json_append(o, (val) ? "true" : "false")); RUN(json_append(o, ",\n")); }while(0)
+#define V2_D(name, val) do{ RUN(json_append(o, "\"" name "\": ")); RUN(json_double(o, (val))); RUN(json_append(o, ",\n")); }while(0)
+
+int json_v2_summary(struct jout *o, struct stat_collection *s)
+{
+        RUN(json_append(o, "\"summary\": {\n"));
+        V2_U("total_reads", s->n_total);
+        V2_U("read1_reads", s->n_read1);
+        V2_U("read2_reads", s->n_read2);
+        V2_U("paired", s->n_paired);
+        V2_U("properly_paired", s->n_proper_paired);
+        V2_U("secondary", s->n_secondary);
+        V2_U("supplementary", s->n_supplementary);
+        V2_B("is_aligned", s->is_aligned);
+        V2_B("is_partial_report", s->is_partial_report);
+        V2_U("total_bases", s->total_bases);
+        V2_U("min_length", s->n_total ? s->min_length : 0);
+        V2_U("max_length", s->max_length);
+        V2_U("n50", s->n50);
+        V2_U("median_length", s->median_length);
+        V2_D("mean_q", s->mean_q);
+        V2_D("pct_mapped", s->pct_mapped);
+        V2_D("pct_mapq_ge30", s->pct_mapq_ge30);
+        V2_D("pct_clipped", s->pct_clipped);
+        V2_D("median_identity", s->median_identity);
+        RUN(json_append(o, "\"layout\": "));
+        RUN(json_str(o, s->layout == COLLECT_LAYOUT_LONG ? "long" : "short"));
+        RUN(json_append(o, ",\n"));
+        V2_U("reads_without_md", s->reads_without_md);
+        V2_U("identity_reads", s->identity_reads);
+        V2_U("identity_na", s->identity_na);
+        V2_U("bases_beyond_position_axis", s->bases_beyond_position_axis);
+        RUN(json_append(o, "\"mapq_counts\": {\"read1\": "));
+        RUN(json_bin_counts(o, s->basic_nums[0]));
+        if(s->n_read2){
+                RUN(json_append(o, ", \"read2\": "));
+                RUN(json_bin_counts(o, s->basic_nums[1]));
+        }
+        RUN(json_append(o, "}\n}"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* {"mapq_ge30": [...], ...}: for class m the n values at base + m * class_stride + i * stride,
+ * trailing zeros trimmed. */
+int json_v2_per_class(struct jout *o, const char *base, size_t class_stride, size_t stride, int n)
+{
+        RUN(json_append(o, "{"));
+        for(int m = 0; m < JSON_N_BIN; m++){
+                RUN(json_key(o, bin_id[m]));
+                RUN(json_strided(o, base + (size_t) m * class_stride, stride, n));
+                if(m + 1 < JSON_N_BIN){
+                        RUN(json_append(o, ", "));
+                }
+        }
+        RUN(json_append(o, "}"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* bins = acc->pos_*[r][0]; the classes follow at a stride of n_bins bins */
+int json_v2_pos_block(struct jout *o, const struct collect_pos_bin *bins, int n_bins)
+{
+        const char *b = (const char *) bins;
+        size_t cs = (size_t) n_bins * sizeof(struct collect_pos_bin);
+        size_t st = sizeof(struct collect_pos_bin);
+        static const char *const names[] = {"qual_bases", "qual_error_sum", "aligned", "aligned_md",
+                "mismatches", "insertions", "deletions"};
+        static const size_t offs[] = {offsetof(struct collect_pos_bin, qual_bases),
+                offsetof(struct collect_pos_bin, qual_error_sum), offsetof(struct collect_pos_bin, aligned),
+                offsetof(struct collect_pos_bin, aligned_md), offsetof(struct collect_pos_bin, mismatches),
+                offsetof(struct collect_pos_bin, insertions), offsetof(struct collect_pos_bin, deletions)};
+
+        RUN(json_append(o, "{\n\"composition\": {"));
+        for(int m = 0; m < JSON_N_BIN; m++){
+                RUN(json_key(o, bin_id[m]));
+                RUN(json_append(o, "{"));
+                for(int k = 0; k < JSON_N_BASE; k++){
+                        RUN(json_key(o, base_name[k]));
+                        RUN(json_strided(o, b + (size_t) m * cs + offsetof(struct collect_pos_bin, comp) + (size_t) k * sizeof(uint64_t), st, n_bins));
+                        if(k + 1 < JSON_N_BASE){
+                                RUN(json_append(o, ", "));
+                        }
+                }
+                RUN(json_append(o, m + 1 < JSON_N_BIN ? "}, " : "}"));
+        }
+        RUN(json_append(o, "}"));
+        for(int i = 0; i < 7; i++){
+                RUN(json_append(o, ",\n"));
+                RUN(json_key(o, names[i]));
+                RUN(json_v2_per_class(o, b + offs[i], cs, st, n_bins));
+        }
+        RUN(json_append(o, "\n}"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+int json_v2_read(struct jout *o, struct stat_collection *s, int r)
+{
+        struct collect_acc *a = s->acc;
+        size_t u = sizeof(uint64_t);
+
+        RUN(json_append(o, "{\n\"n_reads\": "));
+        RUN(json_u64(o, r ? s->n_read2 : s->n_read1));
+        RUN(json_append(o, ",\n\"length\": {\"reads\": "));
+        RUN(json_v2_per_class(o, (const char *) a->len_reads[r], COLLECT_N_LEN_BINS * u, u, COLLECT_N_LEN_BINS));
+        RUN(json_append(o, ", \"bases\": "));
+        RUN(json_v2_per_class(o, (const char *) a->len_bases[r], COLLECT_N_LEN_BINS * u, u, COLLECT_N_LEN_BINS));
+        RUN(json_append(o, "},\n\"read_mean_q\": "));
+        RUN(json_v2_per_class(o, (const char *) a->read_q[r], COLLECT_N_Q * u, u, COLLECT_N_Q));
+        RUN(json_append(o, ",\n\"identity\": "));
+        RUN(json_v2_per_class(o, (const char *) a->identity[r], COLLECT_N_IDENT * u, u, COLLECT_N_IDENT));
+        RUN(json_append(o, ",\n\"absolute\": "));
+        RUN(json_v2_pos_block(o, a->pos_abs[r][0], COLLECT_ABS_BINS));
+        RUN(json_append(o, ",\n\"relative\": "));
+        RUN(json_v2_pos_block(o, a->pos_rel[r][0], COLLECT_REL_BINS));
+        RUN(json_append(o, "\n}"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* n uint64 values at base + i * stride, trailing zeros trimmed */
+int json_strided(struct jout *o, const char *base, size_t stride, int n)
+{
+        int w = 0;
+        uint64_t v;
+        for(int i = n - 1; i >= 0; i--){
+                memcpy(&v, base + (size_t) i * stride, sizeof(v));
+                if(v){
+                        w = i + 1;
+                        break;
+                }
+        }
+        RUN(json_char(o, '['));
+        for(int i = 0; i < w; i++){
+                if(i){
+                        RUN(json_char(o, ','));
+                }
+                memcpy(&v, base + (size_t) i * stride, sizeof(v));
+                RUN(json_u64(o, v));
+        }
+        RUN(json_char(o, ']'));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* floating point values are printed %.4f, a value that does not apply as null */
+int json_double(struct jout *o, double v)
+{
+        char buf[64];
+        if(COLLECT_IS_NA(v)){
+                RUN(json_append(o, "null"));
+        }else{
+                snprintf(buf, 64, "%.4f", v);
+                RUN(json_append(o, buf));
+        }
+        return OK;
+ERROR:
         return FAIL;
 }
 
@@ -172,110 +335,6 @@ ERROR:
         return FAIL;
 }
 
-int json_read(struct jout *o, struct stat_collection *s, int read)
-{
-        struct plot_data *len_d = s->len_dist_R1;
-        struct plot_data *base_d = s->base_comp_R1;
-        struct plot_data *qual_d = s->qual_comp_R1;
-        struct plot_data *mis_d = s->mis_R1;
-        struct plot_data *ins_d = s->ins_R1;
-        struct plot_data *del_d = s->del_R1;
-        uint64_t n = s->n_read1;
-
-        if(read == 2){
-                len_d = s->len_dist_R2;
-                base_d = s->base_comp_R2;
-                qual_d = s->qual_comp_R2;
-                mis_d = s->mis_R2;
-                ins_d = s->ins_R2;
-                del_d = s->del_R2;
-                n = s->n_read2;
-        }
-
-        RUN(json_append(o, "{\n\"n_reads\": "));
-        RUN(json_u64(o, n));
-        RUN(json_append(o, ",\n"));
-        RUN(json_section_simple(o, len_d, "length"));
-        RUN(json_append(o, ",\n"));
-        RUN(json_section_grouped(o, base_d, "base_composition", JSON_N_BASE, 0));
-        RUN(json_append(o, ",\n"));
-        RUN(json_section_grouped(o, qual_d, "base_quality", JSON_N_QUAL, 1));
-        RUN(json_append(o, ",\n"));
-        RUN(json_section_grouped(o, mis_d, "mismatches", JSON_N_BASE, 0));
-        RUN(json_append(o, ",\n"));
-        RUN(json_section_simple(o, ins_d, "insertions"));
-        RUN(json_append(o, ",\n"));
-        RUN(json_section_simple(o, del_d, "deletions"));
-        RUN(json_append(o, "\n}"));
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-/* One array per mapq bin: pd->data[bin][i], trimmed after the last non-zero entry. */
-int json_section_simple(struct jout *o, struct plot_data *pd, const char *name)
-{
-        ASSERT(pd->L >= JSON_N_BIN, "Plot data %s has too few rows", name);
-        RUN(json_key(o, name));
-        RUN(json_append(o, "{"));
-        for(int b = 0; b < JSON_N_BIN; b++){
-                int w = json_width(pd->data + b, 1, pd->len);
-                RUN(json_key(o, bin_id[b]));
-                RUN(json_array(o, pd->data[b], w));
-                if(b + 1 < JSON_N_BIN){
-                        RUN(json_append(o, ", "));
-                }
-        }
-        RUN(json_append(o, "}"));
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-/* Per bin: 'group' rows (bases or Q values) of pd->data[group * bin + k][position].
-   Bases: object keyed by base. Quality: array indexed by Q value. All rows of a
-   bin share one width (last non-zero position over all rows, plus one). */
-int json_section_grouped(struct jout *o, struct plot_data *pd, const char *name, int group, int is_qual)
-{
-        ASSERT(pd->L >= group * JSON_N_BIN, "Plot data %s has too few rows", name);
-        RUN(json_key(o, name));
-        RUN(json_append(o, "{\n"));
-        for(int b = 0; b < JSON_N_BIN; b++){
-                uint64_t **rows = pd->data + group * b;
-                int w = json_width(rows, group, pd->len);
-                RUN(json_key(o, bin_id[b]));
-                if(is_qual){
-                        if(w == 0){
-                                RUN(json_append(o, "[]"));
-                        }else{
-                                RUN(json_append(o, "["));
-                                for(int k = 0; k < group; k++){
-                                        RUN(json_array(o, rows[k], w));
-                                        if(k + 1 < group){
-                                                RUN(json_append(o, ", "));
-                                        }
-                                }
-                                RUN(json_append(o, "]"));
-                        }
-                }else{
-                        RUN(json_append(o, "{"));
-                        for(int k = 0; k < group; k++){
-                                RUN(json_key(o, base_name[k]));
-                                RUN(json_array(o, rows[k], w));
-                                if(k + 1 < group){
-                                        RUN(json_append(o, ", "));
-                                }
-                        }
-                        RUN(json_append(o, "}"));
-                }
-                RUN(json_append(o, b + 1 < JSON_N_BIN ? ",\n" : "\n"));
-        }
-        RUN(json_append(o, "}"));
-        return OK;
-ERROR:
-        return FAIL;
-}
-
 int json_bin_counts(struct jout *o, uint64_t *counts)
 {
         RUN(json_append(o, "{"));
@@ -287,36 +346,6 @@ int json_bin_counts(struct jout *o, uint64_t *counts)
                 }
         }
         RUN(json_append(o, "}"));
-        return OK;
-ERROR:
-        return FAIL;
-}
-
-/* number of leading entries needed to cover every non-zero count */
-int json_width(uint64_t **rows, int n_rows, int len)
-{
-        int w = 0;
-        for(int i = 0; i < n_rows; i++){
-                for(int j = len - 1; j >= w; j--){
-                        if(rows[i][j]){
-                                w = j + 1;
-                                break;
-                        }
-                }
-        }
-        return w;
-}
-
-int json_array(struct jout *o, uint64_t *row, int n)
-{
-        RUN(json_append(o, "["));
-        for(int i = 0; i < n; i++){
-                if(i){
-                        RUN(json_append(o, ","));
-                }
-                RUN(json_u64(o, row[i]));
-        }
-        RUN(json_append(o, "]"));
         return OK;
 ERROR:
         return FAIL;

@@ -32,11 +32,10 @@ set(source_files
   sambamparse/sam_bam_parse.c
   param/param.c
   collect/collect.c
+  report/report_help.c
   report/stat_report.c
   report/json_report.c
   report/mqc_report.c
-  report/lst.c
-  tools/tools.c
   ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
   )
 

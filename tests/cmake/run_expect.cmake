@@ -10,6 +10,7 @@
 #   -DEXPECT_NO_FILES=<list>      files (relative to OUTDIR) that must not exist
 #   -DGEN_SAM=<n>                 first write OUTDIR/gen_<n>.sam with n reads, available as @GEN@
 #   -DGEN_FASTQ=<n>               likewise OUTDIR/gen_<n>.fq with n reads, available as @GENFQ@
+#   -DGEN_BLOB=<n>                OUTDIR/blob_<n>.bin: n bytes 'x', no newline, available as @GENBLOB@
 #   -DJSON=<file rel. OUTDIR> -DCHECKS=<list>   forwarded to check_json.cmake
 #   -DCOPY_FROM=<file> -DCOPY_AS=<name>   copy <file> to OUTDIR/<name> first, available as @COPY@
 #   -DFILE_TEXT=<text> -DFILE_TEXT_IN=<file rel. OUTDIR>   the file must contain <text> literally
@@ -63,6 +64,12 @@ if(GEN_FASTQ)
   file(WRITE ${GENFQ} "${content}")
 endif()
 
+if(GEN_BLOB)
+  string(REPEAT "x" ${GEN_BLOB} blob)
+  set(GENBLOB ${OUTDIR}/blob_${GEN_BLOB}.bin)
+  file(WRITE ${GENBLOB} "${blob}")
+endif()
+
 # characters that are awkward to pass through add_test
 function(expand_tokens var)
   string(REPLACE "@Q@" "\"" v "${${var}}")
@@ -88,11 +95,12 @@ foreach(a IN LISTS ARGS)
   string(REPLACE "@OUTDIR@" "${OUTDIR}" a "${a}")
   string(REPLACE "@GEN@" "${GEN}" a "${a}")
   string(REPLACE "@GENFQ@" "${GENFQ}" a "${a}")
+  string(REPLACE "@GENBLOB@" "${GENBLOB}" a "${a}")
   list(APPEND run_args "${a}")
 endforeach()
 
 execute_process(
-  COMMAND ${SAMSTAT} ${run_args}
+  TIMEOUT 120 COMMAND ${SAMSTAT} ${run_args}
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)

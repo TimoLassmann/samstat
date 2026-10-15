@@ -2,14 +2,14 @@
 # docs/samstat.schema.json: every 'required' member must be present and every
 # member present must be listed in 'properties' (the schema has
 # additionalProperties: false). Checked at the top level, in meta, summary,
-# summary.mapq_counts and read1 (read2 when present).
+# summary.mapq_counts, axes, read1 and its two position blocks (read2 when present).
 # Required: -DSAMSTAT=<binary> -DINPUT=<file> -DOUTDIR=<dir> -DSCHEMA=<schema file>
 
 cmake_minimum_required(VERSION 3.19)
 
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
-execute_process(COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc}\n${out}\n${err}")
@@ -69,11 +69,29 @@ check_level("summary" "${s_sum}" "${d_sum}")
 string(JSON s_mc GET "${schema}" properties summary properties mapq_counts)
 string(JSON d_mc GET "${doc}" summary mapq_counts)
 check_level("summary.mapq_counts" "${s_mc}" "${d_mc}")
+string(JSON s_axes GET "${schema}" properties axes)
+string(JSON d_axes GET "${doc}" axes)
+check_level("axes" "${s_axes}" "${d_axes}")
 string(JSON s_read GET "${schema}" "$defs" read)
-string(JSON d_r1 GET "${doc}" read1)
-check_level("read1" "${s_read}" "${d_r1}")
-string(JSON d_r2 ERROR_VARIABLE e2 GET "${doc}" read2)
-if(e2 STREQUAL "NOTFOUND")
-  check_level("read2" "${s_read}" "${d_r2}")
+string(JSON s_pos GET "${schema}" "$defs" position)
+foreach(r read1 read2)
+  string(JSON d_node ERROR_VARIABLE e3 GET "${doc}" ${r})
+  if(e3 STREQUAL "NOTFOUND")
+    check_level("${r}" "${s_read}" "${d_node}")
+    foreach(axis absolute relative)
+      string(JSON d_pos GET "${d_node}" ${axis})
+      check_level("${r}.${axis}" "${s_pos}" "${d_pos}")
+    endforeach()
+  elseif(r STREQUAL "read1")
+    message(SEND_ERROR "${INPUT}: read1 missing")
+  endif()
+endforeach()
+# read2 is present exactly when there are read 2 records
+string(JSON n_r2 GET "${doc}" summary read2_reads)
+string(JSON ignored ERROR_VARIABLE e5 GET "${doc}" read2)
+if(n_r2 GREATER 0 AND NOT e5 STREQUAL "NOTFOUND")
+  message(SEND_ERROR "${INPUT}: summary.read2_reads=${n_r2} but no read2")
+elseif(n_r2 EQUAL 0 AND e5 STREQUAL "NOTFOUND")
+  message(SEND_ERROR "${INPUT}: read2 present but summary.read2_reads=0")
 endif()
 message(STATUS "schema keys of ${name} match")

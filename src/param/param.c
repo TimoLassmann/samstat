@@ -1,8 +1,11 @@
 #include <errno.h>
 #include <getopt.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "misc/misc.h"
@@ -23,8 +26,11 @@
 
 
 int sanity_check_param(struct samstat_param *p);
+static int make_dir_p(const char *path);
+static int check_outputs(struct samstat_param *p);
+static void deprecated_option(const char *opt);
 static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out);
-int detect_file_type(char *filename, int* type);
+static void batch_limits_from_env(struct samstat_param *p);
 
 int print_help(char **argv);
 
@@ -41,7 +47,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         while (1){
                 static struct option long_options[] ={
                         {"peek",required_argument,0,'p'},
-                        {"len",required_argument,0,'l'},
+                        {"len",required_argument,0,'l'},   /* deprecated, ignored */
                         {"dir",required_argument,0,'d'},
                         /* {"sub",required_argument,0,OPT_SUBSAMPLE}, */
                         {"seed",required_argument,0,OPT_SEED},
@@ -49,7 +55,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         {"norm",0,0,OPT_PLOTNORM},
                         {"json",0,0,OPT_JSON},
                         {"multiqc",0,0,OPT_MULTIQC},
-                        {"nthreads",required_argument,0,'t'},
+                        {"threads",required_argument,0,'t'},
+                        {"nthreads",required_argument,0,'t'}, /* alias */
                         {"verbose",0,0,OPT_VERBOSE},
                         {"help",0,0,'h'},
                         {"version",0,0,'v'},
@@ -70,12 +77,14 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 /* case OPT_SUBSAMPLE: */
                 /*         p->subsample = atof(optarg); */
                 /*         break; */
-                case OPT_PLOTEND:
-                        p->collect_end = 1;
+                case OPT_SEED:
+                        deprecated_option("--seed");
                         break;
-
+                case OPT_PLOTEND:
+                        deprecated_option("--plotend");
+                        break;
                 case OPT_PLOTNORM:
-                        p->norm_len_plot = 1;
+                        deprecated_option("--norm");
                         break;
                 case OPT_JSON:
                         p->json = 1;
@@ -84,7 +93,8 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         p->multiqc = 1;
                         break;
                 case 't':
-                        RUN(parse_unsigned(optarg, "-t", INT32_MAX, &v));
+                        RUN(parse_unsigned(optarg, "-t/--threads", INT32_MAX, &v));
+                        ASSERT(v <= SAMSTAT_MAX_THREADS, "Option -t/--threads: at most %d threads (got %s)", SAMSTAT_MAX_THREADS, optarg);
                         p->n_threads = (int) v;
                         break;
                 case 'd':
@@ -101,9 +111,7 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         version = 1;
                         break;
                 case 'l':
-                        RUN(parse_unsigned(optarg, "-l/-len", INT32_MAX, &v));
-                        p->report_max_len = (int32_t) v;
-                        /* param->local_out = 1; */
+                        deprecated_option("-l");
                         break;
                 case '?':
                         /* getopt has already printed the offending option */
@@ -143,14 +151,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         }
         p->n_infile = c;
 
-        galloc(&p->file_type, p->n_infile);
+        galloc(&p->no_output, p->n_infile);
         for(int i = 0; i < p->n_infile;i++){
-                p->file_type[i] = FILE_TYPE_UNKNOWN;
-        }
-        for(int i = 0 ; i < p->n_infile;i++){
-                int t = -1;
-                RUN(detect_file_type(p->infile[i], &t));
-                p->file_type[i] = t;
+                p->no_output[i] = 0;
         }
 
         RUN(sanity_check_param(p));
@@ -197,23 +200,15 @@ int sanity_check_param(struct samstat_param *p)
 
 
         if(p->outdir){
-                if(tld_dir_exists(p->outdir) == FAIL){
-                        ERROR_MSG("Option -d/-dir: output directory %s does not exist",p->outdir);
-                }
                 char *ptr = NULL;
+                if(make_dir_p(p->outdir) != OK){
+                        ERROR_MSG("Option -d/-dir: cannot create output directory %s: %s", p->outdir, strerror(errno));
+                }
                 ptr = realpath(p->outdir, NULL);
                 if(!ptr){
                         ERROR_MSG("Could not obtain the full path for %s.", p->outdir);
                 }
                 p->outdir = ptr;
-
-                /* int l = strnlen(p->outdir, 1024); */
-                /* if(p->outdir[l-1] == '/'){ */
-                /*         p->outdir[l-1] = 0; */
-                /* } */
-                /* char *symlinkpath = "/tmp/symlink/file"; */
-                /* char actualpath [PATH_MAX+1]; */
-                /* ptr = realpath(symlinkpath, actualpath); */
         }
         if(p->subsample < 0.0){
                 ERROR_MSG("Option -sub: has to be greater than 0.0");
@@ -221,41 +216,18 @@ int sanity_check_param(struct samstat_param *p)
                 ERROR_MSG("Option -sub: has to be smaller than 1.0");
         }
 
-        /* check report length */
-        if(p->report_max_len <= 0){
-                ERROR_MSG("Option -l/-len: the report length has to be > 0");
-        }else if(p->report_max_len > 10000){
-                ERROR_MSG("Option -l/-len: the report length is > 10000, the maximum currently supported.");
-        }else if(p->report_max_len > 500){
-                WARNING_MSG("Option -l/-len: the report length is > 500. This will slow down samstat considerably.");
-        }
-        /* check input files  */
-
-        int n_unknown = 0;
-        int n_sam = 0;
-        int n_fasta = 0;
-        for(int i = 0; i < p->n_infile;i++){
-                if(p->file_type[i] == FILE_TYPE_UNKNOWN){
-                        n_unknown++;
-                }else if(p->file_type[i] == FILE_TYPE_FASTAQ){
-                        n_fasta++;
-                }else if(p->file_type[i] == FILE_TYPE_SAMBAM){
-                        n_sam++;
-                }else {
-                        ERROR_MSG("File type %d not recognized - this should never happen", (int) p->file_type[i]);
-                }
-        }
-
-        if(n_unknown){
+        /* check input files: the type is taken from the content when the file is opened,
+         * so an unrecognised input fails only that input */
+        {
+                int n_stdin = 0;
                 for(int i = 0; i < p->n_infile;i++){
-                        if(p->file_type[i] == FILE_TYPE_UNKNOWN){
-                                LOG_MSG("   unrecognized file name extension: %s", p->infile[i]);
+                        if(strcmp(p->infile[i], SAMSTAT_STDIN) == 0){
+                                n_stdin++;
                         }
                 }
-                ERROR_MSG("Could not recognize the type of %d input file(s) by their extension (supported: .sam .bam .fa .fasta .fna .fq .fastq, and .gz variants of the fasta/fastq ones).", n_unknown);
-        }
-        if(n_fasta && n_sam){
-                WARNING_MSG("Found both fasta/fastq and sam/bam files.");
+                if(n_stdin > 1){
+                        ERROR_MSG("Standard input (-) can be given only once.");
+                }
         }
         /* check for identical files */
         for(int i = 0; i < p->n_infile;i++){
@@ -266,111 +238,222 @@ int sanity_check_param(struct samstat_param *p)
                 }
         }
 
+        RUN(check_outputs(p));
 
         return OK;
 ERROR:
         return FAIL;
 }
 
-static int has_suffix_nocase(const char *name, const char *suffix)
+static void deprecated_option(const char *opt)
 {
-        size_t n = strlen(name);
-        size_t m = strlen(suffix);
-        if(n <= m){
-                return 0;
-        }
-        return strcasecmp(name + n - m, suffix) == 0;
+        fprintf(stderr, "samstat: warning: %s is deprecated and ignored\n", opt);
 }
 
-int detect_file_type(char *filename, int* type)
+/* mkdir -p */
+static int make_dir_p(const char *path)
 {
-        static const char* sambam_suffix[] = {".sam", ".bam", NULL};
-        static const char* fastaq_suffix[] = {
-                ".fa", ".fasta", ".fna", ".fq", ".fastq",
-                ".fa.gz", ".fasta.gz", ".fna.gz", ".fq.gz", ".fastq.gz",
-                NULL};
+        char *tmp = NULL;
+        size_t n = strlen(path);
+        struct stat st;
 
-        *type = FILE_TYPE_UNKNOWN;
-        for(int i = 0; sambam_suffix[i]; i++){
-                if(has_suffix_nocase(filename, sambam_suffix[i])){
-                        *type = FILE_TYPE_SAMBAM;
-                        return OK;
+        if(n == 0){
+                errno = ENOENT;
+                return FAIL;
+        }
+        tmp = strdup(path);
+        if(!tmp){
+                return FAIL;
+        }
+        while(n > 1 && tmp[n-1] == '/'){
+                tmp[--n] = 0;
+        }
+        for(char *q = tmp + 1; *q; q++){
+                if(*q == '/'){
+                        *q = 0;
+                        if(mkdir(tmp, 0777) != 0 && errno != EEXIST){
+                                int e = errno;
+                                free(tmp);
+                                errno = e;
+                                return FAIL;
+                        }
+                        *q = '/';
                 }
         }
-        for(int i = 0; fastaq_suffix[i]; i++){
-                if(has_suffix_nocase(filename, fastaq_suffix[i])){
-                        *type = FILE_TYPE_FASTAQ;
-                        return OK;
-                }
+        if(mkdir(tmp, 0777) != 0 && errno != EEXIST){
+                int e = errno;
+                free(tmp);
+                errno = e;
+                return FAIL;
         }
-        /* a missing file is reported when the file is processed (exit code 1) */
+        free(tmp);
+        if(stat(path, &st) != 0){
+                return FAIL;
+        }
+        if(!S_ISDIR(st.st_mode)){
+                errno = ENOTDIR;
+                return FAIL;
+        }
         return OK;
+}
+
+/* Up-front output checks, before any record is read:
+ * - the directory a report goes to must be writable: otherwise that input is
+ *   marked as failed (exit 1);
+ * - two inputs must not map to the same report file (usage error, exit 2). */
+static int check_outputs(struct samstat_param *p)
+{
+        char **key = NULL;
+        int ret = FAIL;
+
+        MMALLOC(key, sizeof(char*) * (size_t) p->n_infile);
+        for(int i = 0; i < p->n_infile; i++){
+                key[i] = NULL;
+        }
+        for(int i = 0; i < p->n_infile; i++){
+                const char *in = samstat_output_stem(p, i);
+                const char *slash = strrchr(in, '/');
+                const char *base = slash ? slash + 1 : in;
+                char *dir = NULL;
+                char *rdir = NULL;
+                size_t len;
+
+                if(p->outdir){
+                        dir = strdup(p->outdir);
+                }else if(slash){
+                        len = (size_t) (slash - in);
+                        dir = strndup(in, len ? len : 1);   /* "/x" -> "/" */
+                }else{
+                        dir = strdup(".");
+                }
+                ASSERT(dir != NULL, "out of memory");
+                if(access(dir, W_OK | X_OK) != 0){
+                        fprintf(stderr, "samstat: error: cannot write %s/%s.samstat.html: %s; use -d DIR to write elsewhere.\n",
+                                dir, base, strerror(errno));
+                        p->no_output[i] = 1;
+                }
+                rdir = realpath(dir, NULL);
+                len = strlen(rdir ? rdir : dir) + strlen(base) + 2;
+                key[i] = malloc(len);
+                ASSERT(key[i] != NULL, "out of memory");
+                snprintf(key[i], len, "%s/%s", rdir ? rdir : dir, base);
+                free(dir);
+                free(rdir);
+        }
+        for(int i = 0; i < p->n_infile; i++){
+                for(int j = i + 1; j < p->n_infile; j++){
+                        if(strcmp(key[i], key[j]) == 0){
+                                ERROR_MSG("Output collision: %s and %s would both write %s.samstat.html; use -d DIR or rename an input.",
+                                          p->infile[i], p->infile[j], key[i]);
+                        }
+                }
+        }
+        ret = OK;
+ERROR:
+        if(key){
+                for(int i = 0; i < p->n_infile; i++){
+                        free(key[i]);
+                }
+                MFREE(key);
+        }
+        return ret;
+}
+
+/* The only place the test-only limits are read. SAMSTAT_BATCH_RECORDS, SAMSTAT_BATCH_BASES,
+ * SAMSTAT_MAX_READ_LEN and SAMSTAT_PROGRESS_STEP can LOWER the built-in value (to cut a small
+ * test input into many batches, or to test a limit without a huge input). They can never raise
+ * it: memory is allocated in proportion to these values, so a large value must not get past
+ * here. They are not a user option and are not documented; anything but a positive integer is
+ * ignored. */
+static uint64_t env_lower(const char *name, uint64_t builtin)
+{
+        const char *e = getenv(name);
+        char *end = NULL;
+        unsigned long long v;
+
+        if(!e || e[0] < '0' || e[0] > '9'){
+                return builtin;
+        }
+        errno = 0;
+        v = strtoull(e, &end, 10);
+        if(*end != 0 || errno == ERANGE || v == 0 || v >= builtin){
+                return builtin;
+        }
+        return (uint64_t) v;
+}
+
+static void batch_limits_from_env(struct samstat_param *p)
+{
+        p->buffer_size = (int) env_lower("SAMSTAT_BATCH_RECORDS", SAMSTAT_BATCH_RECORDS);
+        p->batch_bases = env_lower("SAMSTAT_BATCH_BASES", SAMSTAT_BATCH_BASES);
+        p->max_read_len = env_lower("SAMSTAT_MAX_READ_LEN", SAMSTAT_MAX_READ_LEN);
+        p->progress_step = env_lower("SAMSTAT_PROGRESS_STEP", SAMSTAT_PROGRESS_STEP);
+}
+
+const char *samstat_output_stem(const struct samstat_param *p, int id)
+{
+        if(strcmp(p->infile[id], SAMSTAT_STDIN) == 0){
+                return "stdin";
+        }
+        return p->infile[id];
+}
+
+int samstat_pool_threads(const struct samstat_param *p)
+{
+        /* -t is the total thread budget: 1 or 2 threads leave nothing for decompression;
+         * files that fill all threads on their own run without a pool */
+        if(p->n_threads < 3 || p->n_infile >= p->n_threads){
+                return 0;
+        }
+        return MACRO_MAX(1, p->n_threads / 4);
+}
+
+int samstat_worker_threads(const struct samstat_param *p)
+{
+        /* The calling thread reads. T >= n_files: one file per thread, each inline.
+         * Otherwise the files run one after another and spend all T threads: the reader,
+         * P decompression threads (none below T = 3) and the rest as workers. */
+        if(p->n_threads < 2 || p->n_infile >= p->n_threads){
+                return 0;
+        }
+        return p->n_threads - 1 - samstat_pool_threads(p);
+}
+
+int samstat_file_threads(const struct samstat_param *p)
+{
+        /* threads that each work on a different file at the same time */
+        if(p->n_infile >= p->n_threads){
+                return p->n_threads;
+        }
+        return 1;
 }
 
 int print_help(char **argv )
 {
-        const char usage[] = " <file1> <file2> ....";
         char* tmp = NULL;
         RUN(tld_get_filename(argv[0], &tmp));
 
-
+        fprintf(stdout,"%s %s - quality control for SAM/BAM/CRAM and FASTA/FASTQ files\n", PACKAGE_NAME, PACKAGE_VERSION);
         fprintf(stdout,"\n");
-        fprintf(stdout,"%s (v%s)\n", tmp, PACKAGE_VERSION);
+        fprintf(stdout,"Usage: %s [options] <file|-> [file ...]\n\n", tmp);
+        fprintf(stdout,"  -d, --dir DIR      write reports to DIR (created if missing) [next to input]\n");
+        fprintf(stdout,"  -p, --peek N       analyse only the first N reads (not random) [all]\n");
+        fprintf(stdout,"  -t, --threads N    total threads, 1-64 [4]\n");
+        fprintf(stdout,"      --json         also write <input>.samstat.json\n");
+        fprintf(stdout,"      --multiqc      also write MultiQC files <input>.samstat_*_mqc.json\n");
+        fprintf(stdout,"      --verbose      debug output\n");
+        fprintf(stdout,"  -h, --help / -v, --version\n");
         fprintf(stdout,"\n");
-        fprintf(stdout,"Copyright (C) 2011-2026 Timo Lassmann\n");
+        fprintf(stdout,"Input type (SAM, BAM, CRAM, FASTA or FASTQ, plain or gzip) is detected from the\n");
+        fprintf(stdout,"content. CRAM needs its reference, found through REF_PATH or REF_CACHE (no\n");
+        fprintf(stdout,"network). A file name of - reads standard input (once); its reports are\n");
+        fprintf(stdout,"named stdin.samstat.*.\n");
+        fprintf(stdout,"Exit codes: 0 ok, 1 one or more inputs failed, 2 usage error.\n");
         fprintf(stdout,"\n");
-
-
-        fprintf(stdout,"Usage: %s [-options] %s\n\n",tmp,usage);
-
-        fprintf(stdout,"Options:\n\n");
-        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p","Report over-represented patterns." ,"[]"  ); */
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-d/-dir","Output directory.","[]");
-        fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","NOTE: by default SAMStat will place reports in the same directory as the input files.","");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-p/-peek","Report stats on exactly the first <n> sequences (n >= 1).","[unlimited]");
-        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-l/-len","Report stats on the first <n> nucleotides." ,"[250]"  ); */
-        /* fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--sub","Sub-sample of reads." ,"[1.0]"  ); */
-        /* fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","e.g. \"--sub 0.2\" would report stats on a random 20% selection of reads." ,""  ); */
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-t","Number of threads." ,"[4]"  );
-        fprintf(stdout,"%*s%-*s  %s %s\n",3,"",22-3,"","will only be used when multiple input files are present." ,""  );
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--plotend","Add base and quality plots relative to the read ends." ,"[]"  );
-         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--norm","Add plots summarising statistics in 1% read length intervals." ,"[]"  );
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--json","Also write machine-readable statistics to <input>.samstat.json." ,"[]"  );
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--multiqc","Also write MultiQC custom content files <input>.samstat_*_mqc.json." ,"[]"  );
-
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--seed","Random number seed." ,"[0]"  );
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"--verbose","Enables verbose output." ,"[]"  );
-
+        fprintf(stdout,"Examples:\n");
+        fprintf(stdout,"  %s sample.bam\n", tmp);
+        fprintf(stdout,"  %s -d qc/ run/*.bam run/*.fastq.gz\n", tmp);
         fprintf(stdout,"\n");
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-h/-help","Prints help message." ,"[]"  );
-        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",22-3,"-v/-version","Prints version information." ,"[]"  );
-
-        fprintf(stdout,"\n");
-
-        fprintf(stdout,"Examples:\n\n");
-
-        fprintf(stdout,"   %s ~/tmp/test.bam \n",tmp);
-        fprintf(stdout,"   - will write a QC report to: ~/tmp/test.bam.samstat.html\n\n");
-
-        fprintf(stdout,"   %s ~/tmp/test.bam -p 1000000 -d ~/samstat_reports/\n",tmp);
-        fprintf(stdout,"   - will write a QC report based on the top 1000000 sequences to: ~/samstat_reports/test.bam.samstat.html\n\n")
-;
-
-        fprintf(stdout,"   %s ~/tmp/*.bam -p 1000000 -d ~/samstat_reports/\n",tmp);
-        fprintf(stdout,"   - will write QC reports for all BAM files in ~/tmp, based on the top 1000000 sequences to: ~/samstat_reports/test.bam.samstat.html\n\n")
-;
-
-        /* fprintf(stdout,"\n"); */
-        /* fprintf(stdout,"\n"); */
-        /* fprintf(stdout,"Please cite:\n"); */
-
-        /* fprintf(stdout,"  Lassmann, Timo, Yoshihide Hayashizaki, and Carsten O. Daub.\n"); */
-
-        /* fprintf(stdout,"  \"SAMStat: monitoring biases in next generation sequencing data.\"\n"); */
-        /* fprintf(stdout,"  Bioinformatics 27.1 (2011): 130-131. \n"); */
-        /* fprintf(stdout,"  https://doi.org/10.1093/bioinformatics/btq614\n"); */
-
-        /* fprintf(stdout,"\n"); */
 
         MFREE(tmp);
         return OK;
@@ -387,18 +470,16 @@ int param_init(struct samstat_param **param)
         struct samstat_param* p = NULL;
 
         MMALLOC(p, sizeof(struct samstat_param));
-        p->buffer_size = 10000;
+        batch_limits_from_env(p);
         p->verbose = 0;
         p->n_infile = 0;
         p->n_threads = 4;
-        p->collect_end = 0;
-        p->norm_len_plot = 0;
         p->json = 0;
         p->multiqc = 0;
         p->infile = NULL;
         p->outfile = NULL;
         p->outdir = NULL;
-        p->file_type = NULL;
+        p->no_output = NULL;
         p->top_n = UINT64_MAX;
         p->subsample = 1.0;
         /* p->pst = 0; */
@@ -416,8 +497,8 @@ void param_free(struct samstat_param *p)
 {
 
         if(p){
-                if(p->file_type){
-                        gfree(p->file_type);
+                if(p->no_output){
+                        gfree(p->no_output);
                 }
                 if(p->infile){
                         MFREE(p->infile);

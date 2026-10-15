@@ -17,18 +17,18 @@ single html page:
 
 * How to install
 
-*SAMstat* needs autoconf/automake and zlib headers to build the bundled htslib. To install on linux:
+*SAMstat* needs autoconf/automake and the zlib, bzip2 and xz (lzma) headers to build the bundled htslib; bzip2 and xz are needed for CRAM. To install on linux:
 
 Ubuntu/Debian:
 
 #+begin_src bash :eval never
-sudo apt-get install -y autoconf automake zlib1g-dev
+sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev
 #+end_src
 
 On a mac via [[https://brew.sh][brew]]:
 
 #+begin_src bash :eval never
-brew install autoconf automake
+brew install autoconf automake xz
 #+end_src
 
 To build *SAMstat* (=--recursive= is required: the tld library is a git submodule):
@@ -56,31 +56,51 @@ If you already cloned without =--recursive= run =git submodule update --init --r
 * Usage
 
 #+begin_src bash :eval never 
-samstat <file.sam>  <file.bam>  <file.fa>  <file.fq> ...  <options> 
+samstat [options] <file|-> [file ...]
 #+end_src
 
-For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix. Exit codes: 0 success (also for inputs without reads, with a warning), 1 at least one input failed (the others are still processed), 2 usage error.
+Input type (SAM, BAM, CRAM, FASTA or FASTQ, plain or gzip) is detected from the content. CRAM needs its reference: SAMStat finds it through the =REF_PATH= and =REF_CACHE= environment variables only and never uses the network; if the reference is not found that file fails with a message naming both variables. A file name of =-= reads standard input; its reports are named =stdin.samstat.*=. Protein FASTA is not supported. For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix. Exit codes: 0 success (also for inputs without reads, with a warning), 1 at least one input failed, for example an unrecognised input (the others are still processed), 2 usage error.
+
+The output is identical for any =-t=. With at least as many inputs as threads, each input runs on its own thread; with fewer, the threads are shared within each input.
 
 Available options:
 
 #+begin_src bash :eval never 
-   -d/-dir            : Output directory. []
-                        NOTE: by default SAMStat will place reports in the same directory as the input files. 
-   -p/-peek           : Report stats only on the first <n> sequences. [unlimited]
-   -t                 : Number of threads. [4]
-                        will only be used when multiple input files are present. 
-   --json             : Also write <input>.samstat.json (see docs/json-format.md). []
-   --multiqc          : Also write MultiQC custom content files (see docs/multiqc.md). []
-   --plotend          : Add base and quality plots relative to the read ends. []
-   --seed             : Random number seed. [0]
-   --verbose          : Enables verbose output. []
-
-   -h/-help           : Prints help message. []
-   -v/-version        : Prints version information. []
+  -d, --dir DIR      write reports to DIR (created if missing) [next to input]
+  -p, --peek N       analyse only the first N reads (not random) [all]
+  -t, --threads N    total threads, 1-64 [4]
+      --json         also write <input>.samstat.json
+      --multiqc      also write MultiQC files <input>.samstat_*_mqc.json
+      --verbose      debug output
+  -h, --help / -v, --version
 #+end_src
 
+The JSON format is described in =docs/json-format.md=, the MultiQC files in =docs/multiqc.md=. =--nthreads= is accepted as an alias of =--threads=. The options =-l=, =--seed=, =--norm= and =--plotend= are deprecated: they are still accepted, print a warning and are ignored.
 
+Before reading any input SAMStat checks that every report can be written. If a report directory is not writable that input fails (exit code 1) and the message suggests =-d DIR=. Two inputs that would write the same report file are a usage error (exit code 2).
 
+* The report
+
+The report is one self-contained HTML page: no JavaScript, no network request, and it prints to A4. It has a header line, a summary strip (reads, bases, N50, mean Q and, for aligned input, % mapped, % MAPQ >= 30, % bases clipped and median identity), a few factual notes where they apply, and, for aligned input, a table of the four MAPQ classes that is also the key for every coloured line. Then come six plots in a fixed order, each with a question as title, a one-sentence caption, a visible "What good looks like:" line and a collapsed "How to read plot N":
+
+1. How long are the reads? Read length distribution with N50.
+2. How good is each read? Distribution of per-read mean base quality.
+3. Where along the read does quality drop? Mean quality by position.
+4. Is base composition even along the read? A, C, G, T and N by position.
+5. Where along the read do errors occur? Mismatch, insertion and deletion rates by position (aligned input only).
+6. How accurate are the aligned reads? Distribution of per-read identity (aligned input only).
+
+Lines are coloured by mapping-quality class; paired input shows Read 1 and Read 2 side by side. Positions are in base pairs for short reads and in percent of read length when the median length is 1 kb or more. Unaligned input (FASTQ, FASTA, unaligned BAM) shows plots 1 to 4 only. Plots 3 to 5 (the per-position plots) are replaced by a one-line note when the input has fewer than 50 reads. A plot that cannot be drawn, for example mismatches for a BAM without MD tags, is replaced by a one-line note. bwa-mem and bwa-mem2 write MD tags by default; STAR and minimap2 (without =--MD=) do not.
+
+* New in 2.4.0
+
+- Intra-file threading: =-t= is the total thread budget and speeds up a single input.
+- The HTML report is rebuilt with six fixed plots as inline SVG, and works offline.
+- JSON format version 2 (breaking), a reworked MultiQC output, standard input, and content-based input detection.
+- CRAM input (the reference is found through =REF_PATH= or =REF_CACHE=; no network access).
+- Protein FASTA is unsupported; =-l=, =--seed=, =--norm= and =--plotend= are ignored.
+
+See =CHANGELOG.md= for the full list of changes and breaking changes.
 
 * New in 2.3.0
 

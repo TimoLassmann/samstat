@@ -1,4 +1,7 @@
 [[https://github.com/TimoLassmann/samstat/actions/workflows/cmake.yml][https://github.com/TimoLassmann/samstat/actions/workflows/cmake.yml/badge.svg]]
+[[https://github.com/TimoLassmann/samstat/releases/latest][https://img.shields.io/github/v/release/TimoLassmann/samstat.svg]]
+[[file:COPYING][https://img.shields.io/badge/license-MIT-blue.svg]]
+[[https://doi.org/10.1093/bioinformatics/btad019][https://img.shields.io/badge/DOI-10.1093%2Fbioinformatics%2Fbtad019-blue.svg]]
 * SAMStat
 
 SAMStat is an efficient C program to quickly display statistics of large

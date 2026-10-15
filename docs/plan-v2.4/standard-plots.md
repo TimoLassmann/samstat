@@ -57,7 +57,7 @@ Shown under the strip only when the condition holds. This table is the only sour
 | no read has a sequence | `Reads have no stored sequence (SEQ is *): length, quality and base composition are not available.` |
 | 50 to 99 reads (and some sequence) | `Few reads (N): per-position plots are noisy, and positions covered by fewer than 50 reads are not drawn.` |
 | fewer than 50 reads (and some sequence) | `Only N reads: per-position plots (3-5) are not reliable and are hidden.` (`read` for N = 1) |
-| `reads_without_md > 0` | `Mismatch profile excludes N of M mapped reads (no MD tag and no X operations in CIGAR). Add MD with: samtools calmd -b in.bam ref.fa > out.bam (minimap2: use --MD).` |
+| `reads_without_md > 0` | `Mismatch profile excludes N of M mapped reads (no MD tag and no =/X operations in CIGAR). Add MD with: samtools calmd -b in.bam ref.fa > out.bam (minimap2: use --MD).` |
 | `identity_na > 0` | `Identity unavailable for N of M mapped reads (no NM tag and no =/X operations).` |
 | short layout and `bases_beyond_position_axis > 0` | `P% of bases lie beyond position 1000 and are not in plots 3-5.` |
 

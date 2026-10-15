@@ -67,7 +67,7 @@ has, so short and long samples in one cohort are comparable. The x values are 1 
 clipped bases excluded). A sample with reads shorter than 100 bases has no data in some
 bins and fewer points.
 
-`samstat_error` is `(mismatches per base with MD or X operations) + (insertion and deletion
+`samstat_error` is `(mismatches per base with MD or =/X operations) + (insertion and deletion
 events per aligned base)`, in percent, for the MAPQ >= 30 reads of read 1. A bin without any
 base that carries mismatch information is left out, so a file without `MD` tags and without
 `X` operations has no `samstat_error` section. No per-MAPQ plots, composition or identity

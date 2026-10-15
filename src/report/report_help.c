@@ -97,13 +97,13 @@ const char* const report_mismatch_row_na =
 const char* const report_note_partial =
         "Partial run: first %s reads only (-p); not a random sample.";
 const char* const report_note_no_md =
-        "Mismatch profile excludes %s of %s mapped reads (no MD tag and no X operations in CIGAR). Add MD with: samtools calmd -b in.bam ref.fa > out.bam (minimap2: use --MD).";
+        "Mismatch profile excludes %s of %s mapped reads (no MD tag and no =/X operations in CIGAR). Add MD with: samtools calmd -b in.bam ref.fa > out.bam (minimap2: use --MD).";
 const char* const report_note_identity_na =
         "Identity unavailable for %s of %s mapped reads (no NM tag and no =/X operations).";
 const char* const report_note_beyond_axis =
         "%s%% of bases lie beyond position 1000 and are not in plots 3-5.";
 const char* const report_note_mismatch_excludes =
-        "Excludes %s of %s mapped reads (no MD tag and no X operations in CIGAR).";
+        "Excludes %s of %s mapped reads (no MD tag and no =/X operations in CIGAR).";
 const char* const report_note_no_sequence =
         "Reads have no stored sequence (SEQ is *): length, quality and base composition are not available.";
 const char* const report_note_few_reads =

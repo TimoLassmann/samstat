@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
                 ERROR_MSG("This helper program requires exactly one argument - the name of an output file.");
         }
 
-        tld_strbuf_alloc(&b,1024);
+        RUN(tld_strbuf_alloc(&b,1024));
         RUN(header(b));
         RUN(nuc_to_internal(b));
         RUN(qual_error_table(b));
@@ -70,9 +70,9 @@ int nuc_to_internal(tld_strbuf* b)
                 snprintf(buffer, 1024,"%3d,", arr[i]);
                 RUN(tld_append(b,buffer));
                 if(i != 0 && (i +1) % 16 == 0){
-                        tld_append_char(b, '\n');
+                        RUN(tld_append_char(b, '\n'));
                 }else  if(i != 0 && (i+1) %4 == 0){
-                        tld_append_char(b, ' ');
+                        RUN(tld_append_char(b, ' '));
                 }
         }
         b->len--;
@@ -98,9 +98,9 @@ int qual_error_table(tld_strbuf* b)
                 snprintf(buffer, 64, "%10lluu,", (unsigned long long) llround(e));
                 RUN(tld_append(b, buffer));
                 if((q + 1) % 8 == 0){
-                        tld_append_char(b, '\n');
+                        RUN(tld_append_char(b, '\n'));
                 }else{
-                        tld_append_char(b, ' ');
+                        RUN(tld_append_char(b, ' '));
                 }
         }
         b->len--;
@@ -148,12 +148,12 @@ int length_edge_tables(tld_strbuf* b)
         for(int i = 0; i < 1000; i++){
                 snprintf(buffer, 64, "%u,", (unsigned) i);
                 RUN(tld_append(b, buffer));
-                tld_append_char(b, (++col % 16 == 0) ? '\n' : ' ');
+                RUN(tld_append_char(b, (++col % 16 == 0) ? '\n' : ' '));
         }
         for(e = 1000; ; e = grid_next(e)){
                 snprintf(buffer, 64, "%u,", (unsigned) e);
                 RUN(tld_append(b, buffer));
-                tld_append_char(b, (++col % 16 == 0) ? '\n' : ' ');
+                RUN(tld_append_char(b, (++col % 16 == 0) ? '\n' : ' '));
                 if(e >= GRID_STOP){
                         break;
                 }
@@ -165,16 +165,16 @@ int length_edge_tables(tld_strbuf* b)
         snprintf(buffer, 64, "#define CT_N_DISPLAY_EDGES %d\n", n_display);
         RUN(tld_append(b, buffer));
         RUN(tld_append(b, "const uint32_t display_edges[CT_N_DISPLAY_EDGES] = {\n0,"));
-        tld_append_char(b, ' ');
+        RUN(tld_append_char(b, ' '));
         for(e = 1; e < 1000; e = grid_next(e)){
                 snprintf(buffer, 64, "%u,", (unsigned) e);
                 RUN(tld_append(b, buffer));
-                tld_append_char(b, (++col % 16 == 0) ? '\n' : ' ');
+                RUN(tld_append_char(b, (++col % 16 == 0) ? '\n' : ' '));
         }
         for(e = 1000; ; e = grid_next(e)){
                 snprintf(buffer, 64, "%u,", (unsigned) e);
                 RUN(tld_append(b, buffer));
-                tld_append_char(b, (++col % 16 == 0) ? '\n' : ' ');
+                RUN(tld_append_char(b, (++col % 16 == 0) ? '\n' : ' '));
                 if(e >= GRID_STOP){
                         break;
                 }

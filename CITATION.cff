@@ -7,7 +7,7 @@ authors:
   - family-names: Lassmann
     given-names: Timo
 repository-code: "https://github.com/TimoLassmann/samstat"
-license: GPL-3.0-or-later
+license: MIT
 preferred-citation:
   type: article
   title: "SAMStat 2: quality control for next generation sequencing data"

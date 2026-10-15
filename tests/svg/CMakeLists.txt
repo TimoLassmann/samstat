@@ -14,27 +14,14 @@ set_tests_properties(svg:unit PROPERTIES LABELS report)
 # deterministic and locale independent, the worst case (paired 999 bp) stays small, and the base
 # and MAPQ palettes share no hex value. The test links the collector (for the length tables and the
 # stat_collection layout) the same way collect:unit does, and the report wording (report_help.c).
-set(SVG_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/gen)
-file(MAKE_DIRECTORY ${SVG_GEN_DIR})
-add_custom_command(
-  OUTPUT ${SVG_GEN_DIR}/convert_tables.h
-  COMMAND converttablegen ${SVG_GEN_DIR}/convert_tables.h
-  DEPENDS converttablegen)
 add_executable(report_plots_test
   ${PROJECT_SOURCE_DIR}/src/plot/report_plots_test.c
   ${PROJECT_SOURCE_DIR}/src/report/report_help.c
   ${PROJECT_SOURCE_DIR}/src/collect/collect.c
   ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
-  ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c
-  ${SVG_GEN_DIR}/convert_tables.h)
-target_include_directories(report_plots_test PRIVATE ${SVG_GEN_DIR})
-if(SAMSTAT_USE_SYSTEM_HTSLIB)
-  target_link_libraries(report_plots_test PRIVATE PkgConfig::HTSLIB)
-else()
-  add_dependencies(report_plots_test htslib)
-  target_include_directories(report_plots_test PRIVATE ${HTSLIB_SRC_DIR})
-  target_link_libraries(report_plots_test PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
-endif()
+  ${PROJECT_SOURCE_DIR}/src/htsinterface/precheck.c
+  ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c)
+target_link_libraries(report_plots_test PRIVATE htslib::hts)
 if(Threads_FOUND)
   target_link_libraries(report_plots_test PRIVATE Threads::Threads)
 endif()

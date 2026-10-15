@@ -277,6 +277,188 @@ ERROR:
         return FAIL;
 }
 
+/* A SEQ '*' record keeps its CIGAR counts; 20 operations of 2^28 - 1 bases each add up
+ * past 2^32: every count saturates at UINT32_MAX instead of wrapping around. */
+static int test_count_saturation(void)
+{
+        struct tl_seq_buffer* sb = NULL;
+        struct tl_seq* s = NULL;
+        struct aln_data* a = NULL;
+        const uint32_t big = (1u << 28) - 1;
+        const uint32_t ops[4] = {BAM_CMATCH, BAM_CINS, BAM_CSOFT_CLIP, BAM_CDIFF};
+        const int per_op = 20;
+
+        RUN(alloc_tl_seq_buffer(&sb, 1));
+        RUN(add_aln_data(sb));
+        s = sb->sequences[0];
+        a = s->data;
+        gfree(a->cigar);
+        a->cigar = NULL;
+        a->n_alloc_cigar = 0;
+        galloc(&a->cigar, 4 * per_op);
+        a->n_alloc_cigar = 4 * per_op;
+        a->n_cigar = 0;
+        for(int k = 0; k < 4; k++){
+                for(int j = 0; j < per_op; j++){
+                        a->cigar[a->n_cigar++] = bam_cigar_gen(big, ops[k]);
+                }
+        }
+        s->len = 0;
+        a->flag = 0;
+        RUN(parse_alignment(s));
+        CHECK(a->aln_len == 0, "saturation: aln_len %d", a->aln_len);
+        CHECK(a->m_bases == UINT32_MAX, "saturation: m_bases %u", a->m_bases);
+        CHECK(a->i_bases == UINT32_MAX, "saturation: i_bases %u", a->i_bases);
+        CHECK(a->s_bases == UINT32_MAX, "saturation: s_bases %u", a->s_bases);
+        CHECK(a->x_ops == UINT32_MAX, "saturation: x_ops %u", a->x_ops);
+        CHECK(a->i_ev == (uint32_t) per_op, "saturation: i_ev %u", a->i_ev);
+        CHECK(a->d_ev == 0 && a->d_bases == 0, "saturation: d %u/%u", a->d_ev, a->d_bases);
+        CHECK(a->has_md_or_x == 1, "saturation: has_md_or_x %d", a->has_md_or_x);
+        RUN(free_aln_data(sb));
+        free_tl_seq_buffer(sb);
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* convert_bam_batch() on records built in memory: tags of the wrong type and qualities
+ * that a SAM text file cannot hold. */
+struct aux_case {
+        const char* name;
+        char nm_type;           /* 0: no NM */
+        int64_t nm_i;           /* value of an integer NM */
+        const char* nm_z;       /* value of NM:Z */
+        char md_type;           /* 0: no MD; 'B' is an int8 array {1} */
+        const char* md_z;
+        int expect_error;
+        const char* expect_md;
+};
+
+static const struct aux_case aux_cases[] = {
+        /* name          nm   nm_i  nm_z  md   md_z   error md */
+        {"md_z",         0,   0,    NULL, 'Z', "10",  -1,   "10"},
+        {"md_i",         0,   0,    NULL, 'i', NULL,  -1,   ""},
+        {"md_A",         0,   0,    NULL, 'A', NULL,  -1,   ""},
+        {"md_B",         0,   0,    NULL, 'B', NULL,  -1,   ""},
+        {"nm_C",         'C', 3,    NULL, 0,   NULL,   3,   ""},
+        {"nm_s",         's', 2,    NULL, 0,   NULL,   2,   ""},
+        {"nm_I",         'I', 70000,NULL, 0,   NULL,   70000,""},
+        {"nm_i_neg",     'i', -4,   NULL, 0,   NULL,  -1,   ""},
+        {"nm_Z",         'Z', 0,    "0",  'Z', "10",  -1,   "10"},
+        {"nm_A",         'A', 0,    NULL, 0,   NULL,  -1,   ""},
+        {"nm_f",         'f', 0,    NULL, 0,   NULL,  -1,   ""},
+};
+
+static int add_tags(bam1_t* b, const struct aux_case* c)
+{
+        if(c->nm_type){
+                int r = 0;
+                switch(c->nm_type){
+                case 'C':{ uint8_t v = (uint8_t) c->nm_i; r = bam_aux_append(b, "NM", 'C', 1, &v); break; }
+                case 's':{ int16_t v = (int16_t) c->nm_i; r = bam_aux_append(b, "NM", 's', 2, (uint8_t*) &v); break; }
+                case 'I':{ uint32_t v = (uint32_t) c->nm_i; r = bam_aux_append(b, "NM", 'I', 4, (uint8_t*) &v); break; }
+                case 'i':{ int32_t v = (int32_t) c->nm_i; r = bam_aux_append(b, "NM", 'i', 4, (uint8_t*) &v); break; }
+                case 'Z': r = bam_aux_append(b, "NM", 'Z', (int) strlen(c->nm_z) + 1, (const uint8_t*) c->nm_z); break;
+                case 'A':{ uint8_t v = '0'; r = bam_aux_append(b, "NM", 'A', 1, &v); break; }
+                case 'f':{ float v = 0.0f; r = bam_aux_append(b, "NM", 'f', 4, (uint8_t*) &v); break; }
+                default: return FAIL;
+                }
+                if(r != 0){
+                        return FAIL;
+                }
+        }
+        if(c->md_type){
+                int r = 0;
+                switch(c->md_type){
+                case 'Z': r = bam_aux_append(b, "MD", 'Z', (int) strlen(c->md_z) + 1, (const uint8_t*) c->md_z); break;
+                case 'i':{ int32_t v = 4; r = bam_aux_append(b, "MD", 'i', 4, (uint8_t*) &v); break; }
+                case 'A':{ uint8_t v = 'x'; r = bam_aux_append(b, "MD", 'A', 1, &v); break; }
+                case 'B':{ int8_t v = 1; r = bam_aux_update_array(b, "MD", 'c', 1, &v); break; }
+                default: return FAIL;
+                }
+                if(r != 0){
+                        return FAIL;
+                }
+        }
+        return OK;
+}
+
+static int test_convert_aux_qual(void)
+{
+        const int n_aux = (int)(sizeof(aux_cases) / sizeof(aux_cases[0]));
+        /* raw Phred values: 223 + 33 would wrap to 0 (and cut a strlen copy short); a 0xFF
+         * after the first position is a quality, not the QUAL '*' marker */
+        const char qual_raw[10] = {30, (char) 223, 93, 94, (char) 255, 0, 40, (char) 200, 2, 93};
+        const char qual_expect[10] = {'?', '~', '~', '~', '~', '!', 'I', '~', '#', '~'};
+        char qual_star[10];
+        const uint32_t cigar = bam_cigar_gen(10, BAM_CMATCH);
+        const int n = n_aux + 2;
+        struct tl_seq_buffer* sb = NULL;
+        struct bam_batch batch;
+        bam1_t* recs[32];
+
+        memset(qual_star, (char) 0xFF, sizeof(qual_star));
+        batch.recs = recs;
+        batch.n = 0;
+        batch.alloc = 0;
+        batch.cap = n;
+        for(int i = 0; i < n; i++){
+                recs[i] = bam_init1();
+                if(!recs[i]){
+                        goto ERROR;
+                }
+                batch.alloc++;
+        }
+        for(int i = 0; i < n; i++){
+                const char* q = (i == n_aux) ? qual_raw : ((i == n_aux + 1) ? qual_star : NULL);
+                char name[16];
+                snprintf(name, sizeof(name), "r%d", i);
+                if(bam_set1(recs[i], strlen(name), name, 0, 0, 0, 60, 1, &cigar, -1, -1, 0,
+                            10, "ACGTACGTAC", q, 32) < 0){
+                        goto ERROR;
+                }
+                if(i < n_aux){
+                        RUN(add_tags(recs[i], &aux_cases[i]));
+                }
+                batch.n++;
+        }
+
+        RUN(alloc_tl_seq_buffer(&sb, n));
+        RUN(add_aln_data(sb));
+        RUN(convert_bam_batch(&batch, 0, sb));
+        CHECK(sb->num_seq == n, "convert: %d records", sb->num_seq);
+        if(sb->num_seq == n){
+                for(int i = 0; i < n_aux; i++){
+                        const struct aux_case* c = &aux_cases[i];
+                        struct aln_data* a = sb->sequences[i]->data;
+                        CHECK(a->error == c->expect_error, "%s: error %d, expected %d", c->name, a->error, c->expect_error);
+                        CHECK(a->md->len == (int) strlen(c->expect_md) && memcmp(a->md->str, c->expect_md, strlen(c->expect_md)) == 0,
+                              "%s: md '%.*s', expected '%s'", c->name, a->md->len, TLD_STR(a->md), c->expect_md);
+                        /* without MD (and without = / X) the read has no mismatch data */
+                        RUN(parse_alignment(sb->sequences[i]));
+                        CHECK(a->has_md_or_x == (c->expect_md[0] ? 1 : 0), "%s: has_md_or_x %d", c->name, a->has_md_or_x);
+                }
+                struct tl_seq* s = sb->sequences[n_aux];
+                CHECK(s->qual->len == 10, "qual_clamp: qual length %d, expected 10", s->qual->len);
+                CHECK(s->qual->len == 10 && memcmp(s->qual->str, qual_expect, 10) == 0,
+                      "qual_clamp: qual %.*s, expected %.10s", s->qual->len, TLD_STR(s->qual), qual_expect);
+                s = sb->sequences[n_aux + 1];
+                CHECK(s->qual->len == 10 && memcmp(s->qual->str, qual_star, 10) == 0,
+                      "qual_star: qual length %d, expected 10 bytes 0xFF", s->qual->len);
+        }
+        RUN(free_aln_data(sb));
+        free_tl_seq_buffer(sb);
+        for(int i = 0; i < batch.alloc; i++){
+                bam_destroy1(recs[i]);
+        }
+        return OK;
+ERROR:
+        for(int i = 0; i < batch.alloc; i++){
+                bam_destroy1(recs[i]);
+        }
+        return FAIL;
+}
+
 static int run_case(struct tl_seq_buffer* sb, const struct aln_case* c)
 {
         struct tl_seq* s = NULL;
@@ -368,6 +550,8 @@ static const struct aln_case cases[] = {
         {"MD_letters_long","ACGTACGTAC","10M",    "ACGTACGTACGTACGTACGT",0, 0, 10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
         {"MD_del_long","ACGTACGT",   "4M2D4M",    "4^TTTTTTTT4",0, 0, 9, "ACGT-ACGT",  "ACGTTACGT",  0, 0, NULL},
         {"MD_garbage", "ACGTACGTAC", "10M",       "4*#5",  0, 0,   10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
+        /* bytes above 127 are neither digits nor letters (no negative argument to isdigit) */
+        {"MD_high_byte","ACGTACGTAC","10M",       "4\xe9\xc3""5",0, 0, 10, "ACGTACGTAC", "ACGTACGTAC", 0, 0, NULL},
 };
 
 int main(void)
@@ -389,7 +573,9 @@ int main(void)
         sb = NULL;
         RUN(test_nm_reset());
         RUN(test_trim());
-        n += nc + 2;
+        RUN(test_count_saturation());
+        RUN(test_convert_aux_qual());
+        n += nc + 4;
         fprintf(stdout, "unit_parse_alignment: %d cases, %d checks, %d failed\n", n, n_checks, n_failed);
         return n_failed ? 1 : 0;
 ERROR:

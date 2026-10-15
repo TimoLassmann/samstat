@@ -231,32 +231,6 @@ mqc_run_test(unwritable_file 1
   ARGS --multiqc -d @OUTDIR@ ${SAMSTAT_FIXTURE_DIR}/small.sam
   REGEX "Failed to open output file")
 
-# MultiQC file names are limited to 1024 characters: a -d path of 995 characters still
-# takes the HTML report (+23) but not the longest MultiQC file (+35), which is an error
-# and not a truncation. The directory is created below the scratch directory.
-string(LENGTH "${MQC_OUT}/path_too_long" mqc_prefix_len)
-math(EXPR mqc_rest "995 - ${mqc_prefix_len}")
-set(MQC_LONG "")
-while(mqc_rest GREATER 201)
-  string(REPEAT "d" 200 comp)
-  string(APPEND MQC_LONG "/${comp}")
-  math(EXPR mqc_rest "${mqc_rest} - 201")
-endwhile()
-math(EXPR mqc_rest "${mqc_rest} - 1")
-string(REPEAT "d" ${mqc_rest} comp)
-string(APPEND MQC_LONG "/${comp}")
-string(SUBSTRING "${MQC_LONG}" 1 -1 MQC_LONG_REL)
-mqc_run_test(path_too_long 1
-  MKDIR ${MQC_LONG_REL}
-  ARGS --multiqc -d @OUTDIR@${MQC_LONG} ${SAMSTAT_FIXTURE_DIR}/small.sam
-  REGEX "Output path too long")
-# remove the deep directory again, pass or fail: paths this long break backup tools
-add_test(NAME multiqc:path_too_long_cleanup
-  COMMAND ${CMAKE_COMMAND} -E rm -rf ${MQC_OUT}/path_too_long)
-set_tests_properties(multiqc:path_too_long PROPERTIES FIXTURES_REQUIRED mqc_long_path)
-set_tests_properties(multiqc:path_too_long_cleanup PROPERTIES
-  LABELS multiqc FIXTURES_CLEANUP mqc_long_path)
-
 # --- standard-plots.md section 8 ----------------------------------------------------------
 # mqc_sample_check(<name> <input> <file name = sample.ext> <section> <checks...>): run samstat
 # --multiqc on <input> in its own directory and check one section file

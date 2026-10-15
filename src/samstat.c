@@ -7,6 +7,7 @@
 #include "report/stat_report.h"
 #include <stdint.h>
 #include <inttypes.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
@@ -23,7 +24,6 @@ _Static_assert(SAMSTAT_MAX_READ_LEN == READER_MAX_READ_LEN, "one read length lim
 /* Read input <id> (SAM, BAM, FASTA or FASTQ, from a file or standard input) and report. */
 int process_reads_file(struct samstat_param *p, int id);
 
-int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
 
 /* Run the analysis for input file <id> depending on its type. */
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 
         int n_created = 0;
         for(long t = 0; t < td->n_threads; t++){
-                int rc = pthread_create(&td->threads[n_created], NULL, samstat_worker, (void *)td);
+                int rc = pthread_create(&td->threads[n_created], &td->attr, samstat_worker, (void *)td);
                 if(rc){
                         WARNING_MSG("pthread_create() failed with return code %d.", rc);
                 }else{
@@ -112,43 +112,25 @@ void *samstat_worker(void *data)
 
         struct samstat_param* param = td->p;
 
-        int run = 1;
+        while(1){
+                /* claim the next file: the files are taken in command-line order, each by
+                 * exactly one thread (no lock, so no failure path that could leave one held) */
+                int target_id = atomic_fetch_add(&td->next_file, 1);
 
-        while(run){
-                int target_id = -1;
-                /* find work  */
-                 if(pthread_mutex_lock(&td->lock) != 0){
-                          ERROR_MSG("Can't get lock");
-                 }
-
-                 for(int i = 0; i < param->n_infile;i++){
-                         if(td->active[i] == 0){
-                                 td->active[i] = 1;
-                                 target_id = i ;
-                                 break;
-                         }
-                 }
-
-                 if(param->verbose && target_id != -1){
-                         LOG_MSG("Working on %s",param->infile[target_id]);
-                 }
-
-                 if(pthread_mutex_unlock(&td->lock) != 0){
-                         ERROR_MSG("Can't get lock");
-                 }
-
-                 if(target_id == -1){
-                         run = 0;
-                 }else if(process_file(param, target_id) == OK){
-                         td->ok[target_id] = 1;
-                 }else{
-                         /* an error in one file must not stop the remaining files */
-                         WARNING_MSG("Failed to process file: %s", param->infile[target_id]);
-                 }
+                if(target_id >= param->n_infile){
+                        break;
+                }
+                if(param->verbose){
+                        LOG_MSG("Working on %s",param->infile[target_id]);
+                }
+                if(process_file(param, target_id) == OK){
+                        /* only this thread writes ok[target_id]; main reads it after the join */
+                        td->ok[target_id] = 1;
+                }else{
+                        /* an error in one file must not stop the remaining files */
+                        WARNING_MSG("Failed to process file: %s", param->infile[target_id]);
+                }
         }
-        return NULL;
-ERROR:
-        LOG_MSG("Worker thread done due to error.");
         return NULL;
 }
 #endif
@@ -238,9 +220,12 @@ static int process_batch(struct file_worker *w, const struct bam_batch *b)
         sb->L = TL_SEQ_BUFFER_DNA;
         sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
         if(!w->is_fastx){
+                /* parse_alignment fails only when it cannot allocate the alignment strings,
+                 * and then leaves them NULL: collecting such a record would dereference them,
+                 * so the whole batch (and with it the input) fails */
                 for(int i = 0; i < sb->num_seq;i++){
-                        parse_alignment(sb->sequences[i]);
-                        fix_orientation(sb->sequences[i]);
+                        RUN(parse_alignment(sb->sequences[i]));
+                        RUN(fix_orientation(sb->sequences[i]));
                 }
         }
         RUN(collect_stats(sb, w->s));
@@ -254,16 +239,32 @@ ERROR:
         return FAIL;
 }
 
-/* A counter on standard error every ~1 M reads (p->progress_step), only for a person
- * watching: standard error must be a terminal. With -v the log lines are written instead. */
+/* The one-line counter (it rewrites itself with \r) is only for a person watching: standard
+ * error must be a terminal, and only one input may be in progress at a time. Inputs that run
+ * side by side (at least as many inputs as threads) would overwrite each other's line and
+ * leave it garbled, so they get none; with -v the log lines are written instead. */
+static int progress_counter_on(const struct samstat_param *p)
+{
+        if(p->verbose || !isatty(STDERR_FILENO)){
+                return 0;
+        }
+#if HAVE_PTHREADS
+        if(samstat_file_threads(p) > 1){
+                return 0;
+        }
+#endif
+        return 1;
+}
+
+/* A counter on standard error every ~1 M reads (p->progress_step). */
 static void log_progress(struct samstat_param *p, const char *name, uint64_t n_read, uint64_t *old_n_read)
 {
         if(n_read < *old_n_read + p->progress_step){
                 return;
         }
         if(p->verbose){
-                LOG_MSG("Processed %"PRId64" sequences", n_read);
-        }else if(isatty(STDERR_FILENO)){
+                LOG_MSG("Processed %"PRIu64" sequences", n_read);
+        }else if(progress_counter_on(p)){
                 fprintf(stderr, "\rsamstat: %s: %"PRIu64" reads processed", name, n_read);
         }
         *old_n_read = n_read;
@@ -272,7 +273,7 @@ static void log_progress(struct samstat_param *p, const char *name, uint64_t n_r
 /* Remove the progress counter again (it is not followed by a newline). */
 static void clear_progress(const struct samstat_param *p, uint64_t old_n_read)
 {
-        if(old_n_read && !p->verbose && isatty(STDERR_FILENO)){
+        if(old_n_read && progress_counter_on(p)){
                 fputs("\r\033[K", stderr);
         }
 }
@@ -429,6 +430,8 @@ static int run_pipeline(struct samstat_param *p, struct sam_bam_file *f, struct 
         struct file_worker *w = NULL;
         struct bam_batch **batches = NULL;
         pthread_t *threads = NULL;
+        pthread_attr_t attr;
+        int have_attr = 0;
         struct batch_queue *q = NULL;
         uint64_t old_n_read = 0;
         int n_batches = n_workers + 2;  /* one being filled, one waiting, W being processed */
@@ -448,13 +451,16 @@ static int run_pipeline(struct samstat_param *p, struct sam_bam_file *f, struct 
                 RUN(bam_batch_alloc(&batches[n_batches_init], p->buffer_size));
         }
         RUN(batch_queue_alloc(&q, n_batches, (void **) batches));
+        /* the stack size of the file threads: a worker must not have less than its caller */
+        RUN(samstat_thread_attr_init(&attr));
+        have_attr = 1;
 
         for(int i = 0; i < n_workers; i++){
                 /* the workers that run are w[0 .. n_created - 1] */
                 int rc;
 
                 w[n_created].q = q;
-                rc = pthread_create(&threads[n_created], NULL, file_worker_main, &w[n_created]);
+                rc = pthread_create(&threads[n_created], &attr, file_worker_main, &w[n_created]);
                 if(rc){
                         WARNING_MSG("pthread_create() failed with return code %d.", rc);
                         w[n_created].q = NULL;
@@ -500,6 +506,9 @@ static int run_pipeline(struct samstat_param *p, struct sam_bam_file *f, struct 
         }
 ERROR:
         /* shared by the success and the error path: every thread has been joined */
+        if(have_attr){
+                pthread_attr_destroy(&attr);
+        }
         batch_queue_free(q);
         for(int i = 0; i < n_batches_init; i++){
                 bam_batch_free(batches[i]);
@@ -537,8 +546,10 @@ int process_reads_file(struct samstat_param* p, int id)
         int have_inline_worker = 0;
         int ret = FAIL;
 
-        if(!is_stdin){
-                ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
+        /* readable, not only present: an unreadable file gets the reason here instead of
+         * a less specific message from htslib */
+        if(!is_stdin && access(p->infile[id], R_OK) != 0){
+                ERROR_MSG("cannot read %s: %s", p->infile[id], strerror(errno));
         }
 
 #if HAVE_PTHREADS
@@ -609,36 +620,4 @@ ERROR:
         }
         stat_collection_free(s);
         return ret;
-}
-
-int debug_seq_buffer_print(struct tl_seq_buffer *sb)
-{
-        for(int i = 0 ; i < sb->num_seq;i++){
-                struct aln_data* a = (struct aln_data*) sb->sequences[i]->data;
-                fprintf(stdout,"%s\n%s\n", TLD_STR( sb->sequences[i]->name),
-                        TLD_STR(sb->sequences[i]->seq)
-                        );
-                if(a){
-                        parse_alignment(sb->sequences[i]);
-                        /* get_readable_cigar(a, NULL); */
-                        char* cig = NULL;
-                        get_readable_cigar(a, &cig);
-                        fprintf(stdout,"Cigar: %s\n",cig);
-                        fprintf(stdout,"   MD: %s\n",TLD_STR(a->md));
-                        gfree(cig);
-
-                        fprintf(stdout, "%s (genome)\n",a->genome);
-                        for(int i = 0; i < a->aln_len;i++){
-                                if(a->genome[i] == a->read[i]){
-                                        fprintf(stdout,"|");
-                                }else{
-                                        fprintf(stdout," ");
-                                }
-                        }
-                        fprintf(stdout,"\n");
-
-                        fprintf(stdout, "%s (read)\n",a->read);
-                }
-        }
-        return OK;
 }

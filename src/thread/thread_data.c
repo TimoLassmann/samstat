@@ -6,6 +6,23 @@
 #include "thread_data.h"
 
 
+int samstat_thread_attr_init(pthread_attr_t *attr)
+{
+        size_t stack_size = 0;
+
+        ASSERT(pthread_attr_init(attr) == 0, "Cannot initialise the thread attributes");
+        if(pthread_attr_getstacksize(attr, &stack_size) != 0 || stack_size < SAMSTAT_THREAD_STACK){
+                /* a larger default (ulimit -s on Linux) is kept */
+                if(pthread_attr_setstacksize(attr, SAMSTAT_THREAD_STACK) != 0){
+                        pthread_attr_destroy(attr);
+                        ERROR_MSG("Cannot set the thread stack size to %zu bytes", SAMSTAT_THREAD_STACK);
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 int thread_data_init(struct thread_data **thread_data, struct samstat_param* param)
 {
         struct thread_data* td = NULL;
@@ -14,20 +31,18 @@ int thread_data_init(struct thread_data **thread_data, struct samstat_param* par
 
 
         td->p = NULL;
-        td->active = NULL;
         td->ok = NULL;
         td->threads = NULL;
-        pthread_attr_init(&td->attr);
-        pthread_mutex_init(&td->lock, NULL);
+        atomic_init(&td->next_file, 0);
+        if(samstat_thread_attr_init(&td->attr) != OK){
+                MFREE(td);
+                ERROR_MSG("Cannot prepare the file threads");
+        }
 
 
         /* T inputs at once (one per thread), or one after another with all T threads on each */
         td->n_threads = samstat_file_threads(param);
 
-        galloc(&td->active, param->n_infile);
-        for(int i = 0; i < param->n_infile; i++){
-                td->active[i] = 0;
-        }
         galloc(&td->ok, param->n_infile);
         for(int i = 0; i < param->n_infile; i++){
                 td->ok[i] = 0;
@@ -47,16 +62,12 @@ ERROR:
 void thread_data_free(struct thread_data *td)
 {
         if(td){
-                if(td->active){
-                        gfree(td->active);
-                }
                 if(td->ok){
                         gfree(td->ok);
                 }
                 if(td->threads){
                         MFREE(td->threads);
                 }
-                pthread_mutex_destroy(&td->lock);
                 pthread_attr_destroy(&td->attr);
                 MFREE(td);
         }

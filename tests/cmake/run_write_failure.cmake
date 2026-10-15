@@ -1,8 +1,22 @@
 # samstat must report a clear error (and write nothing) when the report cannot
 # be written, instead of silently ignoring fopen/fwrite failures.
 # Required: -DSAMSTAT=<binary> -DINPUT=<file> -DOUTDIR=<dir>
+# Optional: -DCLEANUP=ON  only make OUTDIR writable again and remove it; for a
+#                         FIXTURES_CLEANUP test that runs even when the test
+#                         itself was killed (timeout, Ctrl-C) while OUTDIR was
+#                         read-only, which would make `rm -rf build` fail.
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
+
+# A run killed between the two chmod calls leaves OUTDIR read-only: make it
+# writable first so that the REMOVE_RECURSE below (and later runs) work.
+if(EXISTS ${OUTDIR})
+  file(CHMOD ${OUTDIR} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+endif()
 file(REMOVE_RECURSE ${OUTDIR})
+if(CLEANUP)
+  return()
+endif()
 file(MAKE_DIRECTORY ${OUTDIR})
 
 # Running as root ignores directory permissions: nothing to test then.

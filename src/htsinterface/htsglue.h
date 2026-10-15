@@ -52,7 +52,9 @@ struct aln_data {
 struct reader_opts {
         int pool_threads;        /* decompression threads (0: none), one pool per file */
         uint64_t batch_records;  /* a chunk ends after this many records ... */
-        uint64_t batch_bases;    /* ... or when it holds this many bases, whichever is first */
+        uint64_t batch_bases;    /* ... or when it holds this many bases, or its records take
+                                  * 2 * batch_bases bytes (l_data: name, CIGAR, SEQ, QUAL, tags),
+                                  * whichever is first */
         uint64_t max_primary;    /* -p: stop after exactly this many primary records */
         uint64_t max_read_len;   /* longer records are an error (0: READER_MAX_READ_LEN) */
 };
@@ -110,9 +112,9 @@ EXTERN int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch
  * SAM/BAM, the alignment data). Touches no reader state, so any thread may call it. */
 EXTERN int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb);
 /* After a batch has been collected, before reset_tl_seq_buffer() and clear_aln_data(): give
- * back the memory of every slot (of the first <n_used>) that held a long read, so that a slot
- * never keeps room for the longest read it has seen. Without this a worker's 4096 slots grow,
- * over a long-read run, towards 4096 times the longest read. */
+ * back the memory of every buffer (of the first <n_used> slots) with room for more than 32 KB,
+ * so that a slot never keeps room for the longest read it has seen. Without this a worker's
+ * 4096 slots grow, over a long-read run, towards 4096 times the longest read. */
 EXTERN int trim_seq_buffer(struct tl_seq_buffer *sb, int n_used);
 /* Read and convert in one step (single-threaded callers and tests). */
 EXTERN int read_bam_chunk(struct sam_bam_file *f_handle, struct tl_seq_buffer *sb);

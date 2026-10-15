@@ -11,6 +11,7 @@
 
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
+#include "precheck.h"
 
 static void free_aln_data_struct(struct aln_data *a);
 static int alloc_aln_data(struct aln_data **aln_d);
@@ -87,10 +88,20 @@ static int more_primary_follow(struct sam_bam_file *f)
         return r < -1;
 }
 
-/* A slot that held more than this many bytes of record data gives the memory back when
- * the batch is reset: with 4096 slots per batch and several batches in flight, slots must
- * not each keep room for the longest read they ever held. */
+/* A slot that holds more than this many bytes of record data (its capacity m_data, not the
+ * size of the record) gives the memory back when the batch is reset: with 4096 slots per batch
+ * and several batches in flight, slots must not each keep room for the longest read they ever
+ * held. htslib rounds m_data up to a power of two plus 32, so a kept slot holds at most
+ * 16416 bytes. */
 #define BATCH_KEEP_DATA 32768
+
+/* The raw records of one batch may take this many bytes per base of the base limit
+ * (batch_bases): a record costs 1.5 bytes per base for SEQ and QUAL plus its name, CIGAR and
+ * tags. Aux tags and CIGAR are otherwise unlimited (PacBio kinetics and ONT MM/ML tags add
+ * several bytes per base, a crafted record gigabytes), so without a byte limit a batch of
+ * 4096 records could hold any amount of memory. Short reads (records below 4 KB) still end
+ * their batch at the record limit, and long reads with few tags still at the base limit. */
+#define BATCH_BYTES_PER_BASE 2
 
 int bam_batch_alloc(struct bam_batch **batch, int cap)
 {
@@ -110,7 +121,10 @@ ERROR:
 
 void bam_batch_reset(struct bam_batch *batch)
 {
-        for(int i = 0; i < batch->n; i++){
+        /* every allocated slot, not only the first n: read_batch reads the secondary and
+         * supplementary records it skips, and the final failed read at the end of the input,
+         * into slot n, which is not counted in n */
+        for(int i = 0; i < batch->alloc; i++){
                 bam1_t *r = batch->recs[i];
                 if(r->m_data > BATCH_KEEP_DATA){
                         free(r->data);
@@ -160,6 +174,8 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
 {
         bam_hdr_t *h = f_handle->header;
         uint64_t n_bases = 0;
+        uint64_t n_bytes = 0;
+        uint64_t max_bytes;
         int r = 0;
 
         batch->n = 0;
@@ -174,6 +190,7 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                 max_records = batch->cap;
         }
         ASSERT(max_records > 0, "No room for a record");
+        max_bytes = (f_handle->batch_bases > UINT64_MAX / BATCH_BYTES_PER_BASE) ? UINT64_MAX : f_handle->batch_bases * BATCH_BYTES_PER_BASE;
 
         while(1){
                 bam1_t *b = batch_slot(batch);
@@ -196,6 +213,7 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                 }else{
                         batch->n++;
                         n_bases += (uint64_t) b->core.l_qseq;
+                        n_bytes += (uint64_t) b->l_data;
                         f_handle->n_primary++;
 
                         /* -p: stop at exactly max_primary primary records, even mid-batch */
@@ -204,7 +222,7 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                                 f_handle->partial = (uint8_t) more_primary_follow(f_handle);
                                 return OK;
                         }
-                        if(batch->n >= max_records || n_bases >= f_handle->batch_bases){
+                        if(batch->n >= max_records || n_bases >= f_handle->batch_bases || n_bytes >= max_bytes){
                                 return OK;
                         }
                 }
@@ -224,6 +242,38 @@ int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch)
         return read_batch(f_handle, batch, batch->cap);
 }
 
+/* Append len bytes of src to b. Unlike tld_append this does not stop at a 0 byte: the
+ * caller gives the length (SEQ and QUAL have one, a 0 inside them must not cut them short).
+ * The capacity grows like in tld_append; on failure b is unchanged. */
+static int append_bytes(tld_strbuf *b, const char *src, int len)
+{
+        ASSERT(b != NULL && len >= 0, "Bad append");
+        if((int64_t) b->alloc_len - (int64_t) b->len <= (int64_t) len){
+                const int64_t want = (int64_t) b->len + (int64_t) len + 1;
+                int64_t new_size = MACRO_MAX((int64_t) b->alloc_len * 2, want);
+                uint8_t *tmp = NULL;
+
+                ASSERT(want <= INT32_MAX, "String too long");
+                if(new_size > INT32_MAX){
+                        new_size = INT32_MAX;
+                }
+                galloc(&tmp, (int) new_size);
+                memcpy(tmp, b->str, (size_t) b->len);
+                gfree(b->str);
+                b->str = tmp;
+                b->alloc_len = (int32_t) new_size;
+        }
+        memcpy(b->str + b->len, src, (size_t) len);
+        b->len += len;
+        b->str[b->len] = 0;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* The largest Phred score the SAM specification allows (QUAL characters '!' to '~'). */
+#define PHRED_MAX 93
+
 int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb)
 {
         char* buffer = NULL;
@@ -242,7 +292,7 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                 s = sb->sequences[sb->num_seq];
                 a = (struct aln_data* )s->data;
 
-                tld_append(s->name, bam_get_qname(b));
+                RUN(tld_append(s->name, bam_get_qname(b)));
 
                 s->len = b->core.l_qseq;
 
@@ -259,27 +309,30 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                 }
                 buffer[s->len] = 0;
 
-                tld_append(s->seq, buffer);
+                RUN(append_bytes(s->seq, buffer, s->len));
 
                 if(s->len == 0){
                         /* SEQ '*': no bases and no qualities (qual_ptr must not be read) */
-                        buffer[0] = 0;
-                        tld_append(s->qual, buffer);
+                        RUN(append_bytes(s->qual, buffer, 0));
                 }else if(qual_ptr[0] == 0xFF){
+                        /* SAM spec: a first quality of 0xFF means QUAL '*' (absent) */
                         if(is_fastx){
                                 /* FASTA: no quality string at all */
-                                buffer[0] = 0;
+                                RUN(append_bytes(s->qual, buffer, 0));
                         }else{
                                 memset(buffer, 0xFF, s->len);
                                 buffer[s->len] = 0;
+                                RUN(append_bytes(s->qual, buffer, s->len));
                         }
-                        tld_append(s->qual, buffer);
                 }else{
+                        /* A BAM can hold any byte as a quality. Above 93 the character
+                         * would leave '!'..'~' (and 223 + 33 wraps to 0): clamp, as the
+                         * collector would for 94..222 anyway. */
                         for (int i = 0; i < s->len; ++i){
-                                buffer[i] = qual_ptr[i] + 33;
+                                buffer[i] = (char) (MACRO_MIN((int) qual_ptr[i], PHRED_MAX) + 33);
                         }
                         buffer[s->len] = 0;
-                        tld_append(s->qual, buffer);
+                        RUN(append_bytes(s->qual, buffer, s->len));
                 }
 
                 /* FASTA/FASTQ records carry no alignment data (a == NULL). The
@@ -295,22 +348,48 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                         a->error = -1;
                         if(! (BAM_FUNMAP & b->core.flag)){
                                 uint8_t * aux =  bam_aux_get(b,"NM");
+                                /* only an integer NM is an edit distance: bam_aux2i reads
+                                 * NM:Z / NM:A / NM:f as 0, a perfect match. Anything else,
+                                 * or a value that does not fit, is treated as no NM. */
                                 if(aux){
-                                        a->error = bam_aux2i(aux);
+                                        switch(aux[0]){
+                                        case 'c':
+                                        case 'C':
+                                        case 's':
+                                        case 'S':
+                                        case 'i':
+                                        case 'I':{
+                                                const int64_t nm = bam_aux2i(aux);
+                                                if(nm >= 0 && nm <= INT32_MAX){
+                                                        a->error = (int) nm;
+                                                }
+                                                break;
+                                        }
+                                        default:
+                                                break;
+                                        }
                                 }
                                 aux =  bam_aux_get(b,"MD");
-                                if(aux){
-                                        tld_append(a->md,bam_aux2Z(aux));
+                                /* only MD:Z is a mismatch string; bam_aux2Z returns NULL
+                                 * for MD:i, MD:A, MD:B ...: treated as no MD */
+                                if(aux && aux[0] == 'Z'){
+                                        RUN(tld_append(a->md,bam_aux2Z(aux)));
                                 }
                         }
 
-                        a->n_cigar = b->core.n_cigar;
-                        if(a->n_cigar > a->n_alloc_cigar){
-                                a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
-                                gfree(a->cigar);
+                        if((int) b->core.n_cigar > a->n_alloc_cigar){
+                                const int new_alloc = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, (int) b->core.n_cigar);
+                                if(a->cigar){
+                                        gfree(a->cigar);
+                                }
                                 a->cigar = NULL;
-                                galloc(&a->cigar, a->n_alloc_cigar);
+                                /* nothing allocated until galloc succeeds */
+                                a->n_alloc_cigar = 0;
+                                a->n_cigar = 0;
+                                galloc(&a->cigar, new_alloc);
+                                a->n_alloc_cigar = new_alloc;
                         }
+                        a->n_cigar = b->core.n_cigar;
                         uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
                         for(int i = 0; i < a->n_cigar;i++){
                                 a->cigar[i] = tmp[i];
@@ -332,7 +411,8 @@ ERROR:
         return FAIL;
 }
 
-/* A slot whose read was longer than this gives its memory back (see trim_seq_buffer). */
+/* A slot buffer with room for more than this many bytes gives its memory back (see
+ * trim_seq_buffer): after a batch no buffer of a slot is larger than this. */
 #define SLOT_KEEP_LEN 32768
 
 static int fresh_strbuf(tld_strbuf **b, int size)
@@ -345,40 +425,83 @@ ERROR:
         return FAIL;
 }
 
+/* Release the buffers of one slot that hold more than keep bytes (fresh small buffers replace
+ * them). tld_strbuf keeps its largest size and at least doubles it when it grows: decide on the
+ * capacity, not on the length, or a slot whose reads stayed below the limit could keep almost
+ * twice the limit per buffer. */
+static int trim_slot(struct tl_seq *s, int keep)
+{
+        struct aln_data *a = (struct aln_data *) s->data;
+
+        if(s->seq->alloc_len > keep){
+                RUN(fresh_strbuf(&s->seq, 128));
+        }
+        if(s->qual->alloc_len > keep){
+                RUN(fresh_strbuf(&s->qual, 128));
+        }
+        if(a){
+                if(a->md->alloc_len > keep){
+                        RUN(fresh_strbuf(&a->md, 16));
+                }
+                if(a->aln_len_alloc > keep){
+                        gfree(a->read);
+                        gfree(a->genome);
+                        a->read = NULL;
+                        a->genome = NULL;
+                        a->aln_len_alloc = 256;
+                        a->aln_len = 0;
+                        galloc(&a->read, a->aln_len_alloc);
+                        galloc(&a->genome, a->aln_len_alloc);
+                }
+                if(a->n_alloc_cigar > keep / 4){
+                        gfree(a->cigar);
+                        a->cigar = NULL;
+                        a->n_alloc_cigar = 16;
+                        a->n_cigar = 0;
+                        galloc(&a->cigar, a->n_alloc_cigar);
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* Bytes the buffers of one slot hold. */
+static uint64_t slot_bytes(const struct tl_seq *s)
+{
+        const struct aln_data *a = (const struct aln_data *) s->data;
+        uint64_t n = (uint64_t) s->seq->alloc_len + (uint64_t) s->qual->alloc_len;
+
+        if(a){
+                n += (uint64_t) a->md->alloc_len + 2 * (uint64_t) a->aln_len_alloc
+                        + 4 * (uint64_t) a->n_alloc_cigar;
+        }
+        return n;
+}
+
+/* Per-slot limit (SLOT_KEEP_LEN) and per-buffer total (WORKER_KEEP_BYTES): the per-slot limit
+ * alone still lets 4096 slots that each held one read just under it pin about 768 MB per worker
+ * (a crafted file can arrange that; real data does not, because a batch of long reads uses few
+ * slots). When the slots of a buffer hold more than WORKER_KEEP_BYTES after a batch, every slot
+ * gets small buffers again; the next batches grow them as needed. */
+#define WORKER_KEEP_BYTES ((uint64_t) 64 * 1024 * 1024)
+#define SLOT_SMALL_LEN 1024
+
 int trim_seq_buffer(struct tl_seq_buffer *sb, int n_used)
 {
+        uint64_t total = 0;
+
         ASSERT(sb != NULL, "No sb");
         ASSERT(n_used >= 0 && n_used <= sb->malloc_num, "Bad slot count");
         for(int i = 0; i < n_used; i++){
-                struct tl_seq *s = sb->sequences[i];
-                struct aln_data *a = (struct aln_data *) s->data;
-
-                /* tld_strbuf keeps its largest size: replace the buffers of a long read */
-                if(s->seq->len > SLOT_KEEP_LEN || s->qual->len > SLOT_KEEP_LEN){
-                        RUN(fresh_strbuf(&s->seq, 128));
-                        RUN(fresh_strbuf(&s->qual, 128));
-                }
-                if(a){
-                        if(a->md->len > SLOT_KEEP_LEN){
-                                RUN(fresh_strbuf(&a->md, 16));
-                        }
-                        if(a->aln_len_alloc > SLOT_KEEP_LEN){
-                                gfree(a->read);
-                                gfree(a->genome);
-                                a->read = NULL;
-                                a->genome = NULL;
-                                a->aln_len_alloc = 256;
-                                a->aln_len = 0;
-                                galloc(&a->read, a->aln_len_alloc);
-                                galloc(&a->genome, a->aln_len_alloc);
-                        }
-                        if(a->n_alloc_cigar > SLOT_KEEP_LEN / 4){
-                                gfree(a->cigar);
-                                a->cigar = NULL;
-                                a->n_alloc_cigar = 16;
-                                a->n_cigar = 0;
-                                galloc(&a->cigar, a->n_alloc_cigar);
-                        }
+                RUN(trim_slot(sb->sequences[i], SLOT_KEEP_LEN));
+        }
+        for(int i = 0; i < sb->malloc_num; i++){
+                total += slot_bytes(sb->sequences[i]);
+        }
+        if(total > WORKER_KEEP_BYTES){
+                for(int i = 0; i < sb->malloc_num; i++){
+                        RUN(trim_slot(sb->sequences[i], SLOT_SMALL_LEN));
                 }
         }
         return OK;
@@ -439,22 +562,25 @@ static int blank_input(samFile *in, int *first)
         return 0;
 }
 
-static void destroy_reader(struct sam_bam_file *f_handle)
+/* Frees everything of a reader, also a half-opened one (open_reads' error path). Returns
+ * the result of sam_close() (0 without an open file). bam_destroy1() and bam_hdr_destroy()
+ * accept NULL. */
+static int destroy_reader(struct sam_bam_file *f_handle)
 {
-        if(f_handle->b){
-                bam_destroy1(f_handle->b);
-        }
+        int status = 0;
+
+        bam_destroy1(f_handle->b);
         bam_batch_free(f_handle->chunk);
-        if(f_handle->header){
-                bam_hdr_destroy(f_handle->header);
-        }
+        bam_hdr_destroy(f_handle->header);
         if(f_handle->in){
-                sam_close(f_handle->in);
+                status = sam_close(f_handle->in);
         }
         if(f_handle->pool){
+                /* after the file: the pool must outlive every file attached to it */
                 hts_tpool_destroy(f_handle->pool);
         }
         MFREE(f_handle);
+        return status;
 }
 
 int open_bam(struct sam_bam_file **file, char *filename)
@@ -536,6 +662,12 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
                 break;
         }
 
+        /* htslib loads a whole FASTA/FASTQ record or SAM line before the read length check
+         * in read_batch() sees it: reject a record or line that is too long first, from a
+         * streaming scan of the first PRECHECK_SCAN_MAX bytes (precheck.h). Before the
+         * header is read: sam_hdr_read() loads the SAM header lines. */
+        RUN(precheck_input(f_handle->filename, fmt->format, f_handle->max_read_len));
+
         if(!f_handle->is_empty){
                 /* One pool, attached once (htslib >= 1.23.1 refuses a second attach).
                  * BAM: the header is read first. htslib 1.24 deadlocks in bgzf_check_EOF()
@@ -569,30 +701,22 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
         return OK;
 ERROR:
         if(f_handle){
-                destroy_reader(f_handle);
+                (void) destroy_reader(f_handle);
         }
         return FAIL;
 }
 
 int close_bam(struct sam_bam_file* f_handle)
 {
+        /* the name is not owned by the handle: it stays valid after destroy_reader() */
+        char *filename = f_handle->filename;
         int status;
 
-        bam_destroy1(f_handle->b);
-        bam_batch_free(f_handle->chunk);
-        bam_hdr_destroy(f_handle->header);
-
-
-        status = sam_close(f_handle->in);
-        if(f_handle->pool){
-                /* after the file: the pool must outlive every file attached to it */
-                hts_tpool_destroy(f_handle->pool);
-        }
+        /* report after freeing: the struct must not leak on this path */
+        status = destroy_reader(f_handle);
         if (status < 0) {
-                /* report after freeing: the struct must not leak on this path */
-                WARNING_MSG("Error closing input: %s.",f_handle->filename);
+                WARNING_MSG("Error closing input: %s.", filename);
         }
-        MFREE(f_handle);
         ASSERT(status >= 0, "Error closing input");
         return OK;
 ERROR:

@@ -5,17 +5,22 @@
 #   SAMSTAT      samstat binary to measure (build dir, outside the repo)
 #   OLD_SAMSTAT  optional 2.3.0 binary, timed on the same files
 #
-# environment (all optional):
-#   BENCH_DIR          work directory (default: ./samstat-bench; keep it outside the repo)
-#   BENCH_SHORT_READS  150 bp reads                  (default 2000000)
-#   BENCH_ONT_READS    ONT-like reads, 500 bp-30 kb  (default 150000, about 1 Gb)
-#   BENCH_HUGE_READS   reads of 1 Mb                 (default 8)
-#   BENCH_THREADS      thread counts to run          (default "1 4 8")
+# environment:
+#   BENCH_DIR          work directory, REQUIRED; must not be inside a git work tree
+#                      (the inputs are hundreds of MB; never let them land in a repo
+#                      or a backed-up source checkout)
+#   BENCH_SHORT_READS  150 bp reads                  (default 200000,  at most 200000)
+#   BENCH_ONT_READS    ONT-like reads, 500 bp-30 kb  (default 10000,   at most 20000)
+#   BENCH_HUGE_READS   reads of 1 Mb                 (default 8,       at most 8)
+#   BENCH_THREADS      thread counts to run          (default "1 4 8", each at most 8)
+#   BENCH_FORCE        1 lifts the caps above (for the large published runs, e.g.
+#                      BENCH_SHORT_READS=2000000 BENCH_ONT_READS=150000, about 3 GB)
 #   BENCH_PYTHON       python launcher               (default "uv run python")
 #
-# Generation time is reported separately from the timed runs. Inputs are SAM
-# plus a FASTQ.gz made from the short-read SAM; they are reused when present
-# (delete BENCH_DIR to regenerate).
+# The expected disk use is printed before anything is generated. Generation time
+# is reported separately from the timed runs. Inputs are SAM plus a FASTQ.gz made
+# from the short-read SAM; they are reused when present (delete BENCH_DIR to
+# regenerate).
 set -eu
 
 if [ $# -lt 1 ] || [ ! -x "$1" ]; then
@@ -33,12 +38,64 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 GEN="$HERE/../tools/make_longread_fixtures.py"
 [ -f "$GEN" ] || { echo "generator not found: $GEN" >&2; exit 2; }
 
-: "${BENCH_DIR:=$PWD/samstat-bench}"
-: "${BENCH_SHORT_READS:=2000000}"
-: "${BENCH_ONT_READS:=150000}"
+# No default work directory: a default inside the current directory once put
+# gigabytes of inputs into a source checkout.
+if [ -z "${BENCH_DIR:-}" ]; then
+    echo "BENCH_DIR is not set: set it to a scratch directory outside any repository," >&2
+    echo "e.g. BENCH_DIR=/tmp/samstat-bench sh $0 $*" >&2
+    exit 2
+fi
+: "${BENCH_SHORT_READS:=200000}"
+: "${BENCH_ONT_READS:=10000}"
 : "${BENCH_HUGE_READS:=8}"
 : "${BENCH_THREADS:=1 4 8}"
+: "${BENCH_FORCE:=0}"
 : "${BENCH_PYTHON:=uv run python}"
+
+# is_count VALUE: a positive decimal integer
+is_count() {
+    case $1 in
+        ''|*[!0-9]*|0*) return 1 ;;
+    esac
+    return 0
+}
+# check_cap NAME VALUE MAX: refuse VALUE > MAX unless BENCH_FORCE=1
+check_cap() {
+    is_count "$2" || { echo "$1 must be a positive integer, got '$2'" >&2; exit 2; }
+    if [ "$BENCH_FORCE" != 1 ] && [ "$2" -gt "$3" ]; then
+        echo "$1=$2 is above the cap of $3; set BENCH_FORCE=1 to run it anyway" >&2
+        exit 2
+    fi
+}
+check_cap BENCH_SHORT_READS "$BENCH_SHORT_READS" 200000
+check_cap BENCH_ONT_READS "$BENCH_ONT_READS" 20000
+check_cap BENCH_HUGE_READS "$BENCH_HUGE_READS" 8
+for t in $BENCH_THREADS; do
+    check_cap BENCH_THREADS "$t" 8
+done
+
+# Refuse a work directory inside a git work tree: the nearest existing ancestor
+# decides, since BENCH_DIR may not exist yet.
+case $BENCH_DIR in
+    /*) bench_abs=$BENCH_DIR ;;
+    *)  bench_abs=$PWD/$BENCH_DIR ;;
+esac
+probe=$bench_abs
+while [ ! -d "$probe" ]; do
+    probe=$(dirname "$probe")
+done
+if command -v git >/dev/null 2>&1 &&
+   [ "$(git -C "$probe" rev-parse --is-inside-work-tree 2>/dev/null || true)" = true ]; then
+    echo "BENCH_DIR=$BENCH_DIR is inside the git work tree $(git -C "$probe" rev-parse --show-toplevel);" >&2
+    echo "choose a directory outside any repository" >&2
+    exit 2
+fi
+
+# Expected disk use (rounded up): about 380 bytes per 150 bp SAM record plus
+# 120 for its FASTQ.gz copy, 17.5 kB per ONT-like record (mean length 7.2 kb,
+# about 2.4 bytes per base) and 2 MB per 1 Mb record.
+est_mb=$(( (BENCH_SHORT_READS * 500 + BENCH_ONT_READS * 17500 + BENCH_HUGE_READS * 2000100) / 1000000 + 1 ))
+echo "bench.sh: inputs in $bench_abs need about $est_mb MB of disk (less when they are reused)"
 
 case "$(uname -s)" in
     Darwin) TIME_KIND=bsd ;;
@@ -62,13 +119,16 @@ ONT="$BENCH_DIR/ont_${BENCH_ONT_READS}.sam"
 HUGE="$BENCH_DIR/huge_${BENCH_HUGE_READS}x1Mb.sam"
 FQGZ="$BENCH_DIR/short_${BENCH_SHORT_READS}.fastq.gz"
 
+# the generator has its own cap on --reads; BENCH_FORCE=1 lifts both
+GEN_FORCE=
+if [ "$BENCH_FORCE" = 1 ]; then GEN_FORCE=--force; fi
 if [ ! -s "$SHORT" ]; then
     # shellcheck disable=SC2086
-    $BENCH_PYTHON "$GEN" --reads "$BENCH_SHORT_READS" --profile short --out "$SHORT"
+    $BENCH_PYTHON "$GEN" --reads "$BENCH_SHORT_READS" --profile short --out "$SHORT" $GEN_FORCE
 fi
 if [ ! -s "$ONT" ]; then
     # shellcheck disable=SC2086
-    $BENCH_PYTHON "$GEN" --reads "$BENCH_ONT_READS" --profile ont --out "$ONT"
+    $BENCH_PYTHON "$GEN" --reads "$BENCH_ONT_READS" --profile ont --out "$ONT" $GEN_FORCE
 fi
 if [ ! -s "$HUGE" ]; then
     awk -v n="$BENCH_HUGE_READS" 'BEGIN {

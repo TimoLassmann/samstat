@@ -163,3 +163,80 @@ fastx_path_test(fastx:empty_sequence_fa ${FASTX_GEN}/empty_seq.fa
 file(WRITE ${FASTX_GEN}/blank.txt "\n\n  \n")
 fastx_gzip(${FASTX_GEN}/blank.txt ${FASTX_GEN}/blank.fq.gz)
 fastx_path_test(fastx:blank_gz ${FASTX_GEN}/blank.fq.gz "summary.total_reads=0")
+
+# --- streaming pre-check (precheck.c): a record or line too long is rejected before htslib
+# loads it. SAMSTAT_MAX_READ_LEN lowers the read length limit to 30 so that the inputs stay
+# tiny; a line may be 65536 characters longer than that (PRECHECK_LINE_SLACK). The message
+# differs from the reader's own check ("has N bases, more than ..."), so these tests fail if
+# the input reaches htslib's record reader first.
+# fastx_limit_test(<name> <input> RC <n> [REGEX <re>] [CHECKS <json checks...>])
+function(fastx_limit_test name input)
+  cmake_parse_arguments(T "" "RC;REGEX" "CHECKS" ${ARGN})
+  get_filename_component(base ${input} NAME)
+  string(REPLACE ";" "\;" checks "${T_CHECKS}")
+  set(cmd ${CMAKE_COMMAND} -E env SAMSTAT_MAX_READ_LEN=30 ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> "-DARGS=--json\;-d\;@OUTDIR@\;${input}"
+    -DOUTDIR=${FASTX_OUT}/precheck_${name} -DEXPECT_RC=${T_RC})
+  if(T_REGEX)
+    list(APPEND cmd "-DEXPECT_STDERR_REGEX=${T_REGEX}")
+  endif()
+  if(T_RC EQUAL 0)
+    list(APPEND cmd "-DEXPECT_FILES=${base}.samstat.html" -DJSON=${base}.samstat.json "-DCHECKS=${checks}")
+  else()
+    list(APPEND cmd "-DEXPECT_NO_FILES=${base}.samstat.html")
+  endif()
+  add_test(NAME fastx:precheck:${name} COMMAND ${cmd} -P ${FASTX_HELPERS}/run_expect.cmake)
+  set_tests_properties(fastx:precheck:${name} PROPERTIES LABELS fastx)
+endfunction()
+
+# FASTA: the second record has 20 + 20 = 40 bases, over the limit of 30 (plain and gzip)
+file(WRITE ${FASTX_GEN}/pc_big.fa
+  ">ok\nACGTACGTAC\n>big chromosome\nACGTACGTACGTACGTACGT\nACGTACGTACGTACGTACGT\n")
+fastx_gzip(${FASTX_GEN}/pc_big.fa ${FASTX_GEN}/pc_big.fa.gz)
+fastx_limit_test(fasta_record ${FASTX_GEN}/pc_big.fa RC 1
+  REGEX "record big is longer than 30 bases: not a file of sequencing reads")
+fastx_limit_test(fasta_record_gz ${FASTX_GEN}/pc_big.fa.gz RC 1
+  REGEX "record big is longer than 30 bases: not a file of sequencing reads")
+
+# FASTQ: one record of 2 x 20 = 40 bases on two sequence and two quality lines
+file(WRITE ${FASTX_GEN}/pc_big.fq
+  "@q1\nACGTACGTACGTACGTACGT\nACGTACGTACGTACGTACGT\n+\nIIIIIIIIIIIIIIIIIIII\nIIIIIIIIIIIIIIIIIIII\n")
+fastx_limit_test(fastq_multiline ${FASTX_GEN}/pc_big.fq RC 1
+  REGEX "record q1 is longer than 30 bases: not a file of sequencing reads")
+
+# gzip: one line of 70001 characters and no newline (htslib takes it for FASTQ and would
+# read the line whole); over 30 + 65536
+string(REPEAT "x" 70000 pc_blob)
+file(WRITE ${FASTX_GEN}/pc_long_line.txt "@${pc_blob}")
+fastx_gzip(${FASTX_GEN}/pc_long_line.txt ${FASTX_GEN}/pc_long_line.fq.gz)
+fastx_limit_test(gz_long_line ${FASTX_GEN}/pc_long_line.fq.gz RC 1
+  REGEX "line 1 is longer than 65566 characters: not a file of sequencing reads")
+
+# SAM: a header line over the line limit
+file(WRITE ${FASTX_GEN}/pc_long_header.sam "@HD\tVN:1.6\n@CO\t${pc_blob}\n")
+fastx_limit_test(sam_header_line ${FASTX_GEN}/pc_long_header.sam RC 1
+  REGEX "line 2 is longer than 65566 characters: not a file of sequencing reads")
+
+# accepted: records of exactly 30 bases. FASTQ: sequence and quality over two lines, the
+# quality lines start with '@' and '+' (they are quality, not a new record: htslib reads
+# quality lines until they cover the sequence), a name line with a 200-character comment
+# (longer than 30, within the slack). FASTA: CRLF line ends (the '\r' is not a base).
+string(REPEAT "c" 200 pc_comment)
+file(WRITE ${FASTX_GEN}/pc_ok.fq
+  "@r1 ${pc_comment}\nACGTACGTACGTACG\nTACGTACGTACGTAC\n+\n@IIIIIIIIIIIIII\n+IIIIIIIIIIIIII\n"
+  "@r2\nACGTACGTACGTACGTACGTACGTACGTAC\n+\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+  "@r3\nACGT\n+\nIIII\n")
+fastx_gzip(${FASTX_GEN}/pc_ok.fq ${FASTX_GEN}/pc_ok.fq.gz)
+fastx_limit_test(accept_fq ${FASTX_GEN}/pc_ok.fq RC 0 CHECKS
+  "summary.total_reads=3"
+  "read1.length.reads.unmapped.30=2"
+  "read1.length.reads.unmapped.4=1")
+fastx_limit_test(accept_fq_gz ${FASTX_GEN}/pc_ok.fq.gz RC 0 CHECKS
+  "summary.total_reads=3"
+  "read1.length.reads.unmapped.30=2"
+  "read1.length.reads.unmapped.4=1")
+file(WRITE ${FASTX_GEN}/pc_ok.fa
+  ">s1 ${pc_comment}\r\nACGTACGTACGTACG\r\nTACGTACGTACGTAC\r\n>s2\r\nACGTACGTACGTACGTACGTACGTACGTAC\r\n")
+fastx_limit_test(accept_fa_crlf ${FASTX_GEN}/pc_ok.fa RC 0 CHECKS
+  "summary.total_reads=2"
+  "read1.length.reads.unmapped.30=2")

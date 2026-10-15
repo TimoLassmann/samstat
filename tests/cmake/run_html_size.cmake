@@ -11,6 +11,7 @@
 
 cmake_minimum_required(VERSION 3.19)
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 if(NOT DEFINED MAX_BYTES)
   set(MAX_BYTES 1000000)
 endif()

@@ -2,6 +2,7 @@
 #define COLLECT_H
 
 #include <stdint.h>
+#include <math.h>
 
 #ifdef COLLECT_IMPORT
 #define EXTERN
@@ -45,9 +46,13 @@ struct tl_seq_buffer;
 /* 128-bit unsigned integer (GCC and Clang; __extension__ keeps -pedantic quiet) */
 __extension__ typedef unsigned __int128 collect_u128;
 
-/* A value that does not apply (JSON null, left out of the report). */
-#define COLLECT_NA (__builtin_nan(""))
-#define COLLECT_IS_NA(x) ((x) != (x))
+/* A value that does not apply (JSON null, left out of the report). NAN and isnan() are
+ * standard C99 (<math.h>); a self-comparison x != x is folded to false by compilers that
+ * assume no NaNs, and __builtin_nan is a GCC/Clang extension. Note that -ffinite-math-only
+ * (part of -ffast-math) lets a compiler assume no NaNs for isnan() too: samstat must not be
+ * built with it. */
+#define COLLECT_NA (NAN)
+#define COLLECT_IS_NA(x) (isnan(x))
 
 struct mapqual_bins {
         uint8_t* map;
@@ -145,7 +150,8 @@ EXTERN int stat_collection_finalise(struct stat_collection *s);
 EXTERN int stat_collection_alloc(struct stat_collection **stats);
 EXTERN void stat_collection_free(struct stat_collection *s);
 
-/* Tables generated at build time (convert_tables.c). */
+/* Tables in convert_tables.h, committed next to collect.c and written by convert_tables.c
+ * (the test build:convert_tables_in_sync keeps them identical). */
 EXTERN uint32_t collect_qual_error(int q);                /* E[q] = round(10^(-q/10) * 2^30), q 0..93 */
 EXTERN int collect_length_bin(uint64_t len);              /* storage length bin of a read length */
 EXTERN uint64_t collect_length_edge(int bin);             /* lower edge of a storage length bin */

@@ -13,6 +13,9 @@
  *   per record   quality is counted per record, never decided from the first chunk
  *   mean Q       128-bit error sum above UINT64_MAX
  *   fixtures     summary values of the long-read fixtures
+ *   merge fields merge adds the first and the last counter of every accumulator array
+ *   free         stat_collection_free copes with members that were never allocated (the
+ *                state the error path of stat_collection_alloc frees)
  */
 #include "tldlite.h"
 #include "../../src/htsinterface/htsglue.h"
@@ -276,6 +279,113 @@ static int test_merge(void)
                 CHECK_D("median_identity", z->median_identity, NA);
                 stat_collection_free(z);
         }
+        return OK;
+ERROR:
+        n_failed++;
+        return FAIL;
+}
+
+/* --- merge, field by field -------------------------------------------------------------- */
+
+/* stat_collection_merge adds struct collect_acc as one flat array: every array of it, its
+ * first and its last element, must come out as the sum of the two collections. */
+static int test_merge_fields(void)
+{
+        const char *ctx = "merge fields";
+        struct stat_collection *a = NULL;
+        struct stat_collection *b = NULL;
+        struct collect_acc *x = NULL;
+        struct collect_acc *y = NULL;
+        const int R = COLLECT_N_MATE - 1;
+        const int M = COLLECT_N_MAPQ - 1;
+        uint64_t total = 0;
+        const uint64_t *flat = NULL;
+
+        RUN(stat_collection_alloc(&a));
+        RUN(stat_collection_alloc(&b));
+        x = a->acc;
+        y = b->acc;
+
+        x->pos_abs[0][0][0].comp[0] = 1;                        y->pos_abs[0][0][0].comp[0] = 2;
+        x->pos_abs[R][M][COLLECT_ABS_BINS - 1].deletions = 3;   y->pos_abs[R][M][COLLECT_ABS_BINS - 1].deletions = 4;
+        x->pos_rel[0][0][0].comp[0] = 5;                        y->pos_rel[0][0][0].comp[0] = 6;
+        x->pos_rel[R][M][COLLECT_REL_BINS - 1].deletions = 7;   y->pos_rel[R][M][COLLECT_REL_BINS - 1].deletions = 8;
+        x->len_reads[0][0][0] = 9;                              y->len_reads[0][0][0] = 10;
+        x->len_reads[R][M][COLLECT_N_LEN_BINS - 1] = 11;        y->len_reads[R][M][COLLECT_N_LEN_BINS - 1] = 12;
+        x->len_bases[0][0][0] = 13;                             y->len_bases[0][0][0] = 14;
+        x->len_bases[R][M][COLLECT_N_LEN_BINS - 1] = 15;        y->len_bases[R][M][COLLECT_N_LEN_BINS - 1] = 16;
+        x->read_q[0][0][0] = 17;                                y->read_q[0][0][0] = 18;
+        x->read_q[R][M][COLLECT_N_Q - 1] = 19;                  y->read_q[R][M][COLLECT_N_Q - 1] = 20;
+        x->identity[0][0][0] = 21;                              y->identity[0][0][0] = 22;
+        x->identity[R][M][COLLECT_N_IDENT - 1] = 23;            y->identity[R][M][COLLECT_N_IDENT - 1] = 24;
+        a->min_length = 30;
+        a->max_length = 70;
+        b->min_length = 50;
+        b->max_length = 90;
+
+        RUN(stat_collection_merge(a, b));
+
+        CHECK_U("pos_abs first", x->pos_abs[0][0][0].comp[0], 3);
+        CHECK_U("pos_abs last", x->pos_abs[R][M][COLLECT_ABS_BINS - 1].deletions, 7);
+        CHECK_U("pos_rel first", x->pos_rel[0][0][0].comp[0], 11);
+        CHECK_U("pos_rel last", x->pos_rel[R][M][COLLECT_REL_BINS - 1].deletions, 15);
+        CHECK_U("len_reads first", x->len_reads[0][0][0], 19);
+        CHECK_U("len_reads last", x->len_reads[R][M][COLLECT_N_LEN_BINS - 1], 23);
+        CHECK_U("len_bases first", x->len_bases[0][0][0], 27);
+        CHECK_U("len_bases last", x->len_bases[R][M][COLLECT_N_LEN_BINS - 1], 31);
+        CHECK_U("read_q first", x->read_q[0][0][0], 35);
+        CHECK_U("read_q last", x->read_q[R][M][COLLECT_N_Q - 1], 39);
+        CHECK_U("identity first", x->identity[0][0][0], 43);
+        CHECK_U("identity last", x->identity[R][M][COLLECT_N_IDENT - 1], 47);
+        CHECK_U("min_length", a->min_length, 30);
+        CHECK_U("max_length", a->max_length, 90);
+        /* nothing else was touched: the counters add up to 1 + 2 + ... + 24 */
+        flat = (const uint64_t *) x;
+        for(size_t i = 0; i < sizeof(struct collect_acc) / sizeof(uint64_t); i++){
+                total += flat[i];
+        }
+        CHECK_U("sum of all counters", total, 300);
+        /* src is left as it was */
+        CHECK_U("src identity last", y->identity[R][M][COLLECT_N_IDENT - 1], 24);
+
+        stat_collection_free(a);
+        stat_collection_free(b);
+        return OK;
+ERROR:
+        n_failed++;
+        stat_collection_free(a);
+        stat_collection_free(b);
+        return FAIL;
+}
+
+/* --- freeing a partly allocated collection ------------------------------------------------- */
+
+/* The error path of stat_collection_alloc frees a collection whose later members are still
+ * NULL, and get_mapqual_bins frees a mapqual_bins without map or description. Before the fix
+ * gfree(NULL) read memory in front of address 0. */
+static int test_free_partial(void)
+{
+        struct stat_collection *s = NULL;
+
+        RUN(stat_collection_alloc(&s));
+        gfree(s->mapq_map->description);
+        s->mapq_map->description = NULL;
+        stat_collection_free(s);
+        s = NULL;
+        n_checks++;
+
+        RUN(stat_collection_alloc(&s));
+        gfree(s->mapq_map->map);
+        s->mapq_map->map = NULL;
+        gfree(s->basic_nums);
+        s->basic_nums = NULL;
+        MFREE(s->acc);
+        stat_collection_free(s);
+        s = NULL;
+        n_checks++;
+
+        stat_collection_free(NULL);
+        n_checks++;
         return OK;
 ERROR:
         n_failed++;
@@ -713,6 +823,8 @@ int main(void)
 {
         test_tables();
         test_merge();
+        test_merge_fields();
+        test_free_partial();
         test_position_bins();
         test_per_record();
         test_identity_bins();

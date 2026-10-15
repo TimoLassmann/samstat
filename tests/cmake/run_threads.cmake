@@ -16,6 +16,8 @@ get_filename_component(here "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 # below), W = T - 1 - P for T >= 3, 1 for T = 2, and the reader alone (reported as 1) for
 # T = 1. So W > 1 from -t 4 on. Optional -DREPLICATE=<n>: the records of a SAM INPUT are
 # repeated n times, to reach at least 5 batches (a 4-record fixture cannot fill them).
+
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 if(MODE STREQUAL "one_file")
   file(REMOVE_RECURSE ${OUTDIR})
   file(MAKE_DIRECTORY ${OUTDIR})
@@ -38,12 +40,28 @@ if(MODE STREQUAL "one_file")
       file(APPEND ${run_input} "${records}")
     endforeach()
   endif()
-  # expected workers and decompression threads per -t
-  set(expect_1 "1;0")
-  set(expect_2 "1;0")
-  set(expect_3 "1;1")
-  set(expect_4 "2;1")
-  set(expect_8 "5;2")
+  # expected workers and decompression threads per -t. samstat lowers -t to the number of online
+  # CPUs, so the split is computed for T = min(t, CPUs): P = max(1, T/4) for T >= 3 (else 0) and
+  # W = max(1, T - 1 - P)
+  cmake_host_system_information(RESULT n_cpu QUERY NUMBER_OF_LOGICAL_CORES)
+  foreach(t 1 2 3 4 8)
+    set(tt ${t})
+    if(n_cpu GREATER 0 AND tt GREATER n_cpu)
+      set(tt ${n_cpu})
+    endif()
+    set(p 0)
+    if(tt GREATER_EQUAL 3)
+      math(EXPR p "${tt} / 4")
+      if(p LESS 1)
+        set(p 1)
+      endif()
+    endif()
+    math(EXPR w "${tt} - 1 - ${p}")
+    if(w LESS 1)
+      set(w 1)
+    endif()
+    set(expect_${t} "${w};${p}")
+  endforeach()
   set(suffixes samstat.html samstat.json samstat_general_mqc.json samstat_length_mqc.json
     samstat_basequal_mqc.json samstat_mapq_mqc.json)
   foreach(t 1 2 3 4 8)

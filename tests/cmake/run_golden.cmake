@@ -6,6 +6,7 @@
 cmake_minimum_required(VERSION 3.19)
 get_filename_component(here "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 get_filename_component(name ${INPUT} NAME)

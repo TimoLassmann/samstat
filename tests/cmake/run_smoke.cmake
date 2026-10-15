@@ -1,6 +1,7 @@
 # Run samstat on one input and check that it exits 0 and writes a non-empty report.
 # Required: -DSAMSTAT=<binary> -DINPUT=<file> -DOUTDIR=<dir>
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 

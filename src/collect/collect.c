@@ -22,13 +22,28 @@ _Static_assert(CT_N_QUAL == COLLECT_N_Q, "quality table size");
 _Static_assert(CT_N_LENGTH_EDGES == COLLECT_N_LEN_BINS, "length edge table size");
 _Static_assert(sizeof(collect_u128) == 16, "128-bit integers are required");
 
+/* stat_collection_merge adds struct collect_acc as one flat uint64_t array. That is exact
+ * only while every member is a uint64_t counter (or an array of them): with members of a
+ * single 8-byte type there is no padding, so element i of the flat array is always the
+ * same counter in both collections. The sizes below are the member lists written out; a
+ * member of any other type, or one added without updating this list, changes the size and
+ * stops the build here before merge can add the wrong bytes. */
+#define COLLECT_POS_BIN_COUNTERS (COLLECT_N_BASE + 7)
+_Static_assert(sizeof(struct collect_pos_bin) == COLLECT_POS_BIN_COUNTERS * sizeof(uint64_t),
+               "struct collect_pos_bin must hold uint64_t counters only (see stat_collection_merge)");
+_Static_assert(sizeof(struct collect_acc) ==
+               (size_t) COLLECT_N_MATE * COLLECT_N_MAPQ * sizeof(uint64_t) *
+               ((size_t) (COLLECT_ABS_BINS + COLLECT_REL_BINS) * COLLECT_POS_BIN_COUNTERS
+                + 2 * COLLECT_N_LEN_BINS + COLLECT_N_Q + COLLECT_N_IDENT),
+               "struct collect_acc must hold uint64_t counters only (see stat_collection_merge)");
+
 static int get_mapqual_bins(struct mapqual_bins **map);
 static void free_mapqual_bins(struct mapqual_bins *m);
 
 #define QUAL_MISSING 0xFF
 
 /* ------------------------------------------------------------------------------------
- * Tables (generated at build time, see convert_tables.c)
+ * Tables (convert_tables.h, written by convert_tables.c and committed; see collect.h)
  * ------------------------------------------------------------------------------------ */
 
 uint32_t collect_qual_error(int q)
@@ -488,8 +503,9 @@ int stat_collection_merge(struct stat_collection *dst, const struct stat_collect
         ASSERT(dst != NULL && src != NULL, "No stat collection");
         ASSERT(dst != src, "Cannot merge a collection into itself");
 
-        /* struct collect_acc holds nothing but uint64_t counters */
-        _Static_assert(sizeof(struct collect_acc) % sizeof(uint64_t) == 0, "collect_acc is all uint64_t");
+        /* struct collect_acc holds nothing but uint64_t counters (asserted at the top of
+         * this file), so the element-wise sum of the whole struct is the sum of every
+         * accumulator, and it stays correct when an array changes size */
         d = (uint64_t *) dst->acc;
         x = (const uint64_t *) src->acc;
         for(size_t i = 0; i < sizeof(struct collect_acc) / sizeof(uint64_t); i++){
@@ -709,8 +725,8 @@ int stat_collection_alloc(struct stat_collection **stats)
         RUN(get_mapqual_bins(&s->mapq_map));
 
 
-        galloc(&s->basic_nums, 2, s->mapq_map->n_bin);
-        for(int i = 0; i < 2;i++){
+        galloc(&s->basic_nums, COLLECT_N_MATE, s->mapq_map->n_bin);
+        for(int i = 0; i < COLLECT_N_MATE;i++){
                 for(int j = 0; j < s->mapq_map->n_bin;j++){
                         s->basic_nums[i][j] = 0;
                 }
@@ -720,6 +736,8 @@ int stat_collection_alloc(struct stat_collection **stats)
 
         return OK;
 ERROR:
+        /* every member not allocated yet is NULL: stat_collection_free skips it */
+        stat_collection_free(s);
         return FAIL;
 }
 
@@ -755,9 +773,7 @@ int get_mapqual_bins(struct mapqual_bins **map)
         galloc(&m->description, m->n_bin, 256);
 
         for(int i = 0; i < m->len;i++){
-                /* if(i == 0){ */
-                /*         m->map[i] = MAPQUALBIN_UNMAP; */
-                /* }else  */if(i < 10){
+                if(i < 10){
                         m->map[i] = MAPQUALBIN_lt10;
                 }else if(i < 30){
                         m->map[i] = MAPQUALBIN_lt30;
@@ -779,13 +795,18 @@ ERROR:
         return FAIL;
 }
 
+/* Also called on the error path of get_mapqual_bins, where map or description can still be
+ * NULL (gfree of NULL is not allowed). */
 void free_mapqual_bins(struct mapqual_bins *m)
 {
         if(m){
-                gfree(m->description);
-                gfree(m->map);
+                if(m->description){
+                        gfree(m->description);
+                }
+                if(m->map){
+                        gfree(m->map);
+                }
                 MFREE(m);
         }
-
 }
 

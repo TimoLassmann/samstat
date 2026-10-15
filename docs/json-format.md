@@ -66,7 +66,7 @@ counted separately and are not reads.
 | `properly_paired` | Reads flagged as properly paired (0x2). |
 | `secondary`, `supplementary` | Secondary (0x100) and supplementary (0x800) alignments seen. With `-p` only those up to the cutoff. |
 | `is_aligned` | `true` if the header has at least one `@SQ` line or at least one primary record is mapped; always `false` for FASTA/FASTQ. When `false` every read is in `unmapped` and the alignment statistics are empty. |
-| `is_partial_report` | `true` if reading stopped early because of `-p/--peek`; counts then cover only the reads seen. |
+| `is_partial_report` | `true` if reading stopped early because of `-p/--peek` and at least one more primary read follows the cutoff (or the rest of the file cannot be read); counts then cover only the reads seen. To find out, samstat reads on past the cutoff (through any secondary and supplementary records, without counting them, up to the end of the file if only those follow); `false` when no primary read follows. |
 | `total_bases`, `min_length`, `max_length` | Bases and shortest / longest read, full read length (clipped bases included). `min_length` is 0 when there are no reads. |
 | `n50`, `median_length` | Lower edge of the storage length bin where the cumulative fraction of bases (N50, counted from the longest reads) or of reads (median) first reaches 50%. Exact below 1000 bp. |
 | `mean_q` | Mean base quality over all bases with a quality (clipped bases included), taken over error probabilities, not over Phred values. `null` without qualities. |
@@ -126,8 +126,8 @@ A **position block** holds, per mapq id and position bin:
 | `qual_bases` | Bases with a quality value. |
 | `qual_error_sum` | Sum of the error probabilities of those bases, in units of 1 / `axes.quality_error_scale` (`E[q] = round(10^(-q/10) * 2^30)`, Phred values above 93 count as 93). Mean Q of a bin is `-10 log10(qual_error_sum / qual_bases / 2^30)`. |
 | `aligned` | Aligned read bases (CIGAR `M`, `=`, `X`, `I`) of mapped reads: denominator for insertions and deletions. |
-| `aligned_md` | The same, only for reads with an `MD` tag or `X` operations: denominator for mismatches. |
-| `mismatches` | Mismatching bases (from `MD`, or from `X` operations when `MD` is absent). |
+| `aligned_md` | The same, only for reads with an `MD` tag or `=`/`X` operations: denominator for mismatches. |
+| `mismatches` | Mismatching bases (from `MD`, or from `X` operations when `MD` is absent; a read of `=` operations only has none). |
 | `insertions` | Insertion events starting at this read position (one per gap opening). |
 | `deletions` | Deletion events at this read position (one per gap opening). |
 

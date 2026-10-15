@@ -42,7 +42,7 @@ cmake --build build -j4
 cmake --install build
 #+end_src
 
-Optional CMake options: =-DSAMSTAT_USE_SYSTEM_HTSLIB=ON= (use the system htslib >= 1.16 instead of the bundled one), =-DSAMSTAT_SANITIZE=ON= (AddressSanitizer and UBSan) and =-DSAMSTAT_REQUIRE_MULTIQC=ON= (fail to configure if =multiqc= is missing, so the MultiQC integration test always runs).
+Optional CMake options: =-DSAMSTAT_USE_SYSTEM_HTSLIB=ON= (use the system htslib instead of the bundled one; use htslib 1.22 or newer, see "Network access" below), =-DSAMSTAT_SANITIZE=ON= (AddressSanitizer and UBSan) and =-DSAMSTAT_REQUIRE_MULTIQC=ON= (fail to configure if =multiqc= is missing, so the MultiQC integration test always runs).
 
 Some memory errors only show up in a sanitizer build, so before a release also run the whole suite with it:
 
@@ -57,16 +57,29 @@ cmake --build build-asan -j4 && (cd build-asan && ctest --output-on-failure -j4)
 samstat [options] <file|-> [file ...]
 #+end_src
 
-Input type (SAM, BAM, CRAM, FASTA or FASTQ, plain or gzip) is detected from the content. CRAM needs its reference: SAMStat finds it through the =REF_PATH= and =REF_CACHE= environment variables only and never uses the network; if the reference is not found that file fails with a message naming both variables. A file name of =-= reads standard input; its reports are named =stdin.samstat.*=. Protein FASTA is not supported. For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix. Exit codes: 0 success (also for inputs without reads, with a warning), 1 at least one input failed, for example an unrecognised input (the others are still processed), 2 usage error.
+Input type (SAM, BAM, CRAM, FASTA or FASTQ, plain or gzip) is detected from the content. CRAM needs its reference: SAMStat finds it through the =REF_PATH= and =REF_CACHE= environment variables; if the reference is not found that file fails with a message naming both variables. A file name of =-= reads standard input; its reports are named =stdin.samstat.*=. Protein FASTA is not supported. For each input file SAMStat will create a single html page named after the input file name plus a dot =samstat.html= suffix.
 
-The output is identical for any =-t=. With at least as many inputs as threads, each input runs on its own thread; with fewer, the threads are shared within each input.
+Exit codes:
+- 0: success, also for inputs without reads (with a warning);
+- 1: at least one input failed, for example an unrecognised input or a report that could not be written (the other inputs are still processed and reported);
+- 2: usage error (bad option or value, nothing is read).
+
+Diagnostics (log lines with =--verbose=, warnings, errors, the one-line summary per input and the progress counter) go to standard error; the reports are files, so standard output stays free. The progress counter is shown only when standard error is a terminal and only one input is processed at a time.
+
+Network access: with the bundled htslib (built without libcurl and S3 support) SAMStat never uses the network. A system htslib built with libcurl opens inputs given as URLs over the network, and htslib before 1.22 also downloads a CRAM reference from the EBI server when =REF_PATH= is not set; with a system htslib, use 1.22 or newer and set =REF_PATH= to keep SAMStat offline.
+
+Threads: the output is identical for any =-t=. =-t= is the number of threads SAMStat itself uses (the reader of an input, its decompression thread pool and the workers). With at least as many inputs as threads, each input runs on its own thread; with fewer, the inputs run one after another and the threads are shared within each input. When a decompression pool is in use (=-t 3= or more on fewer inputs than threads), htslib may add one or two input/output threads of its own (the BGZF reader, the SAM text parser), so the process can show up to =-t= + 2 threads.
+
+Memory: for files of sequencing reads, memory is bounded by the number of threads and the batch limits, not by the size of the input: a batch holds at most 4096 records and stops once it has about 8 million bases, and an input has at most two more batches in flight than it has workers. A record longer than 50 Mb is not a read and fails the input. FASTA and FASTQ inputs are also checked in their first 64 MiB before reading starts.
+
+=-p N= stops after the first N primary reads (records that are not secondary or supplementary). To decide whether the report is partial SAMStat then looks for one more primary read: when only secondary and supplementary records follow the cutoff, it reads on through them, up to the end of the file, without counting them.
 
 Available options:
 
 #+begin_src bash :eval never 
   -d, --dir DIR      write reports to DIR (created if missing) [next to input]
   -p, --peek N       analyse only the first N reads (not random) [all]
-  -t, --threads N    total threads, 1-64 [4]
+  -t, --threads N    total threads, 1-64, at most the number of CPUs [4]
       --json         also write <input>.samstat.json
       --multiqc      also write MultiQC files <input>.samstat_*_mqc.json
       --verbose      debug output
@@ -95,7 +108,7 @@ Lines are coloured by mapping-quality class; paired input shows Read 1 and Read 
 - Intra-file threading: =-t= is the total thread budget and speeds up a single input.
 - The HTML report is rebuilt with six fixed plots as inline SVG, and works offline.
 - JSON format version 2 (breaking), a reworked MultiQC output, standard input, and content-based input detection.
-- CRAM input (the reference is found through =REF_PATH= or =REF_CACHE=; no network access).
+- CRAM input (the reference is found through =REF_PATH= or =REF_CACHE=; no network access with the bundled htslib).
 - Protein FASTA is unsupported; =-l=, =--seed=, =--norm= and =--plotend= are ignored.
 
 See =CHANGELOG.md= for the full list of changes and breaking changes.

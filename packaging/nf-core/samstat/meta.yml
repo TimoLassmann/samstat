@@ -1,0 +1,97 @@
+name: "samstat"
+description: Quality control of sequencing reads and alignments, split by mapping quality
+keywords:
+  - quality control
+  - qc
+  - bam
+  - cram
+  - fastq
+  - long-read
+  - genomics
+tools:
+  - "samstat":
+      description: |
+        SAMStat summarises sequencing reads and their alignments in one self-contained HTML
+        report: read length, base quality, base composition, mismatch and indel rates along the
+        read and identity to the reference, each split by mapping quality. Short and long reads.
+      homepage: https://github.com/TimoLassmann/samstat
+      documentation: https://github.com/TimoLassmann/samstat#readme
+      tool_dev_url: https://github.com/TimoLassmann/samstat
+      doi: "10.1093/bioinformatics/btad019"
+      licence:
+        - "MIT"
+      identifier: biotools:samstat
+input:
+  - - meta:
+        type: map
+        description: |
+          Groovy Map containing sample information
+          e.g. `[ id:'sample1' ]`
+    - reads:
+        type: file
+        description: |
+          Reads or alignments: SAM, BAM, CRAM, FASTA or FASTQ (plain or gzip). A CRAM file needs
+          its reference through REF_PATH or REF_CACHE.
+        pattern: "*.{sam,bam,cram,fa,fasta,fna,fq,fastq}{,.gz}"
+        ontologies: []
+output:
+  html:
+    - - meta:
+          type: map
+          description: |
+            Groovy Map containing sample information
+            e.g. `[ id:'sample1' ]`
+      - "*.samstat.html":
+          type: file
+          description: Self-contained HTML report
+          pattern: "*.samstat.html"
+          ontologies: []
+  json:
+    - - meta:
+          type: map
+          description: |
+            Groovy Map containing sample information
+            e.g. `[ id:'sample1' ]`
+      - "*.samstat.json":
+          type: file
+          description: Statistics as JSON (format version 2); read by the MultiQC SAMStat module
+          pattern: "*.samstat.json"
+          ontologies:
+            - edam: http://edamontology.org/format_3464 # JSON
+  mqc:
+    - - meta:
+          type: map
+          description: |
+            Groovy Map containing sample information
+            e.g. `[ id:'sample1' ]`
+      - "*.samstat_*_mqc.json":
+          type: file
+          description: MultiQC custom content files (only with `--multiqc` in ext.args)
+          pattern: "*.samstat_*_mqc.json"
+          ontologies:
+            - edam: http://edamontology.org/format_3464 # JSON
+  versions_samstat:
+    - - "${task.process}":
+          type: string
+          description: The name of the process
+      - "samstat":
+          type: string
+          description: The name of the tool
+      - "samstat -v | sed 's/SAMStat //'":
+          type: eval
+          description: The expression to obtain the version of the tool
+topics:
+  versions:
+    - - "${task.process}":
+          type: string
+          description: The name of the process
+      - "samstat":
+          type: string
+          description: The name of the tool
+      - "samstat -v | sed 's/SAMStat //'":
+          type: eval
+          description: The expression to obtain the version of the tool
+authors:
+  - "@TimoLassmann"
+maintainers:
+  - "@TimoLassmann"

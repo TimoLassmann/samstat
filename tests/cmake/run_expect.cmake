@@ -3,8 +3,8 @@
 # Optional:
 #   -DARGS=<list>                 command line; @OUTDIR@ and @GEN@ are substituted
 #   -DEXPECT_RC=<n>               expected exit code (default 0)
-#   -DEXPECT_STDERR_REGEX=<re>    must match the log output (stdout and stderr combined,
-#                                 samstat writes warnings to stdout and errors to stderr)
+#   -DEXPECT_STDERR_REGEX=<re>    must match the log output (stdout and stderr combined;
+#                                 samstat writes all diagnostics to stderr)
 #   -DEXPECT_NO_REGEX=<re>        must NOT match the log output
 #   -DEXPECT_FILES=<list>         files (relative to OUTDIR) that must exist and be non-empty
 #   -DEXPECT_NO_FILES=<list>      files (relative to OUTDIR) that must not exist
@@ -15,12 +15,14 @@
 #   -DCOPY_FROM=<file> -DCOPY_AS=<name>   copy <file> to OUTDIR/<name> first, available as @COPY@
 #   -DFILE_TEXT=<text> -DFILE_TEXT_IN=<file rel. OUTDIR>   the file must contain <text> literally
 #   In ARGS, COPY_AS, EXPECT_FILES and FILE_TEXT: @Q@ is '"' and @BS@ is a backslash.
-#   -DMKDIR=<list>                directories (rel. OUTDIR) created before the run, e.g. to make an output file name unwritable
+#   -DMKDIR=<list>                directories (rel. OUTDIR) created before the run, e.g. to make an output file name unwritable;
+#                                 at most 100 characters and 4 levels each
 #   -DNO_NAN=ON                   no 'nan' / 'inf' token in the files listed in EXPECT_FILES
 
 cmake_minimum_required(VERSION 3.19)
 get_filename_component(here "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 if(NOT DEFINED EXPECT_RC)
   set(EXPECT_RC 0)
 endif()
@@ -77,7 +79,15 @@ function(expand_tokens var)
   set(${var} "${v}" PARENT_SCOPE)
 endfunction()
 
+# Deep or very long paths below the build tree break backup tools (Time Machine) and
+# `rm -rf` on some systems: MKDIR is for a few short names only (tests/README.md).
 foreach(d IN LISTS MKDIR)
+  string(LENGTH "${d}" dlen)
+  string(REGEX MATCHALL "/" dslashes "${d}")
+  list(LENGTH dslashes ddepth)
+  if(dlen GREATER 100 OR ddepth GREATER 3)
+    message(FATAL_ERROR "MKDIR '${d}' is too long or too deep for a test directory")
+  endif()
   file(MAKE_DIRECTORY "${OUTDIR}/${d}")
 endforeach()
 

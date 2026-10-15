@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "htslib/hts_log.h"
+
 #include "tldlite.h"
 #define PARAM_IMPORT
 #include "param.h"
@@ -15,7 +17,6 @@
 #include "config.h"
 
 #define OPT_VERBOSE 1
-/* #define OPT_SUBSAMPLE 2 */
 #define OPT_SEED 3
 #define OPT_PLOTEND 4
 #define OPT_PLOTNORM 5
@@ -30,40 +31,46 @@ static int check_outputs(struct samstat_param *p);
 static void deprecated_option(const char *opt);
 static int parse_unsigned(const char *arg, const char *opt, uint64_t max, uint64_t *out);
 static void batch_limits_from_env(struct samstat_param *p);
+static int cap_threads_at_cpus(struct samstat_param *p);
+static int same_file(const struct stat *a, const struct stat *b);
+static int check_single_dash_long(int argc, char *argv[], const struct option *opts);
 
 int print_help(char **argv);
+static void print_usage(FILE *f, char **argv);
 
 int parse_param(int argc, char *argv[], struct samstat_param **param)
 {
+        static const struct option long_options[] ={
+                {"peek",required_argument,0,'p'},
+                {"len",required_argument,0,'l'},   /* deprecated, ignored */
+                {"dir",required_argument,0,'d'},
+                {"seed",required_argument,0,OPT_SEED},
+                {"plotend",0,0,OPT_PLOTEND},
+                {"norm",0,0,OPT_PLOTNORM},
+                {"json",0,0,OPT_JSON},
+                {"multiqc",0,0,OPT_MULTIQC},
+                {"threads",required_argument,0,'t'},
+                {"nthreads",required_argument,0,'t'}, /* alias */
+                {"verbose",0,0,OPT_VERBOSE},
+                {"help",0,0,'h'},
+                {"version",0,0,'v'},
+                {0, 0, 0, 0}
+        };
         struct samstat_param* p = NULL;
         int c;
         int help = 0;
         int version = 0;
+        int in_options = 1;     /* an error here is a usage error: print the short usage */
         uint64_t v = 0;
 
         RUN(param_init(&p));
+        RUN(check_single_dash_long(argc, argv, long_options));
 
         while (1){
-                static struct option long_options[] ={
-                        {"peek",required_argument,0,'p'},
-                        {"len",required_argument,0,'l'},   /* deprecated, ignored */
-                        {"dir",required_argument,0,'d'},
-                        /* {"sub",required_argument,0,OPT_SUBSAMPLE}, */
-                        {"seed",required_argument,0,OPT_SEED},
-                        {"plotend",0,0,OPT_PLOTEND},
-                        {"norm",0,0,OPT_PLOTNORM},
-                        {"json",0,0,OPT_JSON},
-                        {"multiqc",0,0,OPT_MULTIQC},
-                        {"threads",required_argument,0,'t'},
-                        {"nthreads",required_argument,0,'t'}, /* alias */
-                        {"verbose",0,0,OPT_VERBOSE},
-                        {"help",0,0,'h'},
-                        {"version",0,0,'v'},
-                        {0, 0, 0, 0}
-                };
-
                 int option_index = 0;
-                c = getopt_long_only (argc, argv,"p:l:d:t:hv",long_options, &option_index);
+                /* getopt_long, not getopt_long_only: long options need "--" (POSIX/GNU), so
+                 * "-json" is "-j -s -o -n" and an error, not a silent --json */
+                c = getopt_long (argc, argv,"p:l:d:t:hv",long_options, &option_index);
 
                 if (c == -1){
                         break;
@@ -73,9 +80,6 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                 case OPT_VERBOSE:
                         p->verbose = 1;
                         break;
-                /* case OPT_SUBSAMPLE: */
-                /*         p->subsample = atof(optarg); */
-                /*         break; */
                 case OPT_SEED:
                         deprecated_option("--seed");
                         break;
@@ -97,10 +101,15 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         p->n_threads = (int) v;
                         break;
                 case 'd':
-                        p->outdir = optarg;
+                        /* owned copy: replaced by its realpath() later, freed in param_free() */
+                        if(p->outdir){
+                                MFREE(p->outdir);
+                        }
+                        p->outdir = strdup(optarg);
+                        ASSERT(p->outdir != NULL, "out of memory");
                         break;
                 case 'p':
-                        RUN(parse_unsigned(optarg, "-p/-peek", UINT64_MAX, &v));
+                        RUN(parse_unsigned(optarg, "-p/--peek", UINT64_MAX, &v));
                         p->top_n = v;
                         break;
                 case 'h':
@@ -117,14 +126,19 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
                         goto ERROR;
                         break;
                 default:
-                        fprintf(stderr,"default\n\n\n\n");
-                        abort ();
+                        /* an option in long_options without a case above */
+                        ERROR_MSG("internal error: unhandled option code %d", c);
                 }
         }
+        in_options = 0;
+        /* htslib warns once per record for some problems (a reference name missing from the
+         * header): gigabytes of log on a large file. Its errors are always shown, its
+         * warnings only with --verbose. */
+        hts_set_log_level(p->verbose ? HTS_LOG_WARNING : HTS_LOG_ERROR);
+
         if(help){
                 print_help(argv);
                 param_free(p);
-                /* free_param(param); */
                 exit(EXIT_SUCCESS);
         }
 
@@ -135,9 +149,9 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         }
 
         if( (argc- optind) <= 0){
-                print_help(argv);
+                /* usage error: the short usage goes to stderr, the help (-h) to stdout */
+                print_usage(stderr, argv);
                 param_free(p);
-                /* free_param(param); */
                 exit(SAMSTAT_EXIT_USAGE);
         }
 
@@ -160,10 +174,58 @@ int parse_param(int argc, char *argv[], struct samstat_param **param)
         return OK;
 ERROR:
         WARNING_MSG("Something went wrong with parsing the command line options.");
-
-        /* WARNING_MSG("Something went wrong with parsing the command line options."); */
-        /* print_help(argv); */
+        if(in_options){
+                print_usage(stderr, argv);
+        }
         param_free(p);
+        return FAIL;
+}
+
+/* Long options need two dashes. Up to 2.3 (getopt_long_only) "-dir" and "-verbose" were long
+ * options; read as short options they would silently mean "-d ir" and "-v" (print the version),
+ * so such an argument is a usage error that names the two-dash form. "--" ends the options;
+ * the argument of an option that takes one is skipped. */
+static int check_single_dash_long(int argc, char *argv[], const struct option *opts)
+{
+        for(int i = 1; i < argc; i++){
+                const char *a = argv[i];
+                size_t n;
+
+                if(strcmp(a, "--") == 0){
+                        break;
+                }
+                if(a[0] != '-' || a[1] == 0){
+                        continue;
+                }
+                if(a[1] == '-'){
+                        /* --name VALUE: skip VALUE */
+                        n = strcspn(a + 2, "=");
+                        if(a[2 + n] == 0){
+                                for(const struct option *o = opts; o->name; o++){
+                                        if(o->has_arg == required_argument && strlen(o->name) == n && strncmp(o->name, a + 2, n) == 0){
+                                                i++;
+                                                break;
+                                        }
+                                }
+                        }
+                        continue;
+                }
+                if(a[2] == 0){
+                        /* -p VALUE, -l VALUE, -d VALUE, -t VALUE: skip VALUE */
+                        if(strchr("pldt", a[1]) != NULL){
+                                i++;
+                        }
+                        continue;
+                }
+                n = strcspn(a + 1, "=");
+                for(const struct option *o = opts; o->name; o++){
+                        if(strlen(o->name) == n && strncmp(o->name, a + 1, n) == 0){
+                                ERROR_MSG("Option %s: long options need two dashes (--%s)", a, o->name);
+                        }
+                }
+        }
+        return OK;
+ERROR:
         return FAIL;
 }
 
@@ -192,27 +254,27 @@ int sanity_check_param(struct samstat_param *p)
         if(p->n_threads < 1){
                 ERROR_MSG("Option -t (num threads) : has to be > 0");
         }
+        RUN(cap_threads_at_cpus(p));
         if(p->top_n < 1){
-                ERROR_MSG("Option -p/-peek: has to be >= 1.");
+                ERROR_MSG("Option -p/--peek: has to be >= 1.");
         }
 
-
-
+        /* -d is checked before any input: a directory that cannot be created or written is a
+         * usage error (exit 2), whether it exists already or not */
         if(p->outdir){
                 char *ptr = NULL;
                 if(make_dir_p(p->outdir) != OK){
-                        ERROR_MSG("Option -d/-dir: cannot create output directory %s: %s", p->outdir, strerror(errno));
+                        ERROR_MSG("Option -d/--dir: cannot create output directory %s: %s", p->outdir, strerror(errno));
+                }
+                if(access(p->outdir, W_OK | X_OK) != 0){
+                        ERROR_MSG("Option -d/--dir: cannot write to %s: %s; use -d DIR to write elsewhere.", p->outdir, strerror(errno));
                 }
                 ptr = realpath(p->outdir, NULL);
                 if(!ptr){
                         ERROR_MSG("Could not obtain the full path for %s.", p->outdir);
                 }
+                MFREE(p->outdir);
                 p->outdir = ptr;
-        }
-        if(p->subsample < 0.0){
-                ERROR_MSG("Option -sub: has to be greater than 0.0");
-        }else if(p->subsample > 1.0){
-                ERROR_MSG("Option -sub: has to be smaller than 1.0");
         }
 
         /* check input files: the type is taken from the content when the file is opened,
@@ -228,20 +290,31 @@ int sanity_check_param(struct samstat_param *p)
                         ERROR_MSG("Standard input (-) can be given only once.");
                 }
         }
-        /* check for identical files */
-        for(int i = 0; i < p->n_infile;i++){
-                for(int j = i+1; j < p->n_infile;j++){
-                        if(strncmp(p->infile[i], p->infile[j], 512) == 0){
-                                ERROR_MSG("Duplicated input files: %s %s",p->infile[i], p->infile[j]);
-                        }
-                }
-        }
-
+        /* identical inputs (also under different names) are rejected in check_outputs() */
         RUN(check_outputs(p));
 
         return OK;
 ERROR:
         return FAIL;
+}
+
+/* -t is the total thread budget: more threads than CPUs only add contention and memory (every
+ * worker holds its own batches and counts), so a larger value is reduced to the number of
+ * online CPUs. The output does not depend on -t. */
+static int cap_threads_at_cpus(struct samstat_param *p)
+{
+        long n_cpu = sysconf(_SC_NPROCESSORS_ONLN);
+
+        if(n_cpu < 1){
+                n_cpu = 1;      /* unknown */
+        }
+        if((long) p->n_threads > n_cpu){
+                if(p->verbose){
+                        LOG_MSG("-t %d: only %ld CPUs online, using %ld threads.", p->n_threads, n_cpu, n_cpu);
+                }
+                p->n_threads = (int) n_cpu;
+        }
+        return OK;
 }
 
 static void deprecated_option(const char *opt)
@@ -296,19 +369,63 @@ static int make_dir_p(const char *path)
         return OK;
 }
 
-/* Up-front output checks, before any record is read:
- * - the directory a report goes to must be writable: otherwise that input is
- *   marked as failed (exit 1);
- * - two inputs must not map to the same report file (usage error, exit 2). */
+/* The report files of one input: <stem>.samstat.html always, the others with --json and
+ * --multiqc (the names stat_report.c, json_report.c and mqc_report.c write). */
+static const char *const report_suffix[] = {
+        ".samstat.html",
+        ".samstat.json",
+        ".samstat_general_mqc.json",
+        ".samstat_mapq_mqc.json",
+        ".samstat_length_mqc.json",
+        ".samstat_basequal_mqc.json",
+        ".samstat_error_mqc.json"
+};
+#define N_REPORT_SUFFIX ((int) (sizeof(report_suffix) / sizeof(report_suffix[0])))
+
+static int report_written(const struct samstat_param *p, int k)
+{
+        if(k == 0){
+                return 1;
+        }
+        if(k == 1){
+                return p->json;
+        }
+        return p->multiqc;
+}
+
+/* the same file: also through a symbolic or hard link, or a different spelling of the path */
+static int same_file(const struct stat *a, const struct stat *b)
+{
+        return a->st_dev == b->st_dev && a->st_ino == b->st_ino;
+}
+
+/* Up-front input and output checks, before any record is read.
+ * Usage errors (exit 2), nothing is read:
+ * - the same input given twice (also under another name of the same file);
+ * - two inputs that map to the same report file; compared without regard to case, since
+ *   the default file systems of macOS (APFS, HFS+) and Windows (NTFS) ignore it;
+ * - a report file that is one of the inputs (it would be overwritten while being read).
+ * Per-input failures (exit 1, the other inputs are processed), reported here once:
+ * - an input that does not exist or cannot be read (said before anything about the
+ *   output, so a missing input in a missing directory is not reported as "cannot write");
+ * - without -d: the directory next to the input is not writable (-d DIR is checked in
+ *   sanity_check_param()). */
 static int check_outputs(struct samstat_param *p)
 {
         char **key = NULL;
+        struct stat *in_st = NULL;
+        uint8_t *in_ok = NULL;
+        char *path = NULL;
         int ret = FAIL;
 
         MMALLOC(key, sizeof(char*) * (size_t) p->n_infile);
+        MMALLOC(in_st, sizeof(struct stat) * (size_t) p->n_infile);
+        MMALLOC(in_ok, sizeof(uint8_t) * (size_t) p->n_infile);
         for(int i = 0; i < p->n_infile; i++){
                 key[i] = NULL;
+                in_ok[i] = 0;
         }
+        /* the report location of every input: <directory, resolved>/<file name> */
         for(int i = 0; i < p->n_infile; i++){
                 const char *in = samstat_output_stem(p, i);
                 const char *slash = strrchr(in, '/');
@@ -317,9 +434,97 @@ static int check_outputs(struct samstat_param *p)
                 char *rdir = NULL;
                 size_t len;
 
+                if(strcmp(p->infile[i], SAMSTAT_STDIN) != 0 && stat(p->infile[i], &in_st[i]) == 0){
+                        in_ok[i] = 1;
+                }
                 if(p->outdir){
                         dir = strdup(p->outdir);
                 }else if(slash){
+                        len = (size_t) (slash - in);
+                        dir = strndup(in, len ? len : 1);   /* "/x" -> "/" */
+                }else{
+                        dir = strdup(".");
+                }
+                ASSERT(dir != NULL, "out of memory");
+                rdir = realpath(dir, NULL);
+                len = strlen(rdir ? rdir : dir) + strlen(base) + 2;
+                key[i] = malloc(len);
+                if(key[i] == NULL){
+                        free(dir);
+                        free(rdir);
+                        ERROR_MSG("out of memory");
+                }
+                snprintf(key[i], len, "%s/%s", rdir ? rdir : dir, base);
+                free(dir);
+                free(rdir);
+        }
+        /* usage errors */
+        for(int i = 0; i < p->n_infile; i++){
+                for(int j = i + 1; j < p->n_infile; j++){
+                        int dup;
+                        if(in_ok[i] && in_ok[j]){
+                                dup = same_file(&in_st[i], &in_st[j]);
+                        }else{
+                                dup = strcmp(p->infile[i], p->infile[j]) == 0;
+                        }
+                        if(dup){
+                                ERROR_MSG("Duplicated input files: %s %s", p->infile[i], p->infile[j]);
+                        }
+                }
+        }
+        for(int i = 0; i < p->n_infile; i++){
+                for(int j = i + 1; j < p->n_infile; j++){
+                        if(strcasecmp(key[i], key[j]) == 0){
+                                ERROR_MSG("Output collision: %s and %s would both write %s.samstat.html (file names are compared without regard to case); use -d DIR or rename an input.",
+                                          p->infile[i], p->infile[j], key[i]);
+                        }
+                }
+        }
+        for(int i = 0; i < p->n_infile; i++){
+                for(int k = 0; k < N_REPORT_SUFFIX; k++){
+                        struct stat st;
+                        size_t len;
+
+                        if(!report_written(p, k)){
+                                continue;
+                        }
+                        len = strlen(key[i]) + strlen(report_suffix[k]) + 1;
+                        path = malloc(len);
+                        ASSERT(path != NULL, "out of memory");
+                        snprintf(path, len, "%s%s", key[i], report_suffix[k]);
+                        if(stat(path, &st) == 0){
+                                for(int j = 0; j < p->n_infile; j++){
+                                        if(in_ok[j] && same_file(&st, &in_st[j])){
+                                                ERROR_MSG("Output collision: the report %s of %s would overwrite the input %s; use -d DIR or rename an input.",
+                                                          path, p->infile[i], p->infile[j]);
+                                        }
+                                }
+                        }
+                        free(path);
+                        path = NULL;
+                }
+        }
+        /* per-input failures */
+        for(int i = 0; i < p->n_infile; i++){
+                const char *in = samstat_output_stem(p, i);
+                const char *slash = strrchr(in, '/');
+                const char *base = slash ? slash + 1 : in;
+                char *dir = NULL;
+                size_t len;
+
+                if(strcmp(p->infile[i], SAMSTAT_STDIN) != 0 && access(p->infile[i], R_OK) != 0){
+                        if(errno == ENOENT){
+                                fprintf(stderr, "samstat: error: input %s does not exist.\n", p->infile[i]);
+                        }else{
+                                fprintf(stderr, "samstat: error: cannot read input %s: %s.\n", p->infile[i], strerror(errno));
+                        }
+                        p->no_output[i] = 1;
+                        continue;
+                }
+                if(p->outdir){
+                        continue;
+                }
+                if(slash){
                         len = (size_t) (slash - in);
                         dir = strndup(in, len ? len : 1);   /* "/x" -> "/" */
                 }else{
@@ -331,29 +536,22 @@ static int check_outputs(struct samstat_param *p)
                                 dir, base, strerror(errno));
                         p->no_output[i] = 1;
                 }
-                rdir = realpath(dir, NULL);
-                len = strlen(rdir ? rdir : dir) + strlen(base) + 2;
-                key[i] = malloc(len);
-                ASSERT(key[i] != NULL, "out of memory");
-                snprintf(key[i], len, "%s/%s", rdir ? rdir : dir, base);
                 free(dir);
-                free(rdir);
-        }
-        for(int i = 0; i < p->n_infile; i++){
-                for(int j = i + 1; j < p->n_infile; j++){
-                        if(strcmp(key[i], key[j]) == 0){
-                                ERROR_MSG("Output collision: %s and %s would both write %s.samstat.html; use -d DIR or rename an input.",
-                                          p->infile[i], p->infile[j], key[i]);
-                        }
-                }
         }
         ret = OK;
 ERROR:
+        free(path);
         if(key){
                 for(int i = 0; i < p->n_infile; i++){
                         free(key[i]);
                 }
                 MFREE(key);
+        }
+        if(in_st){
+                MFREE(in_st);
+        }
+        if(in_ok){
+                MFREE(in_ok);
         }
         return ret;
 }
@@ -437,7 +635,7 @@ int print_help(char **argv )
         fprintf(stdout,"Usage: %s [options] <file|-> [file ...]\n\n", tmp);
         fprintf(stdout,"  -d, --dir DIR      write reports to DIR (created if missing) [next to input]\n");
         fprintf(stdout,"  -p, --peek N       analyse only the first N reads (not random) [all]\n");
-        fprintf(stdout,"  -t, --threads N    total threads, 1-64 [4]\n");
+        fprintf(stdout,"  -t, --threads N    total threads, 1-64, at most the number of CPUs [4]\n");
         fprintf(stdout,"      --json         also write <input>.samstat.json\n");
         fprintf(stdout,"      --multiqc      also write MultiQC files <input>.samstat_*_mqc.json\n");
         fprintf(stdout,"      --verbose      debug output\n");
@@ -447,7 +645,8 @@ int print_help(char **argv )
         fprintf(stdout,"content. CRAM needs its reference, found through REF_PATH or REF_CACHE (no\n");
         fprintf(stdout,"network). A file name of - reads standard input (once); its reports are\n");
         fprintf(stdout,"named stdin.samstat.*.\n");
-        fprintf(stdout,"Exit codes: 0 ok, 1 one or more inputs failed, 2 usage error.\n");
+        fprintf(stdout,"Exit codes: 0 ok, 1 one or more inputs failed, 2 usage error (bad option,\n");
+        fprintf(stdout,"-d DIR not writable, colliding report names; nothing is read).\n");
         fprintf(stdout,"\n");
         fprintf(stdout,"Examples:\n");
         fprintf(stdout,"  %s sample.bam\n", tmp);
@@ -464,6 +663,22 @@ ERROR:
 }
 
 
+/* After a usage error: on stderr, so that it does not mix with output a caller reads. */
+static void print_usage(FILE *f, char **argv)
+{
+        char* tmp = NULL;
+        const char* name = PACKAGE_NAME;
+
+        if(tld_get_filename(argv[0], &tmp) == OK){
+                name = tmp;
+        }
+        fprintf(f, "Usage: %s [options] <file|-> [file ...]\n", name);
+        fprintf(f, "Try '%s --help' for more information.\n", name);
+        if(tmp){
+                MFREE(tmp);
+        }
+}
+
 int param_init(struct samstat_param **param)
 {
         struct samstat_param* p = NULL;
@@ -476,14 +691,9 @@ int param_init(struct samstat_param **param)
         p->json = 0;
         p->multiqc = 0;
         p->infile = NULL;
-        p->outfile = NULL;
         p->outdir = NULL;
         p->no_output = NULL;
         p->top_n = UINT64_MAX;
-        p->subsample = 1.0;
-        /* p->pst = 0; */
-        p->report_max_len = 250;
-        p->seed = 0;
         *param = p;
         return OK;
 ERROR:
@@ -502,9 +712,9 @@ void param_free(struct samstat_param *p)
                 if(p->infile){
                         MFREE(p->infile);
                 }
-                /* if(p->outdir){ */
-                        /* MFREE(p->outdir); */
-                /* } */
+                if(p->outdir){
+                        MFREE(p->outdir);
+                }
 
                 MFREE(p);
         }

@@ -87,10 +87,20 @@ static int more_primary_follow(struct sam_bam_file *f)
         return r < -1;
 }
 
-/* A slot that held more than this many bytes of record data gives the memory back when
- * the batch is reset: with 4096 slots per batch and several batches in flight, slots must
- * not each keep room for the longest read they ever held. */
+/* A slot that holds more than this many bytes of record data (its capacity m_data, not the
+ * size of the record) gives the memory back when the batch is reset: with 4096 slots per batch
+ * and several batches in flight, slots must not each keep room for the longest read they ever
+ * held. htslib rounds m_data up to a power of two plus 32, so a kept slot holds at most
+ * 16416 bytes. */
 #define BATCH_KEEP_DATA 32768
+
+/* The raw records of one batch may take this many bytes per base of the base limit
+ * (batch_bases): a record costs 1.5 bytes per base for SEQ and QUAL plus its name, CIGAR and
+ * tags. Aux tags and CIGAR are otherwise unlimited (PacBio kinetics and ONT MM/ML tags add
+ * several bytes per base, a crafted record gigabytes), so without a byte limit a batch of
+ * 4096 records could hold any amount of memory. Short reads (records below 4 KB) still end
+ * their batch at the record limit, and long reads with few tags still at the base limit. */
+#define BATCH_BYTES_PER_BASE 2
 
 int bam_batch_alloc(struct bam_batch **batch, int cap)
 {
@@ -110,7 +120,10 @@ ERROR:
 
 void bam_batch_reset(struct bam_batch *batch)
 {
-        for(int i = 0; i < batch->n; i++){
+        /* every allocated slot, not only the first n: read_batch reads the secondary and
+         * supplementary records it skips, and the final failed read at the end of the input,
+         * into slot n, which is not counted in n */
+        for(int i = 0; i < batch->alloc; i++){
                 bam1_t *r = batch->recs[i];
                 if(r->m_data > BATCH_KEEP_DATA){
                         free(r->data);
@@ -160,6 +173,8 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
 {
         bam_hdr_t *h = f_handle->header;
         uint64_t n_bases = 0;
+        uint64_t n_bytes = 0;
+        uint64_t max_bytes;
         int r = 0;
 
         batch->n = 0;
@@ -174,6 +189,7 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                 max_records = batch->cap;
         }
         ASSERT(max_records > 0, "No room for a record");
+        max_bytes = (f_handle->batch_bases > UINT64_MAX / BATCH_BYTES_PER_BASE) ? UINT64_MAX : f_handle->batch_bases * BATCH_BYTES_PER_BASE;
 
         while(1){
                 bam1_t *b = batch_slot(batch);
@@ -196,6 +212,7 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                 }else{
                         batch->n++;
                         n_bases += (uint64_t) b->core.l_qseq;
+                        n_bytes += (uint64_t) b->l_data;
                         f_handle->n_primary++;
 
                         /* -p: stop at exactly max_primary primary records, even mid-batch */
@@ -204,7 +221,7 @@ static int read_batch(struct sam_bam_file *f_handle, struct bam_batch *batch, in
                                 f_handle->partial = (uint8_t) more_primary_follow(f_handle);
                                 return OK;
                         }
-                        if(batch->n >= max_records || n_bases >= f_handle->batch_bases){
+                        if(batch->n >= max_records || n_bases >= f_handle->batch_bases || n_bytes >= max_bytes){
                                 return OK;
                         }
                 }
@@ -393,7 +410,8 @@ ERROR:
         return FAIL;
 }
 
-/* A slot whose read was longer than this gives its memory back (see trim_seq_buffer). */
+/* A slot buffer with room for more than this many bytes gives its memory back (see
+ * trim_seq_buffer): after a batch no buffer of a slot is larger than this. */
 #define SLOT_KEEP_LEN 32768
 
 static int fresh_strbuf(tld_strbuf **b, int size)
@@ -414,13 +432,17 @@ int trim_seq_buffer(struct tl_seq_buffer *sb, int n_used)
                 struct tl_seq *s = sb->sequences[i];
                 struct aln_data *a = (struct aln_data *) s->data;
 
-                /* tld_strbuf keeps its largest size: replace the buffers of a long read */
-                if(s->seq->len > SLOT_KEEP_LEN || s->qual->len > SLOT_KEEP_LEN){
+                /* tld_strbuf keeps its largest size and at least doubles it when it grows:
+                 * decide on the capacity, not on the length, or a slot whose reads stayed
+                 * below the limit could keep almost twice the limit per buffer */
+                if(s->seq->alloc_len > SLOT_KEEP_LEN){
                         RUN(fresh_strbuf(&s->seq, 128));
+                }
+                if(s->qual->alloc_len > SLOT_KEEP_LEN){
                         RUN(fresh_strbuf(&s->qual, 128));
                 }
                 if(a){
-                        if(a->md->len > SLOT_KEEP_LEN){
+                        if(a->md->alloc_len > SLOT_KEEP_LEN){
                                 RUN(fresh_strbuf(&a->md, 16));
                         }
                         if(a->aln_len_alloc > SLOT_KEEP_LEN){
@@ -500,22 +522,25 @@ static int blank_input(samFile *in, int *first)
         return 0;
 }
 
-static void destroy_reader(struct sam_bam_file *f_handle)
+/* Frees everything of a reader, also a half-opened one (open_reads' error path). Returns
+ * the result of sam_close() (0 without an open file). bam_destroy1() and bam_hdr_destroy()
+ * accept NULL. */
+static int destroy_reader(struct sam_bam_file *f_handle)
 {
-        if(f_handle->b){
-                bam_destroy1(f_handle->b);
-        }
+        int status = 0;
+
+        bam_destroy1(f_handle->b);
         bam_batch_free(f_handle->chunk);
-        if(f_handle->header){
-                bam_hdr_destroy(f_handle->header);
-        }
+        bam_hdr_destroy(f_handle->header);
         if(f_handle->in){
-                sam_close(f_handle->in);
+                status = sam_close(f_handle->in);
         }
         if(f_handle->pool){
+                /* after the file: the pool must outlive every file attached to it */
                 hts_tpool_destroy(f_handle->pool);
         }
         MFREE(f_handle);
+        return status;
 }
 
 int open_bam(struct sam_bam_file **file, char *filename)
@@ -630,30 +655,22 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
         return OK;
 ERROR:
         if(f_handle){
-                destroy_reader(f_handle);
+                (void) destroy_reader(f_handle);
         }
         return FAIL;
 }
 
 int close_bam(struct sam_bam_file* f_handle)
 {
+        /* the name is not owned by the handle: it stays valid after destroy_reader() */
+        char *filename = f_handle->filename;
         int status;
 
-        bam_destroy1(f_handle->b);
-        bam_batch_free(f_handle->chunk);
-        bam_hdr_destroy(f_handle->header);
-
-
-        status = sam_close(f_handle->in);
-        if(f_handle->pool){
-                /* after the file: the pool must outlive every file attached to it */
-                hts_tpool_destroy(f_handle->pool);
-        }
+        /* report after freeing: the struct must not leak on this path */
+        status = destroy_reader(f_handle);
         if (status < 0) {
-                /* report after freeing: the struct must not leak on this path */
-                WARNING_MSG("Error closing input: %s.",f_handle->filename);
+                WARNING_MSG("Error closing input: %s.", filename);
         }
-        MFREE(f_handle);
         ASSERT(status >= 0, "Error closing input");
         return OK;
 ERROR:

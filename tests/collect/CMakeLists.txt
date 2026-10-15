@@ -270,3 +270,53 @@ foreach(spec "150;short" "999;short" "1000;long" "10000;long")
       -DLEN=${len} -DLAYOUT=${layout} -P ${COLLECT_GEN_DIR}/scripts/check_axis_rule.cmake)
   set_tests_properties(collect:axis_rule:${len} PROPERTIES LABELS collect)
 endforeach()
+
+# --- batch memory bounds -----------------------------------------------------------
+# collect:batch_bytes:threads  records with large aux tags, long reads (20000, 30000 and
+#                              32767 bp) and a CIGAR of 9000 operations, cut into batches by
+#                              the record byte limit (2 * SAMSTAT_BATCH_BASES = 40000 bytes:
+#                              four short reads with a 12 KB tag, before 8 records or 20000
+#                              bases) or the base limit (the long reads), with slot buffers
+#                              trimmed on capacity: -t 1, 2, 3, 4 and 8 give identical results
+# collect:batch_bytes:counts   the same input without the test-only limits: every read counted
+# The input (about 300 KB) is written here, at configure time, into the build tree.
+set(BATCH_BYTES_SAM ${COLLECT_GEN_DIR}/batch_bytes.sam)
+string(REPEAT "A" 12000 big_tag)
+string(REPEAT "ACGTTGCA" 19 short_seq)
+string(SUBSTRING "${short_seq}" 0 150 short_seq)
+string(REPEAT "I" 150 short_qual)
+set(batch_bytes_text "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:100000\n")
+set(batch_bytes_long 20000 30000 32767 20000)
+set(i 0)
+foreach(k RANGE 1 8)
+  string(APPEND batch_bytes_text "s${k}\t0\tchr1\t${k}\t60\t150M\t*\t0\t0\t${short_seq}\t${short_qual}\tNM:i:0\tMD:Z:150\tXB:Z:${big_tag}\n")
+  if(k EQUAL 4)
+    # 4500 x 1M1I: 9000 bases, 9000 CIGAR operations
+    string(REPEAT "1M1I" 4500 cig)
+    string(REPEAT "ACGTTGCA" 1125 seq)
+    string(REPEAT "I" 9000 qual)
+    string(APPEND batch_bytes_text "c1\t0\tchr1\t100\t60\t${cig}\t*\t0\t0\t${seq}\t${qual}\tNM:i:4500\tMD:Z:4500\n")
+  endif()
+  if(k LESS 5)
+    list(GET batch_bytes_long ${i} len)
+    math(EXPR i "${i}+1")
+    math(EXPR reps "${len}/8+1")
+    string(REPEAT "ACGTTGCA" ${reps} seq)
+    string(SUBSTRING "${seq}" 0 ${len} seq)
+    string(REPEAT "I" ${len} qual)
+    string(APPEND batch_bytes_text "l${i}\t0\tchr1\t${k}\t60\t${len}M\t*\t0\t0\t${seq}\t${qual}\tNM:i:0\tMD:Z:${len}\n")
+  endif()
+endforeach()
+file(WRITE ${BATCH_BYTES_SAM} "${batch_bytes_text}")
+unset(batch_bytes_text)
+unset(big_tag)
+unset(seq)
+unset(qual)
+unset(cig)
+add_test(NAME collect:batch_bytes:threads
+  COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${BATCH_BYTES_SAM}
+    -DOUTDIR=${COLLECT_OUT}/batch_bytes_threads -DMODE=one_file
+    -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_threads.cmake)
+set_tests_properties(collect:batch_bytes:threads PROPERTIES LABELS collect)
+collect_test(batch_bytes:counts ${BATCH_BYTES_SAM}
+  CHECKS summary.total_reads=13)

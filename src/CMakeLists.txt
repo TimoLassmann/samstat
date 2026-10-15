@@ -27,6 +27,7 @@ add_custom_command(
 set(source_files
   samstat.c
   htsinterface/htsglue.c
+  htsinterface/precheck.c
   sambamparse/sam_bam_parse.c
   param/param.c
   collect/collect.c

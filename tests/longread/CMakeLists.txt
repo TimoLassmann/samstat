@@ -152,6 +152,24 @@ lr_value_test(eqx_nomd.sam
   NEAR mean_q=13.8782:0.1 pct_mapq_ge30=80:0.01 pct_clipped=2.6087:0.01
        median_identity=95.082:0.5)
 
+# --- eqx_perfect.sam (written here): two 10 bp reads without MD or NM, one of = operations only
+# (a perfect match) and one with an X at position 5. The perfect read's mismatches are known (none):
+# it is not a read without MD, and it counts in the mismatch denominator aligned_md at every position.
+file(WRITE ${LR_GEN}/eqx_perfect.sam
+  "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:1000\n"
+  "perfect\t0\tchr1\t1\t60\t10=\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n"
+  "onemm\t0\tchr1\t20\t60\t4=1X5=\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n")
+set(eqx_checks "summary.reads_without_md=0" "summary.identity_reads=2"
+  "read1.absolute.aligned_md.mapq_ge30.0=2" "read1.absolute.aligned_md.mapq_ge30.9=2"
+  "read1.absolute.mismatches.mapq_ge30.4=1" "read1.absolute.mismatches.mapq_ge30.3=0")
+string(REPLACE ";" "\;" eqx_checks "${eqx_checks}")
+add_test(NAME longread:value:eqx_perfect.sam
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${LR_GEN}/eqx_perfect.sam
+    -DOUTDIR=${LR_OUT}/value_eqx_perfect.sam "-DCHECKS=${eqx_checks}"
+    -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_json.cmake)
+set_tests_properties(longread:value:eqx_perfect.sam PROPERTIES LABELS longread)
+
 # --- nonm.sam: MD but no NM and plain M: identity not available ----------------------------------
 lr_mq(mq 4 0 1 0)
 lr_value_test(nonm.sam

@@ -616,7 +616,7 @@ static void test_na_lines(void)
                 struct stat_collection* s = make(&sp);
                 char* p5 = render(s, 5);
                 CHECK(p5 && strstr(p5, "<p class=\"plot-note\"><strong>Mismatches:</strong> Excludes ") != NULL, "partial-MD note: %.150s", p5 ? p5 : "(null)");
-                CHECK(p5 && strstr(p5, " of 9,500 mapped reads (no MD tag and no X operations in CIGAR).</p>") != NULL, "note counts: %.250s", p5 ? p5 : "(null)");
+                CHECK(p5 && strstr(p5, " of 9,500 mapped reads (no MD tag and no =/X operations in CIGAR).</p>") != NULL, "note counts: %.250s", p5 ? p5 : "(null)");
                 CHECK(p5 && strstr(p5, ">Mismatches (% of aligned bases)<") != NULL, "mismatch row present");
                 free(p5);
                 stat_collection_free(s);

@@ -42,7 +42,7 @@ struct aln_data {
         uint32_t s_bases;
         uint32_t x_ops;
         uint8_t reverse;
-        uint8_t has_md_or_x;    /* 1 if the record has an MD tag or X ops (mismatches are known) */
+        uint8_t has_md_or_x;    /* 1 if the record has an MD tag or = / X ops (mismatches are known) */
 };
 
 /* Reader options. The batch limits and the -p cutoff are applied by the reader. */

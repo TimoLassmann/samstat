@@ -85,6 +85,7 @@ int parse_alignment(struct tl_seq *s)
         aln_len64 = 0;
         d_sum = 0;
         int64_t q_len = 0;  /* number of query bases consumed by the CIGAR (M, I, S, =, X) */
+        int eqx = 0;        /* the CIGAR uses = or X: every aligned base is a known match or mismatch */
 
         for(int i = 0;i < a->n_cigar;i++){
                 Op = bam_cigar_opchr(a->cigar[i]);
@@ -106,6 +107,9 @@ int parse_alignment(struct tl_seq *s)
                         /* fall through: an X op is also aligned bases */
                 case 'M':
                 case '=':
+                        if(Op != 'M'){
+                                eqx = 1;
+                        }
                         a->m_bases += bam_cigar_oplen(a->cigar[i]);
                         q_len += bam_cigar_oplen(a->cigar[i]);
                         aln_len64 += bam_cigar_oplen(a->cigar[i]);
@@ -147,7 +151,7 @@ int parse_alignment(struct tl_seq *s)
                         a->x_ops = 0;
                 }
                 /* SEQ '*': the CIGAR counts stay valid, there is just nothing to align */
-                a->has_md_or_x = (s->len == 0 && (a->x_ops > 0 || (a->md != NULL && a->md->len > 0))) ? 1 : 0;
+                a->has_md_or_x = (s->len == 0 && (eqx || (a->md != NULL && a->md->len > 0))) ? 1 : 0;
                 return OK;
         }
 
@@ -189,8 +193,9 @@ int parse_alignment(struct tl_seq *s)
         if(a->md != NULL){
                 l = a->md->len;
         }
-        /* MD wins; without it X ops are the only source of mismatches */
-        a->has_md_or_x = (l > 0 || a->x_ops > 0) ? 1 : 0;
+        /* MD wins; without it a CIGAR with = and X ops says which bases match. A read of = ops only
+         * matches perfectly: its mismatches are known (none), so it counts in the mismatch rate */
+        a->has_md_or_x = (l > 0 || eqx) ? 1 : 0;
 
         seq = s->seq->str;
         for(int i = 0;i < a->n_cigar;i++){

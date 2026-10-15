@@ -324,7 +324,10 @@ add_test(NAME cram:lzma_codec
 set_tests_properties(cram:lzma_codec PROPERTIES LABELS reader ENVIRONMENT "${CRAM_REF_PATH}")
 
 # cram:no_ref  no reference reachable: exit 1, one message naming both variables, no report
-# and no network access (libcurl is off in the bundled htslib); under a timeout
+# and no network access (libcurl is off in the bundled htslib); under a timeout.
+# Registered for the bundled htslib only: a system htslib may be built with libcurl and
+# then fetch the missing reference from the EBI server, so the test could reach the network.
+if(NOT SAMSTAT_USE_SYSTEM_HTSLIB)
 file(WRITE ${READER_GEN}/run_cram_no_ref.cmake [=[
 # -DSAMSTAT -DINPUT=<cram> -DOUTDIR
 cmake_minimum_required(VERSION 3.19)
@@ -348,3 +351,4 @@ add_test(NAME cram:no_ref
     ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${CRAM_DIR}/small.cram
     -DOUTDIR=${READER_OUT}/cram_no_ref -P ${READER_GEN}/run_cram_no_ref.cmake)
 set_tests_properties(cram:no_ref PROPERTIES LABELS reader TIMEOUT 60)
+endif()

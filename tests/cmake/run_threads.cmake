@@ -16,6 +16,8 @@ get_filename_component(here "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 # below), W = T - 1 - P for T >= 3, 1 for T = 2, and the reader alone (reported as 1) for
 # T = 1. So W > 1 from -t 4 on. Optional -DREPLICATE=<n>: the records of a SAM INPUT are
 # repeated n times, to reach at least 5 batches (a 4-record fixture cannot fill them).
+
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 if(MODE STREQUAL "one_file")
   file(REMOVE_RECURSE ${OUTDIR})
   file(MAKE_DIRECTORY ${OUTDIR})

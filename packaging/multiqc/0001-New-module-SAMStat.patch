@@ -1,0 +1,731 @@
+From db6ce874b63b03e39ade8db973997dbeb490afc3 Mon Sep 17 00:00:00 2001
+From: Timo Lassmann <timolassmann@icloud.com>
+Date: Thu, 15 Oct 2026 09:56:43 +0800
+Subject: [PATCH] New module: SAMStat
+
+Parses the JSON report of SAMStat 2.4 and later (samstat --json): general
+statistics (reads, MAPQ >= 30, unmapped, N50, mean Q, median identity),
+reads per mapping-quality class, read length, mean base quality along the
+read, mismatch/insertion/deletion rates along the read and the cumulative
+identity distribution.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ multiqc/config_defaults.yaml                  |   1 +
+ multiqc/modules/samstat/__init__.py           |   3 +
+ multiqc/modules/samstat/samstat.py            | 446 ++++++++++++++++++
+ multiqc/modules/samstat/tests/__init__.py     |   0
+ multiqc/modules/samstat/tests/test_samstat.py | 193 ++++++++
+ multiqc/search_patterns.yaml                  |   4 +
+ pyproject.toml                                |   1 +
+ 7 files changed, 648 insertions(+)
+ create mode 100644 multiqc/modules/samstat/__init__.py
+ create mode 100644 multiqc/modules/samstat/samstat.py
+ create mode 100644 multiqc/modules/samstat/tests/__init__.py
+ create mode 100644 multiqc/modules/samstat/tests/test_samstat.py
+
+diff --git a/multiqc/config_defaults.yaml b/multiqc/config_defaults.yaml
+index dbd980e..d31e237 100644
+--- a/multiqc/config_defaults.yaml
++++ b/multiqc/config_defaults.yaml
+@@ -537,6 +537,7 @@ module_order:
+   - nanostat
+   - samblaster
+   - samtools
++  - samstat
+   - bamtools
+   - sambamba
+   - ngsbits
+diff --git a/multiqc/modules/samstat/__init__.py b/multiqc/modules/samstat/__init__.py
+new file mode 100644
+index 0000000..4046cda
+--- /dev/null
++++ b/multiqc/modules/samstat/__init__.py
+@@ -0,0 +1,3 @@
++from .samstat import MultiqcModule
++
++__all__ = ["MultiqcModule"]
+diff --git a/multiqc/modules/samstat/samstat.py b/multiqc/modules/samstat/samstat.py
+new file mode 100644
+index 0000000..e5fa27f
+--- /dev/null
++++ b/multiqc/modules/samstat/samstat.py
+@@ -0,0 +1,446 @@
++"""MultiQC module to parse the JSON report of SAMStat"""
++
++import json
++import logging
++import math
++from typing import Any
++
++from multiqc.base_module import BaseMultiqcModule, ModuleNoSamplesFound
++from multiqc.plots import bargraph, linegraph
++from multiqc.types import SectionAlert
++
++log = logging.getLogger(__name__)
++
++# Mapping-quality classes of the SAMStat JSON report, in its fixed order
++MAPQ_CLASSES = {
++    "mapq_ge30": {"name": "MAPQ >= 30", "color": "#0072B2"},
++    "mapq_10_29": {"name": "MAPQ 10-29", "color": "#E69F00"},
++    "mapq_lt10": {"name": "MAPQ < 10", "color": "#D55E00"},
++    "unmapped": {"name": "Unmapped", "color": "#999999"},
++}
++MAPPED_CLASSES = ["mapq_ge30", "mapq_10_29", "mapq_lt10"]
++
++
++class MultiqcModule(BaseMultiqcModule):
++    """
++    SAMStat reports quality statistics of sequencing reads and their alignments, split by
++    mapping quality, for short and long reads (SAM, BAM, CRAM, FASTA and FASTQ).
++
++    The module parses the JSON report that `samstat --json` writes for each input:
++
++    ```bash
++    samstat --json -d samstat_results/ sample1.bam sample2.bam
++    ```
++
++    This writes `sample1.bam.samstat.json` and `sample2.bam.samstat.json`. The sample name is
++    the input file name; MultiQC removes the usual extensions (`.bam`, `.fastq.gz`, ...).
++    Reports of SAMStat 2.4 and later (JSON `format_version` 2) are supported.
++
++    The General Statistics table shows the number of reads, the percentage of reads with
++    MAPQ >= 30 and of unmapped reads, read length N50, mean base quality and the median
++    identity of the aligned reads. The sections show reads per mapping-quality class, the
++    read length distribution, the mean base quality along the read, mismatch, insertion and
++    deletion rates along the read and the identity distribution of the aligned reads.
++
++    Position plots use 100 bins of the read length (the aligned part on aligned input), so
++    short and long reads share one axis. They show read 1 (all reads of unpaired data).
++
++    SAMStat can also write MultiQC custom content files (`samstat --multiqc`). Use one or the
++    other: with both, the results appear twice in the report.
++    """
++
++    def __init__(self):
++        super().__init__(
++            name="SAMStat",
++            anchor="samstat",
++            href="https://github.com/TimoLassmann/samstat",
++            info="Quality statistics of sequencing reads and alignments, split by mapping quality.",
++            doi=["10.1093/bioinformatics/btad019", "10.1093/bioinformatics/btq614"],
++            license="MIT",
++            license_url="https://github.com/TimoLassmann/samstat/blob/main/COPYING",
++        )
++
++        self.samstat_data: dict[str, dict[str, Any]] = {}
++        self.samstat_reports: dict[str, dict[str, Any]] = {}
++
++        for f in self.find_log_files("samstat", filehandles=True):
++            report = self._parse_report(f)
++            if report is None:
++                continue
++            s_name = self.clean_s_name(report["meta"]["input_file"], f)
++            if s_name in self.samstat_reports:
++                log.debug(f"Duplicate sample name found! Overwriting: {s_name}")
++            self.add_data_source(f, s_name=s_name)
++            self.add_software_version(report["meta"]["samstat_version"], s_name)
++            self.samstat_reports[s_name] = report
++            self.samstat_data[s_name] = self._summary_row(report)
++
++        self.samstat_reports = self.ignore_samples(self.samstat_reports)
++        self.samstat_data = self.ignore_samples(self.samstat_data)
++        if len(self.samstat_reports) == 0:
++            raise ModuleNoSamplesFound
++        log.info(f"Found {len(self.samstat_reports)} reports")
++
++        self._add_general_stats()
++        self._add_mapq_section()
++        self._add_length_section()
++        self._add_quality_section()
++        self._add_error_section()
++        self._add_identity_section()
++
++        self.write_data_file(self.samstat_data, "multiqc_samstat")
++
++    # ------------------------------------------------------------------ parsing
++
++    @staticmethod
++    def _parse_report(f) -> dict[str, Any] | None:
++        """Load one SAMStat JSON report; None (logged) if it is not a version 2 report."""
++        try:
++            report = json.load(f["f"])
++        except (json.JSONDecodeError, UnicodeDecodeError) as e:
++            log.debug(f"Could not parse {f['fn']} as JSON: {e}")
++            return None
++        if not isinstance(report, dict) or "meta" not in report:
++            log.debug(f"{f['fn']} is not a SAMStat report")
++            return None
++        if report.get("format_version") != 2:
++            log.warning(
++                f"{f['fn']}: SAMStat JSON format_version {report.get('format_version')} is not supported "
++                "(SAMStat 2.4 or later writes version 2)"
++            )
++            return None
++        return report
++
++    @staticmethod
++    def _summary_row(report: dict[str, Any]) -> dict[str, Any]:
++        """The scalar summary of one report, for the General Statistics and the data file."""
++        s = report["summary"]
++        row: dict[str, Any] = {
++            "total_reads": s["total_reads"],
++            "total_bases": s["total_bases"],
++            "n50": s["n50"],
++            "median_length": s["median_length"],
++            "min_length": s["min_length"],
++            "max_length": s["max_length"],
++            "mean_q": s["mean_q"],
++            "layout": s["layout"],
++            "is_aligned": s["is_aligned"],
++            "secondary": s["secondary"],
++            "supplementary": s["supplementary"],
++        }
++        if s["is_aligned"]:
++            row["pct_mapq_ge30"] = s["pct_mapq_ge30"]
++            row["pct_unmapped"] = None if s["pct_mapped"] is None else 100.0 - s["pct_mapped"]
++            row["pct_clipped"] = s["pct_clipped"]
++            row["median_identity"] = s["median_identity"]
++            for mate, counts in s["mapq_counts"].items():
++                for cls, n in counts.items():
++                    row[f"{mate}_{cls}"] = n
++        # None means "does not apply" (e.g. no qualities in a FASTA): leave the column empty
++        return {k: v for k, v in row.items() if v is not None}
++
++    # ------------------------------------------------------------------ general stats
++
++    def _add_general_stats(self):
++        headers: dict[str, dict[str, Any]] = {
++            "total_reads": {
++                "title": "Reads",
++                "description": "Primary reads counted by SAMStat",
++                "scale": "Blues",
++                "shared_key": "read_count",
++            },
++            "pct_mapq_ge30": {
++                "title": "MAPQ >= 30",
++                "description": "Reads mapped with MAPQ >= 30",
++                "min": 0,
++                "max": 100,
++                "suffix": "%",
++                "scale": "RdYlGn",
++            },
++            "pct_unmapped": {
++                "title": "Unmapped",
++                "description": "Reads not mapped",
++                "min": 0,
++                "max": 100,
++                "suffix": "%",
++                "scale": "OrRd",
++            },
++            "n50": {
++                "title": "N50",
++                "description": "Read length N50 (exact below 1 kb, within 1% above)",
++                "suffix": " bp",
++                "format": "{:,.0f}",
++                "scale": "Greens",
++            },
++            "mean_q": {
++                "title": "Mean Q",
++                "description": "Mean base quality (Phred, from the mean error probability)",
++                "min": 0,
++                "format": "{:,.1f}",
++                "scale": "RdYlGn",
++            },
++            "median_identity": {
++                "title": "Identity",
++                "description": "Median gap-compressed identity of the aligned reads",
++                "min": 0,
++                "max": 100,
++                "suffix": "%",
++                "format": "{:,.1f}",
++                "scale": "RdYlGn",
++            },
++        }
++        self.general_stats_addcols(self.samstat_data, headers)
++
++    # ------------------------------------------------------------------ sections
++
++    def _add_mapq_section(self):
++        data: dict[str, dict[str, int]] = {}
++        for s_name, report in self.samstat_reports.items():
++            if not report["summary"]["is_aligned"]:
++                continue
++            counts = {cls: 0 for cls in MAPQ_CLASSES}
++            for mate_counts in report["summary"]["mapq_counts"].values():
++                for cls in MAPQ_CLASSES:
++                    counts[cls] += mate_counts[cls]
++            data[s_name] = counts
++        if not data:
++            return
++        self.add_section(
++            name="Mapping quality",
++            anchor="samstat-mapq",
++            description="Primary reads per mapping-quality class (read 1 and read 2 together).",
++            helptext=(
++                "MAPQ is the aligner's confidence that a read is placed correctly; aligners scale it "
++                "differently. SAMStat reports every plot of its own HTML report per class."
++            ),
++            plot=bargraph.plot(
++                data,
++                {cls: dict(v) for cls, v in MAPQ_CLASSES.items()},
++                pconfig={
++                    "id": "samstat-mapq-plot",
++                    "title": "SAMStat: Mapping quality",
++                    "ylab": "Reads",
++                },
++            ),
++        )
++
++    def _add_length_section(self):
++        data: dict[str, dict[int, float]] = {}
++        one_length: list[str] = []
++        for s_name, report in self.samstat_reports.items():
++            s = report["summary"]
++            if s["total_reads"] and s["min_length"] == s["max_length"]:
++                # a single bar at 100 % would flatten every other sample
++                one_length.append(s_name)
++                continue
++            edges = report["axes"]["length_edges"]
++            per_bin: dict[int, int] = {}
++            for mate in ("read1", "read2"):
++                if mate not in report:
++                    continue
++                for counts in report[mate]["length"]["reads"].values():
++                    for b, n in enumerate(counts):
++                        if n == 0 or edges[b] == 0:
++                            continue
++                        x = _length_plot_edge(edges[b])
++                        per_bin[x] = per_bin.get(x, 0) + n
++            total = sum(per_bin.values())
++            if total:
++                data[s_name] = {x: 100.0 * n / total for x, n in sorted(per_bin.items())}
++        if not data and not one_length:
++            return
++        alert = None
++        if one_length:
++            lengths = sorted({self.samstat_reports[s]["summary"]["max_length"] for s in one_length})
++            alert = SectionAlert(
++                message=(
++                    f"**{len(one_length)} sample{'s' if len(one_length) != 1 else ''}** with reads of a single "
++                    f"length ({', '.join(f'{n:,} bp' for n in lengths)}) not shown in this plot."
++                ),
++                level="info",
++                affected_samples=one_length,
++            )
++        self.add_section(
++            name="Read length",
++            anchor="samstat-length",
++            description=(
++                "Read length distribution: percent of reads per length bin, all reads. Lengths up to "
++                "100 bp have one bin each; longer reads are grouped into 20 bins per tenfold length, as in "
++                "the SAMStat report (x is the lower edge of the bin)."
++            ),
++            alerts=alert,
++            plot=None
++            if not data
++            else linegraph.plot(
++                data,
++                pconfig={
++                    "id": "samstat-length-plot",
++                    "title": "SAMStat: Read length",
++                    "xlab": "Read length (bp)",
++                    "ylab": "% of reads",
++                    "xlog": True,
++                    "ymin": 0,
++                    "tt_label": "<b>{point.x} bp</b>: {point.y:.2f}%",
++                },
++            ),
++        )
++
++    def _add_quality_section(self):
++        data: dict[str, dict[int, float]] = {}
++        for s_name, report in self.samstat_reports.items():
++            rel = report["read1"]["relative"]
++            scale = report["axes"]["quality_error_scale"]
++            line: dict[int, float] = {}
++            for i in range(report["axes"]["relative"]["bins"]):
++                bases = sum(_at(rel["qual_bases"][cls], i) for cls in MAPQ_CLASSES)
++                err = sum(_at(rel["qual_error_sum"][cls], i) for cls in MAPQ_CLASSES)
++                if bases:
++                    line[i + 1] = _mean_q(err, bases, scale)
++            if line:
++                data[s_name] = line
++        if not data:
++            return
++        self.add_section(
++            name="Base quality along the read",
++            anchor="samstat-quality",
++            description=(
++                "Mean base quality of read 1 at each position, in 100 bins of the read length (the "
++                "aligned part on aligned input), all mapping-quality classes together."
++            ),
++            plot=linegraph.plot(
++                data,
++                pconfig={
++                    "id": "samstat-quality-plot",
++                    "title": "SAMStat: Mean base quality along the read",
++                    "xlab": "Position in read (% of length)",
++                    "ylab": "Mean Phred quality",
++                    "xmin": 0,
++                    "xmax": 100,
++                    "ymin": 0,
++                },
++            ),
++        )
++
++    def _add_error_section(self):
++        labels = [
++            ("mismatches", "aligned_md", "Mismatches"),
++            ("insertions", "aligned", "Insertions"),
++            ("deletions", "aligned", "Deletions"),
++        ]
++        datasets: list[dict[str, dict[int, float]]] = [{} for _ in labels]
++        for s_name, report in self.samstat_reports.items():
++            if not report["summary"]["is_aligned"]:
++                continue
++            rel = report["read1"]["relative"]
++            for d, (key, denominator, _) in enumerate(labels):
++                line: dict[int, float] = {}
++                for i in range(report["axes"]["relative"]["bins"]):
++                    den = _at(rel[denominator]["mapq_ge30"], i)
++                    if den:
++                        line[i + 1] = 100.0 * _at(rel[key]["mapq_ge30"], i) / den
++                if line:
++                    datasets[d][s_name] = line
++        if not any(datasets):
++            return
++        self.add_section(
++            name="Errors along the read",
++            anchor="samstat-errors",
++            description=(
++                "Mismatches, insertions and deletions per aligned base of read 1 reads with MAPQ >= 30, "
++                "in 100 bins of the aligned part of the read. An insertion or deletion counts once, "
++                "where it opens."
++            ),
++            helptext=(
++                "Mismatches need an `MD` tag or `=`/`X` CIGAR operations; a sample without either has no "
++                "mismatch line. The SAMStat HTML report shows these rates for every mapping-quality class."
++            ),
++            plot=linegraph.plot(
++                datasets,
++                pconfig={
++                    "id": "samstat-errors-plot",
++                    "title": "SAMStat: Errors along the read (MAPQ >= 30)",
++                    "xlab": "Position in read (% of aligned part)",
++                    "ylab": "% of aligned bases",
++                    "xmin": 0,
++                    "xmax": 100,
++                    "ymin": 0,
++                    "data_labels": [{"name": name, "ylab": f"{name} (% of aligned bases)"} for _, _, name in labels],
++                },
++            ),
++        )
++
++    def _add_identity_section(self):
++        data: dict[str, dict[float, float]] = {}
++        for s_name, report in self.samstat_reports.items():
++            if not report["summary"]["is_aligned"] or not report["summary"]["identity_reads"]:
++                continue
++            counts = [0] * report["axes"]["identity_bins"]
++            for mate in ("read1", "read2"):
++                if mate not in report:
++                    continue
++                for cls in MAPPED_CLASSES:
++                    for b, n in enumerate(report[mate]["identity"][cls]):
++                        counts[b] += n
++            total = sum(counts)
++            if not total:
++                continue
++            # percent of reads with identity >= the lower edge of each 0.1 % bin, from the bin of the
++            # lowest identity up; cumulative counts need no binning, so short and long reads compare
++            line: dict[float, float] = {}
++            at_least = total
++            for b, n in enumerate(counts):
++                if at_least < total or n:
++                    line[b / 10.0] = 100.0 * at_least / total
++                at_least -= n
++            data[s_name] = line
++        if not data:
++            return
++        self.add_section(
++            name="Identity to the reference",
++            anchor="samstat-identity",
++            description=(
++                "Percent of aligned reads whose gap-compressed identity to the reference is at least x. "
++                "The higher the curve stays towards 100 %, the more accurate the reads."
++            ),
++            helptext=(
++                "Identity is (M - X) / (M + I + D) with each insertion and deletion counted once, from the NM "
++                "tag or the `=`/`X` CIGAR operations. Read 1 and read 2 of all mapping-quality classes together."
++            ),
++            plot=linegraph.plot(
++                data,
++                pconfig={
++                    "id": "samstat-identity-plot",
++                    "title": "SAMStat: Identity to the reference",
++                    "xlab": "Identity (%)",
++                    "ylab": "% of aligned reads with at least this identity",
++                    "xmax": 100,
++                    "ymin": 0,
++                    "ymax": 100,
++                    "tt_label": "<b>>= {point.x}%</b>: {point.y:.1f}% of reads",
++                },
++            ),
++        )
++
++
++def _at(values: list[int], i: int) -> int:
++    """Value i of a JSON array; arrays end after their last non-zero value."""
++    return values[i] if i < len(values) else 0
++
++
++def _mean_q(error_sum: int, bases: int, scale: int) -> float:
++    """Phred value of the mean error probability (as SAMStat computes mean Q)."""
++    mean_error = error_sum / bases / scale
++    if mean_error <= 0:
++        return 40.0
++    return -10.0 * math.log10(mean_error)
++
++
++def _length_plot_edge(edge: int) -> int:
++    """
++    Plot bin of a length: one bin per length up to 100 bp, then 20 bins per decade (as in the
++    SAMStat HTML report), named by their lower edge, 10^(k/20) rounded to whole bases.
++    """
++    if edge <= 100:
++        return edge
++    k = math.floor(20 * math.log10(edge) + 1e-9)
++    return round(10 ** (k / 20))
+diff --git a/multiqc/modules/samstat/tests/__init__.py b/multiqc/modules/samstat/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/multiqc/modules/samstat/tests/test_samstat.py b/multiqc/modules/samstat/tests/test_samstat.py
+new file mode 100644
+index 0000000..3b9d36d
+--- /dev/null
++++ b/multiqc/modules/samstat/tests/test_samstat.py
+@@ -0,0 +1,193 @@
++"""Tests for the SAMStat module: parsing, derived values and edge cases."""
++
++import json
++from pathlib import Path
++from typing import Any
++
++import pytest
++
++from multiqc import report
++from multiqc.base_module import ModuleNoSamplesFound
++from multiqc.modules.samstat.samstat import MultiqcModule, _length_plot_edge, _mean_q
++
++CLASSES = ["mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"]
++SCALE = 1 << 30
++
++
++def _report(
++    name: str,
++    aligned: bool = True,
++    lengths: dict[int, int] | None = None,
++    identity: dict[int, int] | None = None,
++    version: int = 2,
++) -> dict[str, Any]:
++    """A small SAMStat JSON report (format version 2), read 1 only, all reads in one class."""
++    lengths = lengths or {100: 3, 150: 1}
++    identity = identity or {}
++    cls = "mapq_ge30" if aligned else "unmapped"
++    n = sum(lengths.values())
++    edges = list(range(1001))
++    len_reads = {c: [0] * 1001 for c in CLASSES}
++    for length, count in lengths.items():
++        len_reads[cls][length] = count
++    ident = {c: [] for c in CLASSES}
++    if identity:
++        ident["mapq_ge30"] = [identity.get(b, 0) for b in range(1001)]
++
++    def rel(value: int) -> dict[str, list[int]]:
++        return {c: ([value] * 100 if c == cls else []) for c in CLASSES}
++
++    return {
++        "format_version": version,
++        "meta": {"samstat_version": "2.4.0", "input_file": name},
++        "summary": {
++            "total_reads": n,
++            "read1_reads": n,
++            "read2_reads": 0,
++            "total_bases": sum(k * v for k, v in lengths.items()),
++            "min_length": min(lengths),
++            "max_length": max(lengths),
++            "n50": max(lengths),
++            "median_length": min(lengths),
++            "mean_q": 30.0,
++            "layout": "short",
++            "is_aligned": aligned,
++            "secondary": 0,
++            "supplementary": 0,
++            "pct_mapped": 100.0 if aligned else None,
++            "pct_mapq_ge30": 100.0 if aligned else None,
++            "pct_clipped": 0.0 if aligned else None,
++            "median_identity": 99.0 if identity else None,
++            "identity_reads": sum(identity.values()),
++            "mapq_counts": {"read1": {c: (n if c == cls else 0) for c in CLASSES}},
++        },
++        "axes": {
++            "length_edges": edges,
++            "relative": {"bins": 100},
++            "identity_bins": 1001,
++            "quality_error_scale": SCALE,
++        },
++        "read1": {
++            "length": {"reads": len_reads},
++            "identity": ident,
++            "relative": {
++                "qual_bases": rel(10),
++                # Q30: error probability 0.001 per base
++                "qual_error_sum": rel(round(10 * 0.001 * SCALE)),
++                "aligned": rel(1000 if aligned else 0),
++                "aligned_md": rel(1000 if aligned else 0),
++                "mismatches": rel(5 if aligned else 0),
++                "insertions": rel(2 if aligned else 0),
++                "deletions": rel(1 if aligned else 0),
++            },
++        },
++    }
++
++
++def _run(tmp_path: Path, files: dict[str, Any]) -> MultiqcModule:
++    for fn, content in files.items():
++        (tmp_path / fn).write_text(content if isinstance(content, str) else json.dumps(content))
++    report.reset()
++    report.analysis_files = [str(tmp_path)]
++    report.search_files(["samstat"])
++    return MultiqcModule()
++
++
++def _plot_data(module: MultiqcModule, anchor: str) -> Any:
++    section = next(s for s in module.sections if s.anchor == anchor)
++    return section
++
++
++def _line_points(plot_id: str, sample: str, tab: int = 0) -> dict[Any, Any]:
++    """The {x: y} points drawn for a sample on one tab of a line plot."""
++    lines = [line for line in report.plot_by_id[plot_id].datasets[tab].lines if line.name == sample]
++    return dict(lines[0].pairs) if lines else {}
++
++
++def _line_samples(plot_id: str, tab: int = 0) -> set:
++    return {line.name for line in report.plot_by_id[plot_id].datasets[tab].lines}
++
++
++def test_aligned_and_fastq(tmp_path):
++    m = _run(
++        tmp_path,
++        {
++            "a.bam.samstat.json": _report("a.bam", identity={990: 2, 1000: 2}),
++            "b.fastq.gz.samstat.json": _report("b.fastq.gz", aligned=False),
++        },
++    )
++    # sample names: the input file name, cleaned of its extensions
++    assert set(m.samstat_data) == {"a", "b"}
++    a, b = m.samstat_data["a"], m.samstat_data["b"]
++    assert a["total_reads"] == 4 and a["pct_mapq_ge30"] == 100.0 and a["pct_unmapped"] == 0.0
++    assert a["read1_mapq_ge30"] == 4
++    # FASTQ: no alignment columns at all (not zeros)
++    assert "pct_mapq_ge30" not in b and "pct_unmapped" not in b and "median_identity" not in b
++    anchors = {s.anchor for s in m.sections}
++    assert {"samstat-mapq", "samstat-length", "samstat-quality", "samstat-errors", "samstat-identity"} <= anchors
++
++
++def test_values(tmp_path):
++    m = _run(tmp_path, {"a.bam.samstat.json": _report("a.bam", identity={990: 1, 995: 1, 1000: 2})})
++    rep = m.samstat_reports["a"]
++    # mean Q from the error sums: 10 bases at Q30 per bin
++    rel = rep["read1"]["relative"]
++    assert _mean_q(rel["qual_error_sum"]["mapq_ge30"][0], 10, SCALE) == pytest.approx(30.0, abs=0.01)
++    # errors per aligned base, in percent: 5, 2 and 1 per 1000 bases in every bin
++    assert _line_points("samstat-errors-plot", "a", 0)[50] == pytest.approx(0.5)
++    assert _line_points("samstat-errors-plot", "a", 1)[50] == pytest.approx(0.2)
++    assert _line_points("samstat-errors-plot", "a", 2)[50] == pytest.approx(0.1)
++    assert _line_points("samstat-quality-plot", "a")[1] == pytest.approx(30.0, abs=0.01)
++
++
++def test_identity_is_cumulative(tmp_path):
++    m = _run(tmp_path, {"a.bam.samstat.json": _report("a.bam", identity={990: 1, 995: 1, 1000: 2})})
++    section = _plot_data(m, "samstat-identity")
++    assert section is not None
++    # computed line: 100 % at 99.0, 75 % from 99.1 to 99.5, 50 % from 99.6 to 100
++    points = _line_points("samstat-identity-plot", "a")
++    assert points[99.0] == pytest.approx(100.0)
++    assert points[99.5] == pytest.approx(75.0)
++    assert points[100.0] == pytest.approx(50.0)
++
++
++def test_single_length_left_out_of_length_plot(tmp_path):
++    m = _run(
++        tmp_path,
++        {
++            "one.bam.samstat.json": _report("one.bam", lengths={150: 10}),
++            "two.bam.samstat.json": _report("two.bam", lengths={100: 3, 150: 1}),
++        },
++    )
++    section = _plot_data(m, "samstat-length")
++    assert section.plot_anchor is not None
++    assert _line_samples("samstat-length-plot") == {"two"}
++    assert "one" in str(section.alerts)
++
++
++def test_only_single_length_keeps_section_without_plot(tmp_path):
++    m = _run(tmp_path, {"one.bam.samstat.json": _report("one.bam", lengths={150: 10})})
++    section = _plot_data(m, "samstat-length")
++    assert section.plot_anchor is None and "single" in str(section.alerts)
++
++
++def test_old_format_and_other_json_are_skipped(tmp_path):
++    with pytest.raises(ModuleNoSamplesFound):
++        _run(
++            tmp_path,
++            {
++                "old.bam.samstat.json": _report("old.bam", version=1),
++                "x.samstat.json": "not json at all",
++            },
++        )
++
++
++def test_length_plot_edges():
++    assert [_length_plot_edge(e) for e in (1, 50, 100)] == [1, 50, 100]
++    # 20 bins per decade above 100 bp: 112, 126, ..., 1000, 1122, ...
++    assert _length_plot_edge(101) == 100
++    assert _length_plot_edge(113) == 112
++    assert _length_plot_edge(1000) == 1000
++    assert _length_plot_edge(1121) == 1000
++    assert _length_plot_edge(1123) == 1122
++    assert _length_plot_edge(10**6) == 10**6
+diff --git a/multiqc/search_patterns.yaml b/multiqc/search_patterns.yaml
+index dd50b19..07ffe3f 100644
+--- a/multiqc/search_patterns.yaml
++++ b/multiqc/search_patterns.yaml
+@@ -1090,6 +1090,10 @@ sambamba/markdup:
+   num_lines: 50
+ samblaster:
+   contents: "samblaster: Version"
++samstat:
++  fn: "*.samstat.json"
++  contents: '"samstat_version"'
++  num_lines: 5
+ samtools/stats:
+   contents: "This file was produced by samtools stats"
+ samtools/flagstat:
+diff --git a/pyproject.toml b/pyproject.toml
+index 416e8b2..a5c93c8 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -248,6 +248,7 @@ rseqc = "multiqc.modules.rseqc:MultiqcModule"
+ salmon = "multiqc.modules.salmon:MultiqcModule"
+ sambamba = "multiqc.modules.sambamba:MultiqcModule"
+ samblaster = "multiqc.modules.samblaster:MultiqcModule"
++samstat = "multiqc.modules.samstat:MultiqcModule"
+ samtools = "multiqc.modules.samtools:MultiqcModule"
+ sargasso = "multiqc.modules.sargasso:MultiqcModule"
+ seqera_cli = "multiqc.modules.seqera_cli:MultiqcModule"
+-- 
+2.56.0
+

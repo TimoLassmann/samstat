@@ -11,6 +11,7 @@
 
 #define HTSGLUE_IMPORT
 #include "htsglue.h"
+#include "precheck.h"
 
 static void free_aln_data_struct(struct aln_data *a);
 static int alloc_aln_data(struct aln_data **aln_d);
@@ -535,6 +536,12 @@ int open_reads(struct sam_bam_file **file, char *filename, const struct reader_o
                 ERROR_MSG("%s: unrecognised input (not SAM, BAM, FASTA or FASTQ)", f_handle->filename);
                 break;
         }
+
+        /* htslib loads a whole FASTA/FASTQ record or SAM line before the read length check
+         * in read_batch() sees it: reject a record or line that is too long first, from a
+         * streaming scan of the first PRECHECK_SCAN_MAX bytes (precheck.h). Before the
+         * header is read: sam_hdr_read() loads the SAM header lines. */
+        RUN(precheck_input(f_handle->filename, fmt->format, f_handle->max_read_len));
 
         if(!f_handle->is_empty){
                 /* One pool, attached once (htslib >= 1.23.1 refuses a second attach).

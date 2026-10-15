@@ -59,6 +59,8 @@ of about 1000 characters in the build tree). Review new tests against them.
 5. **No deep or long paths.** Directory names are short and a few levels deep;
    `run_expect.cmake` rejects a `MKDIR` entry over 100 characters or 4 levels.
    Path length limits are tested in unit tests, not by creating the path.
+   The last test, `zz_path_check`, fails if anything below `tests/out` is
+   longer than 150 characters or deeper than 8 levels.
 6. **No network.** Tests that could reach the network with some build
    configuration (system htslib with libcurl, MultiQC's version check) are
    registered only where they cannot, or run isolated.

@@ -39,3 +39,23 @@ foreach(area ${SAMSTAT_TEST_AREAS})
     add_subdirectory(${area})
   endif()
 endforeach()
+
+# Last: no test may leave a long or deep path in the build tree (tests/README.md, rule 5).
+# DEPENDS on every other test makes CTest run it after them, also with -j.
+function(samstat_collect_tests dir out)
+  get_property(t DIRECTORY ${dir} PROPERTY TESTS)
+  get_property(subdirs DIRECTORY ${dir} PROPERTY SUBDIRECTORIES)
+  foreach(s IN LISTS subdirs)
+    samstat_collect_tests(${s} st)
+    list(APPEND t ${st})
+  endforeach()
+  set(${out} ${t} PARENT_SCOPE)
+endfunction()
+samstat_collect_tests(${CMAKE_CURRENT_SOURCE_DIR} SAMSTAT_ALL_TESTS)
+add_test(NAME zz_path_check
+  COMMAND ${CMAKE_COMMAND}
+    -DROOT=${SAMSTAT_TEST_OUT_DIR}
+    -DMAX_LEN=150
+    -DMAX_DEPTH=8
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_paths.cmake)
+set_tests_properties(zz_path_check PROPERTIES DEPENDS "${SAMSTAT_ALL_TESTS}")

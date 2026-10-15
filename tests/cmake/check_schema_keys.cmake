@@ -7,6 +7,7 @@
 
 cmake_minimum_required(VERSION 3.19)
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR})
 execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} --json -d ${OUTDIR} ${INPUT}

@@ -7,6 +7,7 @@
 #                              -DNO_SECTIONS=<list> sections that must not exist
 # The output directory is NOT cleaned when -DKEEP=ON, so several inputs can share it.
 
+include(${CMAKE_CURRENT_LIST_DIR}/outdir_guard.cmake)
 if(NOT KEEP)
   file(REMOVE_RECURSE ${OUTDIR})
 endif()

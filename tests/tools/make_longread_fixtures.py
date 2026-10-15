@@ -16,10 +16,12 @@ Two modes:
       none is found, `samtools view -b --no-PG` is used instead (the BAM bytes
       may then differ from the committed ones).
 
-  make_longread_fixtures.py --reads N [--profile ont|short] [--seed N] [--out F]
+  make_longread_fixtures.py --reads N [--profile ont|short] [--seed N] [--out F] [--force]
       Write N reads as SAM (stdout, or F) for tests/perf/bench.sh. A pool of
       simulated templates is cycled with fresh names and positions, so a 1 Gb
-      file takes seconds. Not byte-stable across --seed values.
+      file takes seconds. Not byte-stable across --seed values. N is capped at
+      200000 (about 75 MB short, 3.5 GB ONT-like) unless --force is given, so
+      that a typo cannot fill the disk.
 
 Ground truth: every expected value in README.md is computed from the
 simulation (the generator knows the true alignment of each read) and from the
@@ -1124,6 +1126,10 @@ def check_sizes(paths):
     return not bad
 
 
+# bulk mode: more reads than this need --force (200000 ONT-like reads are about 3.5 GB)
+MAX_BULK_READS = 200_000
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--outdir", default=None, help="fixture directory (default: tests/data/longread)")
@@ -1134,10 +1140,15 @@ def main():
     ap.add_argument("--profile", choices=["ont", "short"], default="ont",
                     help="bulk mode read profile (default ont: 500 bp-30 kb; short: 150 bp)")
     ap.add_argument("--out", default=None, help="bulk mode output file (default stdout)")
+    ap.add_argument("--force", action="store_true",
+                    help="bulk mode: allow more than %d reads" % MAX_BULK_READS)
     args = ap.parse_args()
     if args.reads is not None:
         if args.reads < 1:
             ap.error("--reads must be >= 1")
+        if args.reads > MAX_BULK_READS and not args.force:
+            ap.error("--reads %d is above the cap of %d; add --force to write it anyway"
+                     % (args.reads, MAX_BULK_READS))
         out = open(args.out, "wb") if args.out else sys.stdout.buffer
         bulk(args.reads, args.profile, args.seed, out)
         return 0

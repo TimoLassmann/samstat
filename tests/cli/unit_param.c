@@ -5,7 +5,7 @@
  * batch limits, so a large value must be ignored. Only param_init() runs here; nothing is
  * allocated by the values.
  */
-#include "tld.h"
+#include "tldlite.h"
 #include "../../src/param/param.h"
 #include <stdio.h>
 #include <stdlib.h>

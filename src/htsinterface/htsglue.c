@@ -1,7 +1,5 @@
 #include "sam.h"
-#include "seq/tld-seq.h"
-#include "string/str.h"
-#include "tld.h"
+#include "tldlite.h"
 #include <htslib/sam.h>
 #include <htslib/bgzf.h>
 #include <htslib/hfile.h>

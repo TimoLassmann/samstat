@@ -1,6 +1,6 @@
 # Bioconda recipe for SAMStat.
-# The sha256 below is a placeholder: after tagging a release, replace it with
-# the value from samstat-<version>.tar.gz.sha256 attached to the GitHub release.
+# The sha256 below is a placeholder: after tagging a release, replace it with the
+# value of the GitHub source archive (curl -L <url> | shasum -a 256).
 {% set version = "2.4.0" %}
 
 package:
@@ -8,7 +8,7 @@ package:
   version: {{ version }}
 
 source:
-  url: https://github.com/TimoLassmann/samstat/releases/download/v{{ version }}/samstat-{{ version }}.tar.gz
+  url: https://github.com/TimoLassmann/samstat/archive/refs/tags/v{{ version }}.tar.gz
   sha256: 0000000000000000000000000000000000000000000000000000000000000000  # FIXME: real sha256 after release
 
 build:

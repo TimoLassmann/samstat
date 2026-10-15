@@ -14,8 +14,7 @@
  *   mean Q       128-bit error sum above UINT64_MAX
  *   fixtures     summary values of the long-read fixtures
  */
-#include "tld.h"
-#include "seq/tld-seq.h"
+#include "tldlite.h"
 #include "../../src/htsinterface/htsglue.h"
 #include "../../src/sambamparse/sam_bam_parse.h"
 #include "../../src/collect/collect.h"
@@ -71,7 +70,6 @@ static int read_into(const char *path, struct stat_collection **cols, int n, int
 {
         struct sam_bam_file *f = NULL;
         struct tl_seq_buffer *sb = NULL;
-        struct alphabet *a = NULL;
         struct reader_opts o;
         int chunk = 0;
 
@@ -90,8 +88,6 @@ static int read_into(const char *path, struct stat_collection **cols, int n, int
         if(!f->is_fastx){
                 RUN(add_aln_data(sb));
         }
-        RUN(create_alphabet(&a, NULL, TLALPHABET_NOAMBIGUOUS_DNA));
-        sb->data = a;
 
         while(1){
                 RUN(read_bam_chunk(f, sb));
@@ -120,8 +116,6 @@ static int read_into(const char *path, struct stat_collection **cols, int n, int
         cols[0]->n_supplementary = f->n_supplementary;
         RUN(close_bam(f));
         f = NULL;
-        free_alphabet(a);
-        sb->data = NULL;
         free_aln_data(sb);
         free_tl_seq_buffer(sb);
         return OK;

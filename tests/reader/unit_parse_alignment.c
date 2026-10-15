@@ -4,8 +4,7 @@
  * and the produced read / genome strings and clip lengths are compared with
  * values worked out from the SAM specification.
  */
-#include "tld.h"
-#include "seq/tld-seq.h"
+#include "tldlite.h"
 #include "../../src/htsinterface/htsglue.h"
 #include "../../src/sambamparse/sam_bam_parse.h"
 #include <stdio.h>

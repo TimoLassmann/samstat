@@ -1,6 +1,4 @@
-# samstat never uses tld's hdf5 wrapper; keep it out of the build and the link.
-set(TLD_USE_HDF5 OFF CACHE BOOL "Enable HDF5 support in tld" FORCE)
-add_subdirectory(tld)
+add_subdirectory(util)
 add_subdirectory(plot)
 
 option(USE_PTHREADS    "Use pthreads for parallelization" ON)
@@ -18,7 +16,7 @@ endif(USE_PTHREADS)
 add_executable(converttablegen
   convert_tables.c
   )
-target_link_libraries(converttablegen PRIVATE tld-dev)
+target_link_libraries(converttablegen PRIVATE tldlite)
 
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/convert_tables.h
@@ -65,7 +63,7 @@ if(Threads_FOUND)
   target_link_libraries(samstat PRIVATE Threads::Threads)
 endif()
 
-target_link_libraries(samstat PRIVATE tld-dev  module_plot)
+target_link_libraries(samstat PRIVATE tldlite module_plot)
 
 if(SAMSTAT_SANITIZE)
   target_compile_options(samstat PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)

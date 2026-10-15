@@ -12,14 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Configure
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: cmake --build build -j4
@@ -28,15 +26,8 @@ jobs:
       working-directory: build
       run: ctest --output-on-failure --no-tests=error -j4
 
-    - name: Create source tarball (includes tld submodule)
-      run: |
-        VERSION="${GITHUB_REF_NAME#v}"
-        ./packaging/make_source_tarball.sh "$VERSION" dist
-
-    - name: Upload to GitHub release
+    # The source archive GitHub attaches to every release is complete (no submodules).
+    - name: Create GitHub release
       uses: softprops/action-gh-release@v2.2.2
       with:
-        files: |
-          dist/samstat-*.tar.gz
-          dist/samstat-*.tar.gz.sha256
         generate_release_notes: true

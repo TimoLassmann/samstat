@@ -1,4 +1,4 @@
-#include "tld.h"
+#include "tldlite.h"
 #include "sambamparse/sam_bam_parse.h"
 #include "htslib/sam.h"
 #include "htsinterface/htsglue.h"
@@ -172,18 +172,15 @@ struct file_worker {
         int ok;
 };
 
-/* A sequence buffer with its alignment data and alphabet. */
+/* A sequence buffer with its alignment data. */
 static int work_buffer_alloc(struct tl_seq_buffer **buf, int size, int is_fastx)
 {
         struct tl_seq_buffer *sb = NULL;
-        struct alphabet *a = NULL;
 
         RUN(alloc_tl_seq_buffer(&sb, size));
         if(!is_fastx){
                 RUN(add_aln_data(sb));
         }
-        RUN(create_alphabet(&a, NULL,TLALPHABET_NOAMBIGUOUS_DNA));
-        sb->data = a;
         *buf = sb;
         return OK;
 ERROR:
@@ -197,10 +194,6 @@ ERROR:
 static void work_buffer_free(struct tl_seq_buffer *sb)
 {
         if(sb){
-                if(sb->data){
-                        free_alphabet((struct alphabet*) sb->data);
-                        sb->data = NULL;
-                }
                 free_aln_data(sb);
                 free_tl_seq_buffer(sb);
         }

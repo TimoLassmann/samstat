@@ -1,7 +1,7 @@
 #ifndef SAM_BAM_PARSE_H
 #define SAM_BAM_PARSE_H
 
-#include "seq/tld-seq.h"
+#include "tldlite.h"
 
 
 #ifdef SAM_BAM_PARSE_IMPORT

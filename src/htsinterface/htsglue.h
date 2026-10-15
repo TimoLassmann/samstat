@@ -1,7 +1,7 @@
 #ifndef HTSGLUE_H
 #define HTSGLUE_H
 
-#include "tld.h"
+#include "tldlite.h"
 #include "sam.h"
 #include "hts.h"
 #include <htslib/thread_pool.h>

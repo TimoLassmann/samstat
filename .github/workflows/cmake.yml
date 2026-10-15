@@ -11,14 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Configure
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: cmake --build build -j4
@@ -31,14 +29,12 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Install dependencies
       run: brew install autoconf automake zlib xz
 
     - name: Configure
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: cmake --build build -j4
@@ -51,14 +47,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Configure (AddressSanitizer / UBSan)
-      run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON -DGIT_SUBMODULE=OFF
+      run: cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DSAMSTAT_SANITIZE=ON
 
     - name: Build
       run: cmake --build build-asan -j4
@@ -76,15 +70,13 @@ jobs:
       LDFLAGS: -fsanitize=thread
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 
     - name: Configure (ThreadSanitizer)
       run: >
-        cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DGIT_SUBMODULE=OFF
+        cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug
         -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
         -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
 
@@ -108,8 +100,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Install dependencies
       run: sudo apt-get update && sudo apt-get install -y autoconf automake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
@@ -118,7 +108,7 @@ jobs:
       run: pip install multiqc==1.25.1
 
     - name: Configure (MultiQC is required, so multiqc:run is registered)
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGIT_SUBMODULE=OFF -DSAMSTAT_REQUIRE_MULTIQC=ON
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSAMSTAT_REQUIRE_MULTIQC=ON
 
     - name: Build
       run: cmake --build build -j4

@@ -32,7 +32,7 @@
  * the palette (the MAPQ and base-composition palettes live in report code).
  */
 
-#include "tld.h"
+#include "tldlite.h"
 
 #define SVG_DEFAULT_FONT 12.0   /* px, the minimum allowed text size */
 #define SVG_MAX_TICKS 96

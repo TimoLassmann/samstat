@@ -55,10 +55,6 @@ configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/src/config.h.in"
             "${CMAKE_CURRENT_BINARY_DIR}/config.h" )
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/tld/CMakeLists.txt")
-  message(FATAL_ERROR "src/tld is missing. Run: git submodule update --init --recursive")
-endif()
-
 include(ExternalProject)
 include("thirdparty/htslib.cmake")
 
@@ -75,7 +71,6 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
   include(CTest)
   add_subdirectory(tests)
 endif()
-#add_subdirectory(src/tld/tests)
 
 install(TARGETS samstat RUNTIME DESTINATION bin)
 

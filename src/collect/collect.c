@@ -1,4 +1,4 @@
-#include "tld.h"
+#include "tldlite.h"
 
 #include "sam.h"
 #include "../htsinterface/htsglue.h"

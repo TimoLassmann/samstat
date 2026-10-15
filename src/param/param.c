@@ -8,8 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "misc/misc.h"
-#include "tld.h"
+#include "tldlite.h"
 #define PARAM_IMPORT
 #include "param.h"
 

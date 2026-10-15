@@ -224,6 +224,38 @@ int read_bam_batch(struct sam_bam_file *f_handle, struct bam_batch *batch)
         return read_batch(f_handle, batch, batch->cap);
 }
 
+/* Append len bytes of src to b. Unlike tld_append this does not stop at a 0 byte: the
+ * caller gives the length (SEQ and QUAL have one, a 0 inside them must not cut them short).
+ * The capacity grows like in tld_append; on failure b is unchanged. */
+static int append_bytes(tld_strbuf *b, const char *src, int len)
+{
+        ASSERT(b != NULL && len >= 0, "Bad append");
+        if((int64_t) b->alloc_len - (int64_t) b->len <= (int64_t) len){
+                const int64_t want = (int64_t) b->len + (int64_t) len + 1;
+                int64_t new_size = MACRO_MAX((int64_t) b->alloc_len * 2, want);
+                uint8_t *tmp = NULL;
+
+                ASSERT(want <= INT32_MAX, "String too long");
+                if(new_size > INT32_MAX){
+                        new_size = INT32_MAX;
+                }
+                galloc(&tmp, (int) new_size);
+                memcpy(tmp, b->str, (size_t) b->len);
+                gfree(b->str);
+                b->str = tmp;
+                b->alloc_len = (int32_t) new_size;
+        }
+        memcpy(b->str + b->len, src, (size_t) len);
+        b->len += len;
+        b->str[b->len] = 0;
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* The largest Phred score the SAM specification allows (QUAL characters '!' to '~'). */
+#define PHRED_MAX 93
+
 int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq_buffer *sb)
 {
         char* buffer = NULL;
@@ -242,7 +274,7 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                 s = sb->sequences[sb->num_seq];
                 a = (struct aln_data* )s->data;
 
-                tld_append(s->name, bam_get_qname(b));
+                RUN(tld_append(s->name, bam_get_qname(b)));
 
                 s->len = b->core.l_qseq;
 
@@ -259,27 +291,30 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                 }
                 buffer[s->len] = 0;
 
-                tld_append(s->seq, buffer);
+                RUN(append_bytes(s->seq, buffer, s->len));
 
                 if(s->len == 0){
                         /* SEQ '*': no bases and no qualities (qual_ptr must not be read) */
-                        buffer[0] = 0;
-                        tld_append(s->qual, buffer);
+                        RUN(append_bytes(s->qual, buffer, 0));
                 }else if(qual_ptr[0] == 0xFF){
+                        /* SAM spec: a first quality of 0xFF means QUAL '*' (absent) */
                         if(is_fastx){
                                 /* FASTA: no quality string at all */
-                                buffer[0] = 0;
+                                RUN(append_bytes(s->qual, buffer, 0));
                         }else{
                                 memset(buffer, 0xFF, s->len);
                                 buffer[s->len] = 0;
+                                RUN(append_bytes(s->qual, buffer, s->len));
                         }
-                        tld_append(s->qual, buffer);
                 }else{
+                        /* A BAM can hold any byte as a quality. Above 93 the character
+                         * would leave '!'..'~' (and 223 + 33 wraps to 0): clamp, as the
+                         * collector would for 94..222 anyway. */
                         for (int i = 0; i < s->len; ++i){
-                                buffer[i] = qual_ptr[i] + 33;
+                                buffer[i] = (char) (MACRO_MIN((int) qual_ptr[i], PHRED_MAX) + 33);
                         }
                         buffer[s->len] = 0;
-                        tld_append(s->qual, buffer);
+                        RUN(append_bytes(s->qual, buffer, s->len));
                 }
 
                 /* FASTA/FASTQ records carry no alignment data (a == NULL). The
@@ -295,22 +330,48 @@ int convert_bam_batch(const struct bam_batch *batch, int is_fastx, struct tl_seq
                         a->error = -1;
                         if(! (BAM_FUNMAP & b->core.flag)){
                                 uint8_t * aux =  bam_aux_get(b,"NM");
+                                /* only an integer NM is an edit distance: bam_aux2i reads
+                                 * NM:Z / NM:A / NM:f as 0, a perfect match. Anything else,
+                                 * or a value that does not fit, is treated as no NM. */
                                 if(aux){
-                                        a->error = bam_aux2i(aux);
+                                        switch(aux[0]){
+                                        case 'c':
+                                        case 'C':
+                                        case 's':
+                                        case 'S':
+                                        case 'i':
+                                        case 'I':{
+                                                const int64_t nm = bam_aux2i(aux);
+                                                if(nm >= 0 && nm <= INT32_MAX){
+                                                        a->error = (int) nm;
+                                                }
+                                                break;
+                                        }
+                                        default:
+                                                break;
+                                        }
                                 }
                                 aux =  bam_aux_get(b,"MD");
-                                if(aux){
-                                        tld_append(a->md,bam_aux2Z(aux));
+                                /* only MD:Z is a mismatch string; bam_aux2Z returns NULL
+                                 * for MD:i, MD:A, MD:B ...: treated as no MD */
+                                if(aux && aux[0] == 'Z'){
+                                        RUN(tld_append(a->md,bam_aux2Z(aux)));
                                 }
                         }
 
-                        a->n_cigar = b->core.n_cigar;
-                        if(a->n_cigar > a->n_alloc_cigar){
-                                a->n_alloc_cigar = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, a->n_cigar);
-                                gfree(a->cigar);
+                        if((int) b->core.n_cigar > a->n_alloc_cigar){
+                                const int new_alloc = MACRO_MAX(a->n_alloc_cigar + a->n_alloc_cigar / 2, (int) b->core.n_cigar);
+                                if(a->cigar){
+                                        gfree(a->cigar);
+                                }
                                 a->cigar = NULL;
-                                galloc(&a->cigar, a->n_alloc_cigar);
+                                /* nothing allocated until galloc succeeds */
+                                a->n_alloc_cigar = 0;
+                                a->n_cigar = 0;
+                                galloc(&a->cigar, new_alloc);
+                                a->n_alloc_cigar = new_alloc;
                         }
+                        a->n_cigar = b->core.n_cigar;
                         uint32_t* tmp = bam_get_cigar(b);// ((uint32_t*)((b)->data + (b)->core.l_qname))
                         for(int i = 0; i < a->n_cigar;i++){
                                 a->cigar[i] = tmp[i];

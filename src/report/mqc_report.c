@@ -10,14 +10,15 @@
 #include "config.h"
 #define  MQC_REPORT_IMPORT
 #include "mqc_report.h"
+#include "outfile.h"
 
 #define MQC_N_BIN 4
 
 static const char* const bin_id[MQC_N_BIN] = {"mapq_ge30", "mapq_10_29", "mapq_lt10", "unmapped"};
 static const char* const bin_title[MQC_N_BIN] = {"MAPQ >= 30", "MAPQ 10-29", "MAPQ < 10", "Unmapped"};
 
-static int mqc_open(struct samstat_param *p, int id, const char *filename, const char *section, FILE **f);
-static int mqc_close(FILE **f);
+static int mqc_open(struct samstat_param *p, int id, const char *filename, const char *section, struct outfile **o);
+static int mqc_close(struct outfile **o);
 static int mqc_str(FILE *f, const char *s);
 static int mqc_header(FILE *f, const char *id, const char *name, const char *description, const char *plot_type);
 static int mqc_sample_name(const char *filename, char **sample);
@@ -49,8 +50,12 @@ int mqc_report_write(struct stat_collection *s, struct samstat_param *p, int id)
         MFREE(filename);
         return OK;
 ERROR:
-        MFREE(sample);
-        MFREE(filename);
+        if(sample){
+                MFREE(sample);
+        }
+        if(filename){
+                MFREE(filename);
+        }
         return FAIL;
 }
 
@@ -82,35 +87,35 @@ ERROR:
         return FAIL;
 }
 
-int mqc_open(struct samstat_param *p, int id, const char *filename, const char *section, FILE **f)
+/* Each file is written to a temporary file and renamed when complete (outfile.h):
+   a failed write leaves no truncated _mqc file for MultiQC to pick up. */
+int mqc_open(struct samstat_param *p, int id, const char *filename, const char *section, struct outfile **o)
 {
-        char path[1024];
-        int n;
+        char *path = NULL;
 
         if(p->outdir){
-                n = snprintf(path, 1024, "%s/%s.samstat_%s_mqc.json", p->outdir, filename, section);
+                RUN(outfile_path(&path, "%s/%s.samstat_%s_mqc.json", p->outdir, filename, section));
         }else{
-                n = snprintf(path, 1024, "%s.samstat_%s_mqc.json", samstat_output_stem(p, id), section);
+                RUN(outfile_path(&path, "%s.samstat_%s_mqc.json", samstat_output_stem(p, id), section));
         }
-        ASSERT(n > 0 && n < 1024, "Output path too long");
         if(p->verbose){
                 LOG_MSG("Writing to: %s", path);
         }
-        *f = fopen(path, "w");
-        ASSERT(*f != NULL, "Failed to open output file: %s", path);
+        RUN(outfile_open(o, path));
+        MFREE(path);
         return OK;
 ERROR:
+        if(path){
+                MFREE(path);
+        }
         return FAIL;
 }
 
-int mqc_close(FILE **f)
+/* The fprintf/fputc calls of the sections are not checked one by one: the error
+   flag of the stream is sticky and outfile_commit checks it before the rename. */
+int mqc_close(struct outfile **o)
 {
-        int r = 0;
-        if(*f){
-                r = fclose(*f);
-                *f = NULL;
-        }
-        ASSERT(r == 0, "Failed to close MultiQC output file");
+        RUN(outfile_commit(o));
         return OK;
 ERROR:
         return FAIL;
@@ -164,6 +169,7 @@ ERROR:
    qualities, median_identity without a computable identity. */
 int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, const char *filename, const char *sample)
 {
+        struct outfile *of = NULL;
         FILE *f = NULL;
         int has_ge30 = !COLLECT_IS_NA(s->pct_mapq_ge30);
         int has_unmapped = !COLLECT_IS_NA(s->pct_mapped);
@@ -172,7 +178,8 @@ int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, cons
         int has_q = !COLLECT_IS_NA(s->mean_q);
         int has_ident = !COLLECT_IS_NA(s->median_identity);
 
-        RUN(mqc_open(p, id, filename, "general", &f));
+        RUN(mqc_open(p, id, filename, "general", &of));
+        f = of->f;
         fprintf(f, "{\n\"id\": \"samstat_general\",\n\"plot_type\": \"generalstats\",\n");
         fprintf(f, "\"pconfig\": [\n");
         fprintf(f, "{\"samstat_total_reads\": {\"title\": \"Reads\", \"description\": \"Total reads counted by SAMStat\", \"namespace\": \"SAMStat\", \"format\": \"{:,.0f}\", \"scale\": \"Blues\"}}");
@@ -216,20 +223,20 @@ int mqc_general(struct stat_collection *s, struct samstat_param *p, int id, cons
                 fprintf(f, ", \"samstat_median_identity\": %.1f", s->median_identity);
         }
         fprintf(f, "}\n}\n}\n");
-        RUN(mqc_close(&f));
+        RUN(mqc_close(&of));
         return OK;
 ERROR:
-        if(f){
-                fclose(f);
-        }
+        outfile_abort(&of);
         return FAIL;
 }
 
 int mqc_mapq(struct stat_collection *s, struct samstat_param *p, int id, const char *filename, const char *sample)
 {
+        struct outfile *of = NULL;
         FILE *f = NULL;
 
-        RUN(mqc_open(p, id, filename, "mapq", &f));
+        RUN(mqc_open(p, id, filename, "mapq", &of));
+        f = of->f;
         RUN(mqc_header(f, "samstat_mapq", "Mapping quality",
                        "Number of reads per mapping quality bin (read 1 and read 2 combined). Unmapped also holds all FASTA/FASTQ reads.",
                        "table"));
@@ -247,12 +254,10 @@ int mqc_mapq(struct stat_collection *s, struct samstat_param *p, int id, const c
                 fprintf(f, "\"%s\": %" PRIu64 "%s", bin_id[b], v, b + 1 < MQC_N_BIN ? ", " : "");
         }
         fprintf(f, "}\n}\n}\n");
-        RUN(mqc_close(&f));
+        RUN(mqc_close(&of));
         return OK;
 ERROR:
-        if(f){
-                fclose(f);
-        }
+        outfile_abort(&of);
         return FAIL;
 }
 
@@ -262,6 +267,7 @@ ERROR:
    length 0 is left out because the axis is logarithmic. */
 int mqc_length(struct stat_collection *s, struct samstat_param *p, int id, const char *filename, const char *sample)
 {
+        struct outfile *of = NULL;
         FILE *f = NULL;
         uint64_t *sum = NULL;
         int n_disp = collect_n_display_bins();
@@ -281,7 +287,8 @@ int mqc_length(struct stat_collection *s, struct samstat_param *p, int id, const
                 }
         }
 
-        RUN(mqc_open(p, id, filename, "length", &f));
+        RUN(mqc_open(p, id, filename, "length", &of));
+        f = of->f;
         RUN(mqc_header(f, "samstat_length", "Read length distribution",
                        "Number of read 1 reads per read length. Lengths above 100 bp are grouped into bins about 1% wide; x is the lower edge of a bin.",
                        "linegraph"));
@@ -296,14 +303,14 @@ int mqc_length(struct stat_collection *s, struct samstat_param *p, int id, const
                 }
         }
         fprintf(f, "}\n}\n}\n");
-        RUN(mqc_close(&f));
+        RUN(mqc_close(&of));
         MFREE(sum);
         return OK;
 ERROR:
-        if(f){
-                fclose(f);
+        outfile_abort(&of);
+        if(sum){
+                MFREE(sum);
         }
-        MFREE(sum);
         return FAIL;
 }
 
@@ -313,6 +320,7 @@ ERROR:
    from the integer error sums. x = 1..100 (the bin ends at that percent of the read). */
 int mqc_basequal(struct stat_collection *s, struct samstat_param *p, int id, const char *filename, const char *sample)
 {
+        struct outfile *of = NULL;
         FILE *f = NULL;
         int first = 1;
         int any = 0;
@@ -331,7 +339,8 @@ int mqc_basequal(struct stat_collection *s, struct samstat_param *p, int id, con
                 return OK;
         }
 
-        RUN(mqc_open(p, id, filename, "basequal", &f));
+        RUN(mqc_open(p, id, filename, "basequal", &of));
+        f = of->f;
         RUN(mqc_header(f, "samstat_basequal", "Mean base quality",
                        "Mean Phred base quality of read 1 along the read, in 100 bins of the read length (aligned part for aligned input). The same axis for every sample.",
                        "linegraph"));
@@ -355,12 +364,10 @@ int mqc_basequal(struct stat_collection *s, struct samstat_param *p, int id, con
                 first = 0;
         }
         fprintf(f, "}\n}\n}\n");
-        RUN(mqc_close(&f));
+        RUN(mqc_close(&of));
         return OK;
 ERROR:
-        if(f){
-                fclose(f);
-        }
+        outfile_abort(&of);
         return FAIL;
 }
 
@@ -370,6 +377,7 @@ ERROR:
    for input that is not aligned or has no such bin. */
 int mqc_error(struct stat_collection *s, struct samstat_param *p, int id, const char *filename, const char *sample)
 {
+        struct outfile *of = NULL;
         FILE *f = NULL;
         const struct collect_pos_bin *bins;
         int first = 1;
@@ -389,7 +397,8 @@ int mqc_error(struct stat_collection *s, struct samstat_param *p, int id, const 
                 return OK;
         }
 
-        RUN(mqc_open(p, id, filename, "error", &f));
+        RUN(mqc_open(p, id, filename, "error", &of));
+        f = of->f;
         RUN(mqc_header(f, "samstat_error", "Error rate along the read",
                        "Mismatches, insertions and deletions per aligned base of read 1 reads with MAPQ >= 30, in 100 bins of the read length (aligned part). Mismatches come from MD or CIGAR X; each gap opening counts once.",
                        "linegraph"));
@@ -408,11 +417,9 @@ int mqc_error(struct stat_collection *s, struct samstat_param *p, int id, const 
                 first = 0;
         }
         fprintf(f, "}\n}\n}\n");
-        RUN(mqc_close(&f));
+        RUN(mqc_close(&of));
         return OK;
 ERROR:
-        if(f){
-                fclose(f);
-        }
+        outfile_abort(&of);
         return FAIL;
 }

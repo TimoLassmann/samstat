@@ -9,6 +9,7 @@
 #include "../collect/collect.h"
 #include "config.h"
 #include "report_help.h"
+#include "outfile.h"
 #define  STAT_REPORT_IMPORT
 #include "stat_report.h"
 #include "json_report.h"
@@ -332,43 +333,32 @@ int write_buffer(tld_strbuf *out_buffer, struct samstat_param *p, int id)
 {
         char *buffer = NULL;
         char *filename = NULL;
-        FILE *f_ptr = NULL;
+        struct outfile *o = NULL;
         const char *str = TLD_STR(out_buffer);
         const char *stem = samstat_output_stem(p, id);
         size_t len = strlen(str);
-        int needed;
 
         if(p->outdir){
                 RUN(tld_get_filename((char *) stem, &filename));
-                needed = snprintf(NULL, 0, "%s/%s.samstat.html", p->outdir, filename);
+                RUN(outfile_path(&buffer, "%s/%s.samstat.html", p->outdir, filename));
         }else{
-                needed = snprintf(NULL, 0, "%s.samstat.html", stem);
-        }
-        ASSERT(needed > 0, "Could not build output file name");
-        MMALLOC(buffer, (size_t) needed + 1);
-        if(p->outdir){
-                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s/%s.samstat.html", p->outdir, filename) == needed, "Output file name was truncated");
-        }else{
-                ASSERT(snprintf(buffer, (size_t) needed + 1, "%s.samstat.html", stem) == needed, "Output file name was truncated");
+                RUN(outfile_path(&buffer, "%s.samstat.html", stem));
         }
         if(p->verbose){
                 LOG_MSG("Writing to: %s", buffer);
         }
-        f_ptr = fopen(buffer, "w");
-        ASSERT(f_ptr != NULL,"Failed to open output file: %s", buffer);
-
-        ASSERT(fwrite(str, 1, len, f_ptr) == len, "Failed to write output file: %s", buffer);
-        ASSERT(fclose(f_ptr) == 0, "Failed to close output file: %s", buffer);
-        f_ptr = NULL;
+        /* written to a temporary file and renamed: a failed run leaves no
+           truncated report and never writes through a symlink */
+        RUN(outfile_open(&o, buffer));
+        ASSERT(fwrite(str, 1, len, o->f) == len, "Failed to write output file: %s", buffer);
+        RUN(outfile_commit(&o));
         MFREE(buffer);
         if(filename){
                 MFREE(filename);
         }
         return OK;
 ERROR:
-        if(f_ptr){
-                fclose(f_ptr);
-        }
+        outfile_abort(&o);
         if(buffer){
                 MFREE(buffer);
         }

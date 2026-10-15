@@ -136,6 +136,30 @@ reader_json_test(md_long_alignment md_long_alignment.sam
   "read1.length.reads.mapq_ge30.300=3"
   "read1.absolute.mismatches.mapq_ge30#len=0")
 
+# NM and MD of the wrong type (written into the build tree): an MD that is not MD:Z is no MD
+# (MD:i used to crash in strlen(NULL)), an NM that is not an integer is no NM (NM:Z:0 used to
+# be read as 0, a perfect match). r1-r3: MD:i / MD:A / MD:B, no NM: no MD, identity NA.
+# r4, r5: NM:Z / NM:f with MD:Z: MD counts, identity NA (10M has no = / X). r6: NM:i:1 with
+# MD:Z:4C5, the control: identity 900.
+set(READER_GEN_IN ${CMAKE_CURRENT_BINARY_DIR}/gen_in)
+file(MAKE_DIRECTORY ${READER_GEN_IN})
+set(aux_rec "\tchr1\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\t")
+file(WRITE ${READER_GEN_IN}/aux_types.sam
+  "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:1000\n"
+  "r1\t0${aux_rec}MD:i:4\n"
+  "r2\t0${aux_rec}MD:A:x\n"
+  "r3\t0${aux_rec}MD:B:c,1\n"
+  "r4\t0${aux_rec}NM:Z:0\tMD:Z:10\n"
+  "r5\t0${aux_rec}NM:f:0.5\tMD:Z:10\n"
+  "r6\t0${aux_rec}NM:i:1\tMD:Z:4C5\n")
+add_test(NAME reader:json:aux_types
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${READER_GEN_IN}/aux_types.sam
+    -DOUTDIR=${READER_OUT}/aux_types
+    "-DCHECKS=summary.total_reads=6\;summary.reads_without_md=3\;summary.identity_reads=1\;summary.identity_na=5"
+    -P ${READER_HELPERS}/run_json.cmake)
+set_tests_properties(reader:json:aux_types PROPERTIES LABELS reader)
+
 # zero byte file: no header can be read, still a valid empty input
 reader_json_test(zero_bytes zero_bytes.sam
   "summary.total_reads=0")

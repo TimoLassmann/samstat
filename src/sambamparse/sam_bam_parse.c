@@ -60,6 +60,10 @@ int parse_alignment(struct tl_seq *s)
         int aln_len;
         int64_t aln_len64;
         uint64_t d_sum;
+        uint64_t m_sum;
+        uint64_t i_sum;
+        uint64_t s_sum;
+        uint64_t x_sum;
 
         a = s->data;
         a->n_clip5 = 0;
@@ -84,6 +88,10 @@ int parse_alignment(struct tl_seq *s)
          */
         aln_len64 = 0;
         d_sum = 0;
+        m_sum = 0;
+        i_sum = 0;
+        s_sum = 0;
+        x_sum = 0;
         int64_t q_len = 0;  /* number of query bases consumed by the CIGAR (M, I, S, =, X) */
         int eqx = 0;        /* the CIGAR uses = or X: every aligned base is a known match or mismatch */
 
@@ -100,23 +108,23 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 case 'S':
                         q_len += bam_cigar_oplen(a->cigar[i]);
-                        a->s_bases += bam_cigar_oplen(a->cigar[i]);
+                        s_sum += bam_cigar_oplen(a->cigar[i]);
                         break;
                 case 'X':
-                        a->x_ops += bam_cigar_oplen(a->cigar[i]);
+                        x_sum += bam_cigar_oplen(a->cigar[i]);
                         /* fall through: an X op is also aligned bases */
                 case 'M':
                 case '=':
                         if(Op != 'M'){
                                 eqx = 1;
                         }
-                        a->m_bases += bam_cigar_oplen(a->cigar[i]);
+                        m_sum += bam_cigar_oplen(a->cigar[i]);
                         q_len += bam_cigar_oplen(a->cigar[i]);
                         aln_len64 += bam_cigar_oplen(a->cigar[i]);
                         break;
                 case 'I':
                         a->i_ev++;
-                        a->i_bases += bam_cigar_oplen(a->cigar[i]);
+                        i_sum += bam_cigar_oplen(a->cigar[i]);
                         q_len += bam_cigar_oplen(a->cigar[i]);
                         aln_len64 += bam_cigar_oplen(a->cigar[i]);
                         break;
@@ -129,8 +137,14 @@ int parse_alignment(struct tl_seq *s)
                         break;
                 }
         }
-        /* saturated: a larger sum makes the NM-based identity negative, i.e. not available */
+        /* saturated: a larger sum makes the NM-based identity negative, i.e. not available.
+         * The other sums are bounded by the read length when the CIGAR fits SEQ, but a
+         * SEQ '*' record keeps its counts and its 28-bit operations can add up past 2^32. */
         a->d_bases = (d_sum > UINT32_MAX) ? UINT32_MAX : (uint32_t) d_sum;
+        a->m_bases = (m_sum > UINT32_MAX) ? UINT32_MAX : (uint32_t) m_sum;
+        a->i_bases = (i_sum > UINT32_MAX) ? UINT32_MAX : (uint32_t) i_sum;
+        a->s_bases = (s_sum > UINT32_MAX) ? UINT32_MAX : (uint32_t) s_sum;
+        a->x_ops = (x_sum > UINT32_MAX) ? UINT32_MAX : (uint32_t) x_sum;
         if(q_len != (int64_t) s->len || aln_len64 > INT32_MAX){
                 /* treated below as a CIGAR that does not fit SEQ */
                 q_len = -1;
@@ -172,18 +186,34 @@ int parse_alignment(struct tl_seq *s)
                         a->n_clip3 = bam_cigar_oplen(a->cigar[last]);
                 }
         }
-        a->aln_len = aln_len;
-        aln_len++;
+        /* set only once the buffers hold aln_len + 1 bytes: after a failed allocation the
+         * record has nothing aligned (aln_len 0) and no buffer (aln_len_alloc 0), and the
+         * next record allocates again */
+        a->aln_len = 0;
+        if(aln_len >= a->aln_len_alloc){
+                const int64_t grow = (int64_t) a->aln_len_alloc + a->aln_len_alloc / 2;
+                const int64_t need = (int64_t) aln_len + 1;
+                int64_t new_alloc = MACRO_MAX(grow, need);
 
-        if(a->aln_len >= a->aln_len_alloc){
-                a->aln_len_alloc = MACRO_MAX(a->aln_len_alloc + a->aln_len_alloc / 2, a->aln_len_alloc + a->aln_len - a->aln_len_alloc + 1);
-                gfree(a->read);
-                gfree(a->genome);
+                ASSERT(need <= INT32_MAX, "Alignment of %s is too long", TLD_STR(s->name));
+                if(new_alloc > INT32_MAX){
+                        new_alloc = INT32_MAX;
+                }
+                if(a->read){
+                        gfree(a->read);
+                }
+                if(a->genome){
+                        gfree(a->genome);
+                }
                 a->read = NULL;
                 a->genome = NULL;
-                galloc(&a->genome, a->aln_len_alloc);
-                galloc(&a->read, a->aln_len_alloc);
+                a->aln_len_alloc = 0;
+                galloc(&a->genome, (int) new_alloc);
+                galloc(&a->read, (int) new_alloc);
+                a->aln_len_alloc = (int) new_alloc;
         }
+        a->aln_len = aln_len;
+        aln_len++;
 
         genome = a->genome;
         read = a->read;
@@ -262,9 +292,11 @@ int parse_alignment(struct tl_seq *s)
                 /* Everything below is bounded by the alignment length: an MD tag
                  * that disagrees with the CIGAR must not reach outside genome / read. */
                 while(i < l && pos < aln_len){
-                        if(isdigit((int)md[i])){
-                                int c = 0;
-                                while(i < l && isdigit((int)md[i])){
+                        if(isdigit((unsigned char)md[i])){
+                                /* 64 bit and saturated: c <= aln_len <= INT32_MAX before the
+                                 * multiply, so c * 10 + 9 cannot overflow */
+                                int64_t c = 0;
+                                while(i < l && isdigit((unsigned char)md[i])){
                                         /* saturate - anything above aln_len covers the whole alignment */
                                         if(c <= aln_len){
                                                 c = c * 10 + (md[i] - '0');
@@ -284,7 +316,7 @@ int parse_alignment(struct tl_seq *s)
                                  * the deletion, which shows the first of them */
                                 int first_del = 0;
                                 i++;
-                                while(i < l && isalpha((int)md[i])){
+                                while(i < l && isalpha((unsigned char)md[i])){
                                         if(!first_del){
                                                 first_del = md[i];
                                         }
@@ -296,8 +328,8 @@ int parse_alignment(struct tl_seq *s)
                                         }
                                         pos++;
                                 }
-                        }else if(isalpha((int)md[i])){
-                                genome[pos] = (int)md[i];
+                        }else if(isalpha((unsigned char)md[i])){
+                                genome[pos] = (uint8_t)md[i];
                                 pos++;
                                 i++;
                         }else{

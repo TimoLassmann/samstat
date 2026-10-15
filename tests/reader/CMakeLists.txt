@@ -15,13 +15,7 @@ add_executable(unit_parse_alignment
   unit_parse_alignment.c
   ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
   ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c)
-if(SAMSTAT_USE_SYSTEM_HTSLIB)
-  target_link_libraries(unit_parse_alignment PRIVATE PkgConfig::HTSLIB)
-else()
-  add_dependencies(unit_parse_alignment htslib)
-  target_include_directories(unit_parse_alignment PRIVATE ${HTSLIB_SRC_DIR})
-  target_link_libraries(unit_parse_alignment PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
-endif()
+target_link_libraries(unit_parse_alignment PRIVATE htslib::hts)
 if(Threads_FOUND)
   target_link_libraries(unit_parse_alignment PRIVATE Threads::Threads)
 endif()

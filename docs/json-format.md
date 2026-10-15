@@ -126,8 +126,8 @@ A **position block** holds, per mapq id and position bin:
 | `qual_bases` | Bases with a quality value. |
 | `qual_error_sum` | Sum of the error probabilities of those bases, in units of 1 / `axes.quality_error_scale` (`E[q] = round(10^(-q/10) * 2^30)`, Phred values above 93 count as 93). Mean Q of a bin is `-10 log10(qual_error_sum / qual_bases / 2^30)`. |
 | `aligned` | Aligned read bases (CIGAR `M`, `=`, `X`, `I`) of mapped reads: denominator for insertions and deletions. |
-| `aligned_md` | The same, only for reads with an `MD` tag or `X` operations: denominator for mismatches. |
-| `mismatches` | Mismatching bases (from `MD`, or from `X` operations when `MD` is absent). |
+| `aligned_md` | The same, only for reads with an `MD` tag or `=`/`X` operations: denominator for mismatches. |
+| `mismatches` | Mismatching bases (from `MD`, or from `X` operations when `MD` is absent; a read of `=` operations only has none). |
 | `insertions` | Insertion events starting at this read position (one per gap opening). |
 | `deletions` | Deletion events at this read position (one per gap opening). |
 

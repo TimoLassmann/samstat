@@ -12,6 +12,8 @@
  *   - sequence buffers: struct tl_seq, struct tl_seq_buffer, reverse complement
  *
  * Names and behaviour are those of tld, so code written against tld compiles unchanged.
+ * tld and samstat have the same author; this copy is distributed under samstat's MIT license
+ * (COPYING).
  * Single-header style: every file includes this header; exactly one .c file (tldlite.c)
  * defines TLDLITE_IMPLEMENTATION before including it, which compiles the functions.
  */

@@ -1,4 +1,4 @@
-# Bioconda recipe for SAMStat.
+# Bioconda recipe for SAMStat (copy to bioconda-recipes/recipes/samstat/ with build.sh).
 # The sha256 below is a placeholder: after tagging a release, replace it with the
 # value of the GitHub source archive (curl -L <url> | shasum -a 256).
 {% set version = "2.4.0" %}
@@ -17,6 +17,7 @@ build:
     - {{ pin_subpackage('samstat', max_pin='x') }}
 
 requirements:
+  # htslib 1.24 is bundled in the source archive (thirdparty/) and built without network access
   build:
     - {{ compiler('c') }}
     - cmake >=3.19
@@ -31,13 +32,34 @@ requirements:
 test:
   commands:
     - samstat -v
-    - printf '@r1\nACGTACGTAC\n+\nIIIIIIIIII\n@r2\nACGTACGTAC\n+\nIIIIIIIIII\n@r3\nACGTACGTAC\n+\nIIIIIIIIII\n' > test.fq
+    # a tiny aligned SAM and a FASTQ: HTML, JSON and MultiQC files must be written
+    - printf '@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:1000\nr1\t0\tchr1\t1\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tNM:i:0\tMD:Z:10\n' > test.sam
+    - samstat --json --multiqc test.sam
+    - test -s test.sam.samstat.html
+    - test -s test.sam.samstat.json
+    - test -s test.sam.samstat_general_mqc.json
+    - printf '@r1\nACGTACGTAC\n+\nIIIIIIIIII\n@r2\nACGTACGTAC\n+\nIIIIIIIIII\n' > test.fq
     - samstat test.fq
     - test -s test.fq.samstat.html
 
 about:
   home: https://github.com/TimoLassmann/samstat
-  license: GPL-3.0-or-later
+  license: MIT
+  license_family: MIT
   license_file: COPYING
-  summary: Quality control and statistics for SAM/BAM/FASTA/FASTQ sequence files.
+  summary: Quality control for SAM, BAM, CRAM, FASTA and FASTQ files, split by mapping quality.
+  description: |
+    SAMStat summarises sequencing reads and their alignments in one self-contained HTML report:
+    read length, base quality, base composition, mismatch and indel rates along the read and
+    identity to the reference, each split by mapping quality. Short and long reads (Illumina,
+    PacBio, ONT) are supported. It can also write JSON and MultiQC files.
   doc_url: https://github.com/TimoLassmann/samstat
+  dev_url: https://github.com/TimoLassmann/samstat
+
+extra:
+  identifiers:
+    - biotools:samstat
+    - doi:10.1093/bioinformatics/btad019
+  additional-platforms:
+    - linux-aarch64
+    - osx-arm64

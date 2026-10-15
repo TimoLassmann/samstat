@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking changes
 
+- License: SAMStat is now released under the MIT license (previously BSD 3-clause). See `COPYING`.
+
 - **JSON format version 2.** `format_version` is 2; the version 1 keys are gone and the former `v2` block is the top level (`summary`, `mapq_bins`, `axes`, `read1`, plus `read2` for paired input). Per-base mismatch counts are replaced by one total per bin, and the quality-by-position matrix and clip-trimmed length no longer exist. Summary fractions are written with four decimals and are `null` when they do not apply. See `docs/json-format.md` and `docs/samstat.schema.json`. The MultiQC files change with it: seven general-stats columns, five sections, and a relative position axis for both position plots.
 - **Protein FASTA is unsupported.** Inputs are now read with htslib, which treats a protein FASTA as nucleotides with every non-ACGT letter counted as N, so the report shows nearly 100% N. There is no detection and no error.
 - **Unknown input exits 1 for that file.** Input type is detected from the content, not the extension. Non-empty input that is not SAM, BAM, FASTA or FASTQ fails that file with exit 1; the other files are still processed. Empty input is still a warning and exit 0.
@@ -34,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - "Compare the MAPQ classes by shape": a collapsed second figure under plots 1, 2 and 6 of aligned input, with each MAPQ class scaled to 100 % of its own reads, so that a small class (unmapped, low MAPQ) can be compared with the bulk by shape. Classes with fewer than 50 reads are left out; the figure is shown only when at least two classes remain.
+- `packaging/`: a tested Bioconda recipe, a draft nf-core module and a native MultiQC module (as a patch for MultiQC), with the steps to submit them in `packaging/README.md`.
 - CRAM input. The reference is found through `REF_PATH` or `REF_CACHE` only (no network access); a CRAM whose reference cannot be found fails that file with exit 1 and a message naming both variables. The bundled htslib is built with bzip2 and xz support.
 
 ### Removed

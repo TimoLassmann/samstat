@@ -7,6 +7,7 @@
 #include "report/stat_report.h"
 #include <stdint.h>
 #include <inttypes.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <unistd.h>
@@ -23,7 +24,6 @@ _Static_assert(SAMSTAT_MAX_READ_LEN == READER_MAX_READ_LEN, "one read length lim
 /* Read input <id> (SAM, BAM, FASTA or FASTQ, from a file or standard input) and report. */
 int process_reads_file(struct samstat_param *p, int id);
 
-int debug_seq_buffer_print(struct tl_seq_buffer *sb);
 void *samstat_worker(void *data);
 
 /* Run the analysis for input file <id> depending on its type. */
@@ -238,9 +238,12 @@ static int process_batch(struct file_worker *w, const struct bam_batch *b)
         sb->L = TL_SEQ_BUFFER_DNA;
         sb->base_quality_offset = 33; /* Can I get this from sam - don't need to part of the standard */
         if(!w->is_fastx){
+                /* parse_alignment fails only when it cannot allocate the alignment strings,
+                 * and then leaves them NULL: collecting such a record would dereference them,
+                 * so the whole batch (and with it the input) fails */
                 for(int i = 0; i < sb->num_seq;i++){
-                        parse_alignment(sb->sequences[i]);
-                        fix_orientation(sb->sequences[i]);
+                        RUN(parse_alignment(sb->sequences[i]));
+                        RUN(fix_orientation(sb->sequences[i]));
                 }
         }
         RUN(collect_stats(sb, w->s));
@@ -262,7 +265,7 @@ static void log_progress(struct samstat_param *p, const char *name, uint64_t n_r
                 return;
         }
         if(p->verbose){
-                LOG_MSG("Processed %"PRId64" sequences", n_read);
+                LOG_MSG("Processed %"PRIu64" sequences", n_read);
         }else if(isatty(STDERR_FILENO)){
                 fprintf(stderr, "\rsamstat: %s: %"PRIu64" reads processed", name, n_read);
         }
@@ -537,8 +540,10 @@ int process_reads_file(struct samstat_param* p, int id)
         int have_inline_worker = 0;
         int ret = FAIL;
 
-        if(!is_stdin){
-                ASSERT(tld_file_exists(p->infile[id]) == OK,"File: %s does not exists",p->infile[id]);
+        /* readable, not only present: an unreadable file gets the reason here instead of
+         * a less specific message from htslib */
+        if(!is_stdin && access(p->infile[id], R_OK) != 0){
+                ERROR_MSG("cannot read %s: %s", p->infile[id], strerror(errno));
         }
 
 #if HAVE_PTHREADS
@@ -609,36 +614,4 @@ ERROR:
         }
         stat_collection_free(s);
         return ret;
-}
-
-int debug_seq_buffer_print(struct tl_seq_buffer *sb)
-{
-        for(int i = 0 ; i < sb->num_seq;i++){
-                struct aln_data* a = (struct aln_data*) sb->sequences[i]->data;
-                fprintf(stdout,"%s\n%s\n", TLD_STR( sb->sequences[i]->name),
-                        TLD_STR(sb->sequences[i]->seq)
-                        );
-                if(a){
-                        parse_alignment(sb->sequences[i]);
-                        /* get_readable_cigar(a, NULL); */
-                        char* cig = NULL;
-                        get_readable_cigar(a, &cig);
-                        fprintf(stdout,"Cigar: %s\n",cig);
-                        fprintf(stdout,"   MD: %s\n",TLD_STR(a->md));
-                        gfree(cig);
-
-                        fprintf(stdout, "%s (genome)\n",a->genome);
-                        for(int i = 0; i < a->aln_len;i++){
-                                if(a->genome[i] == a->read[i]){
-                                        fprintf(stdout,"|");
-                                }else{
-                                        fprintf(stdout," ");
-                                }
-                        }
-                        fprintf(stdout,"\n");
-
-                        fprintf(stdout, "%s (read)\n",a->read);
-                }
-        }
-        return OK;
 }

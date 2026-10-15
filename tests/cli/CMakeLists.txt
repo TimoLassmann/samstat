@@ -9,17 +9,8 @@ set(CLI_HELPERS ${PROJECT_SOURCE_DIR}/tests/cmake)
 # the test-only environment limits can only lower the built-in values (param.c)
 add_executable(unit_param unit_param.c ${PROJECT_SOURCE_DIR}/src/param/param.c)
 target_include_directories(unit_param PRIVATE ${PROJECT_BINARY_DIR})
-# param.c sets htslib's log level
-if(SAMSTAT_USE_SYSTEM_HTSLIB)
-  target_link_libraries(unit_param PRIVATE PkgConfig::HTSLIB)
-else()
-  add_dependencies(unit_param htslib)
-  target_include_directories(unit_param PRIVATE ${HTSLIB_SRC_DIR})
-  target_link_libraries(unit_param PRIVATE ${HTSLIB_SRC_DIR}/libhts.a)
-endif()
-if(Threads_FOUND)
-  target_link_libraries(unit_param PRIVATE Threads::Threads)
-endif()
+# param.c sets htslib's log level; htslib::hts brings its include directories and libraries
+target_link_libraries(unit_param PRIVATE htslib::hts)
 target_link_libraries(unit_param PRIVATE tldlite)
 add_test(NAME cli:unit_param COMMAND unit_param)
 set_tests_properties(cli:unit_param PROPERTIES LABELS cli)
@@ -130,8 +121,8 @@ cli_test(single_dash_after_double_dash ARGS -d ${D} -- -json
 cli_test(threads_long ARGS --threads 2 -d ${D} ${FX}/small.sam FILES small.sam.samstat.html)
 cli_test(nthreads_alias ARGS --nthreads 2 -d ${D} ${FX}/small.sam FILES small.sam.samstat.html)
 cli_test(only_options ARGS -t 2 RC 2 REGEX "Usage")
-cli_test(unknown_option ARGS --bogus ${FX}/small.sam RC 2 NO_FILES small.sam.samstat.html)
-cli_test(missing_option_value ARGS ${FX}/small.sam -t RC 2)
+cli_test(unknown_option ARGS -d ${D} --bogus ${FX}/small.sam RC 2 NO_FILES small.sam.samstat.html)
+cli_test(missing_option_value ARGS -d ${D} ${FX}/small.sam -t RC 2)
 cli_test(duplicate_input
   ARGS -d ${D} ${FX}/small.sam ${FX}/small.sam
   RC 2 REGEX "Duplicated input" NO_FILES small.sam.samstat.html)
@@ -193,12 +184,12 @@ foreach(opt -t -p)
   foreach(bad abc 12x -5 0x10 " 7" 1.5 99999999999999999999999)
     string(MAKE_C_IDENTIFIER "${opt}_${bad}" id)
     cli_test(badnum_${id}
-      ARGS ${opt} "${bad}" ${FX}/small.sam
+      ARGS -d ${D} ${opt} "${bad}" ${FX}/small.sam
       RC 2 REGEX "Option" NO_FILES small.sam.samstat.html)
   endforeach()
 endforeach()
-cli_test(badnum_t_zero ARGS -t 0 ${FX}/small.sam RC 2 REGEX "-t")
-cli_test(badnum_p_zero ARGS -p 0 ${FX}/small.sam RC 2 REGEX "-p")
+cli_test(badnum_t_zero ARGS -d ${D} -t 0 ${FX}/small.sam RC 2 REGEX "-t")
+cli_test(badnum_p_zero ARGS -d ${D} -p 0 ${FX}/small.sam RC 2 REGEX "-p")
 # -t is capped at 64: larger values are rejected before any thread or buffer is created.
 # Never test with a large accepted-looking value (e.g. -t 100000): if the cap ever broke, the
 # test itself would start that many threads. 65 is just over the cap; a value beyond 32 bits
@@ -364,6 +355,11 @@ deprecated_test(plotend --plotend "")
 # - no -d, the directory of the input is not writable: that input fails (exit 1), naming -d DIR.
 file(WRITE ${CLI_GEN}/run_perm.cmake [=[
 # -DSAMSTAT -DOUTDIR -DINPUT -DMODE=outdir|outdir_new|input_dir
+# a run killed between the chmod calls leaves ro/ read-only: make it writable again first, or
+# neither this script nor rm -rf of the build tree could remove it
+if(EXISTS ${OUTDIR})
+  execute_process(COMMAND chmod -R u+w ${OUTDIR})
+endif()
 file(REMOVE_RECURSE ${OUTDIR})
 file(MAKE_DIRECTORY ${OUTDIR}/ro)
 if(MODE STREQUAL "outdir")
@@ -730,7 +726,7 @@ cli_test(no_progress_without_tty ENV SAMSTAT_PROGRESS_STEP=100
 
 # --- final review fixes ------------------------------------------------------------------
 
-# Output files are not announced on stdout unless --verbose is given (standard-plots.md section 6)
+# Output files are not announced unless --verbose is given (standard-plots.md section 6)
 cli_test(no_writing_to_log
   ARGS --json --multiqc -d ${D} ${FX}/small.sam
   FILES small.sam.samstat.html small.sam.samstat.json small.sam.samstat_general_mqc.json

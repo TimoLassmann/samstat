@@ -11,7 +11,13 @@ add_test(NAME report:write_failure
     -DSAMSTAT=$<TARGET_FILE:samstat> "-DINPUT=${SAMSTAT_TEST_DATA_DIR}/xx#minimal.sam"
     -DOUTDIR=${REPORT_OUT}/write_failure
     -P ${REPORT_HELPERS}/run_write_failure.cmake)
-set_tests_properties(report:write_failure PROPERTIES LABELS report)
+set_tests_properties(report:write_failure PROPERTIES LABELS report FIXTURES_REQUIRED report_write_failure)
+# make the read-only directory writable again and remove it, even if the test was killed
+add_test(NAME report:write_failure_cleanup
+  COMMAND ${CMAKE_COMMAND} -DOUTDIR=${REPORT_OUT}/write_failure -DCLEANUP=ON
+    -P ${REPORT_HELPERS}/run_write_failure.cmake)
+set_tests_properties(report:write_failure_cleanup PROPERTIES
+  LABELS report FIXTURES_CLEANUP report_write_failure)
 
 # report:atomic:*   reports are written to a temporary file and renamed (src/report/outfile.c):
 #   symlink  a symlink at a report name is replaced, its target is not written

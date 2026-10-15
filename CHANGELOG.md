@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`-p` counts.** With `-p N`, the secondary and supplementary counts cover only the reads up to the cutoff, so they no longer depend on batch size or `-t`.
 - **Read length is the full read length** (soft-clipped bases included), not the clip-trimmed length. Lengths, N50 and base totals change for soft-clipped reads.
 - **Deprecated options** `-l`, `--seed`, `--norm` and `--plotend` are accepted, print a warning and are ignored.
+- **Long options need two dashes** (`--dir`, `--json`); single-dash forms such as `-dir` are a usage error that names the `--` form.
+- **All diagnostics go to standard error** as single lines (`samstat: error: ...`, `samstat: warning: ...`), without time stamps or source paths; standard output is used only for `-h` and `-v`.
+- **An unusable `-d DIR` is a usage error** (exit 2, nothing is read), whether or not the directory exists.
 
 ### Changed
 
@@ -23,8 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reads are taken from SAM, BAM, FASTA and FASTQ through htslib; `-` reads standard input.
 - Mismatches are taken from = and X operations in the CIGAR when a read has no MD tag; a read of = operations only counts as a perfect match. A note in the report states how many mapped reads lack MD. bwa-mem and bwa-mem2 write MD by default; STAR and minimap2 (without `--MD`) do not.
 
-- `-t` accepts 1 to 64; larger values are rejected with exit 2.
-- Memory is bounded by the thread count and the batch size, never by a setting or by the input: a record longer than 50 Mb (a genome FASTA, a corrupt record) fails that input with exit 1; a deletion in a CIGAR costs one alignment column however long it is; a buffer that held a long read is released after its batch; an unrecognised input is probed in fixed 64 KB chunks instead of a line at a time. The string buffer no longer copies its whole content on every append once it has grown (the `tld_strbuf_resize` fix). The test-only environment variables can only lower the built-in limits.
+- `-t` accepts 1 to 64; larger values are rejected with exit 2. A value above the number of online CPUs is reduced to it (a note under `--verbose`).
+- Memory for files of sequencing reads is bounded by the thread count and the batch limits (records, bases and record bytes), not by the size of the input: a record longer than 50 Mb (a genome FASTA, a corrupt record) fails that input with exit 1; a deletion in a CIGAR costs one alignment column however long it is; a buffer that held a long read is released after its batch; an unrecognised input is probed in fixed 64 KB chunks instead of a line at a time. The string buffer no longer copies its whole content on every append once it has grown (the `tld_strbuf_resize` fix). The test-only environment variables can only lower the built-in limits.
 - Plot display: long-read lengths are drawn in 20 bins per decade (stored counts unchanged), the identity histogram of long reads uses the narrowest of 0.1/0.2/0.5/1 % bins that gives at most 50 bins, a MAPQ class is drawn in plots 3 and 5 only where at least 50 of its reads cover the position, plot 5 rate axes reach at least 0.5 %, count and position axes have whole-number ticks, and single figures use the full page width. Reads of one length get one sentence instead of a one-bar histogram (and a plot replaced by a sentence has no caption); the read-quality axis spans the data instead of starting at Q0; log length axes label 1, 2 and 5 of each decade when the labels fit.
 - Every plot split by MAPQ class carries its own key above the panels, naming each class with its read count (and "too few to draw" when a class has reads but no line), so the reader no longer scrolls back to the MAPQ table.
 - The per-position plots 3 to 5 are replaced by a one-line note for inputs with fewer than 50 reads.
@@ -32,6 +35,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The tld git submodule is gone. The few parts of tld that samstat uses (error macros, allocation, string buffers, sequence buffers, file names, reverse complement) are in one header, `src/util/tldlite.h`, so a plain `git clone` and GitHub's own source archive build without extra steps. Output is byte-identical to the build with tld.
 
 - Each input now prints one summary line on stderr (format, reads, N50, mean Q, % mapped, layout, time); a progress counter is shown only when stderr is a terminal.
+
+### Fixed (pre-release audit)
+
+A read-only review of resource use, files and UNIX conventions, input parsing, threading, test-suite safety and the build, plus mutation fuzzing under AddressSanitizer/UBSan, found and fixed:
+
+- A crash (NULL dereference) on a mapped read whose MD tag is not a string, e.g. `MD:i:4`. MD and NM tags of the wrong type are now treated as absent. Quality bytes above Phred 93 are clamped instead of wrapping or cutting the quality string short, and the CIGAR base counts of SEQ `*` records saturate instead of wrapping past 2^32.
+- FASTA, FASTQ and SAM text files (plain, gzip or bgzip; regular files) get a constant-memory streaming check of their first 64 MiB: a record longer than the read length limit, or a line longer than the limit plus 64 KiB, fails the input before htslib loads it. A genome FASTA or a newline-free compressed file no longer uses gigabytes first (a 40 MB line bomb now peaks at 2 MB).
+- Reader batches are also limited by record bytes (CIGAR and aux tags included), and per-slot buffers are trimmed by capacity, so large tags (PacBio kinetics, ONT MM/ML) cannot make a batch unbounded.
+- Reports (HTML, JSON, MultiQC) are written to a temporary file in the output directory and renamed into place: a failed write leaves no truncated report and keeps an earlier one, a symlink at the report name is replaced instead of followed, and every write error is reported. The 1024-character limit on JSON and MultiQC paths is gone.
+- Error handling: failures to parse an alignment or allocate memory fail the input cleanly instead of crashing; error messages no longer pass code text as a printf format; a failed `fclose` is no longer followed by a second one; a missing input is reported as missing; duplicate inputs and report collisions are detected by file identity and case-insensitively, including a report that would overwrite an input. htslib's per-record warnings are shown only with `--verbose`.
+- Threads started by samstat get an 8 MiB stack (CRAM decoding), and the progress counter is shown only when one input is processed at a time.
+- tldlite: a heap overflow in 2-D allocation on 32-bit systems, an int32 overflow when string buffers grow, and macro hygiene; it no longer needs `aligned_alloc` (macOS 10.15).
+- Build: works with the Ninja generator; the bundled htslib gets the C compiler, flags and macOS architecture and SDK settings and is built with GNU make; the generated table header is committed (a test keeps it in sync with its generator) so cross builds work; `SAMSTAT_USE_SYSTEM_HTSLIB` requires htslib 1.22 or later, the first release that does not fetch CRAM references from the EBI.
+- Test suite: safe to run on any machine. The deep-directory test is gone, every samstat run has a timeout, test helpers refuse output outside the build tree, MultiQC runs with a timeout and its own config, read-only test directories are restored even after a killed run, and `tests/perf/bench.sh` needs a `BENCH_DIR` outside any git repository and caps its sizes. `tests/README.md` lists the rules every test follows.
 
 ### Added
 

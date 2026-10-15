@@ -43,7 +43,7 @@ static void free_mapqual_bins(struct mapqual_bins *m);
 #define QUAL_MISSING 0xFF
 
 /* ------------------------------------------------------------------------------------
- * Tables (generated at build time, see convert_tables.c)
+ * Tables (convert_tables.h, written by convert_tables.c and committed; see collect.h)
  * ------------------------------------------------------------------------------------ */
 
 uint32_t collect_qual_error(int q)

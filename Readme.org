@@ -79,7 +79,7 @@ Available options:
 #+begin_src bash :eval never 
   -d, --dir DIR      write reports to DIR (created if missing) [next to input]
   -p, --peek N       analyse only the first N reads (not random) [all]
-  -t, --threads N    total threads, 1-64 [4]
+  -t, --threads N    total threads, 1-64, at most the number of CPUs [4]
       --json         also write <input>.samstat.json
       --multiqc      also write MultiQC files <input>.samstat_*_mqc.json
       --verbose      debug output

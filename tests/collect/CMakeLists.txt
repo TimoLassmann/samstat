@@ -20,6 +20,7 @@ add_executable(unit_collect
   unit_collect.c
   ${PROJECT_SOURCE_DIR}/src/collect/collect.c
   ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
+  ${PROJECT_SOURCE_DIR}/src/htsinterface/precheck.c
   ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c)
 target_compile_definitions(unit_collect PRIVATE "COLLECT_TEST_DATA_DIR=\"${SAMSTAT_FIXTURE_DIR}\"")
 target_link_libraries(unit_collect PRIVATE htslib::hts)

@@ -150,7 +150,8 @@ EXTERN int stat_collection_finalise(struct stat_collection *s);
 EXTERN int stat_collection_alloc(struct stat_collection **stats);
 EXTERN void stat_collection_free(struct stat_collection *s);
 
-/* Tables generated at build time (convert_tables.c). */
+/* Tables in convert_tables.h, committed next to collect.c and written by convert_tables.c
+ * (the test build:convert_tables_in_sync keeps them identical). */
 EXTERN uint32_t collect_qual_error(int q);                /* E[q] = round(10^(-q/10) * 2^30), q 0..93 */
 EXTERN int collect_length_bin(uint64_t len);              /* storage length bin of a read length */
 EXTERN uint64_t collect_length_edge(int bin);             /* lower edge of a storage length bin */

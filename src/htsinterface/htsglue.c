@@ -425,44 +425,83 @@ ERROR:
         return FAIL;
 }
 
+/* Release the buffers of one slot that hold more than keep bytes (fresh small buffers replace
+ * them). tld_strbuf keeps its largest size and at least doubles it when it grows: decide on the
+ * capacity, not on the length, or a slot whose reads stayed below the limit could keep almost
+ * twice the limit per buffer. */
+static int trim_slot(struct tl_seq *s, int keep)
+{
+        struct aln_data *a = (struct aln_data *) s->data;
+
+        if(s->seq->alloc_len > keep){
+                RUN(fresh_strbuf(&s->seq, 128));
+        }
+        if(s->qual->alloc_len > keep){
+                RUN(fresh_strbuf(&s->qual, 128));
+        }
+        if(a){
+                if(a->md->alloc_len > keep){
+                        RUN(fresh_strbuf(&a->md, 16));
+                }
+                if(a->aln_len_alloc > keep){
+                        gfree(a->read);
+                        gfree(a->genome);
+                        a->read = NULL;
+                        a->genome = NULL;
+                        a->aln_len_alloc = 256;
+                        a->aln_len = 0;
+                        galloc(&a->read, a->aln_len_alloc);
+                        galloc(&a->genome, a->aln_len_alloc);
+                }
+                if(a->n_alloc_cigar > keep / 4){
+                        gfree(a->cigar);
+                        a->cigar = NULL;
+                        a->n_alloc_cigar = 16;
+                        a->n_cigar = 0;
+                        galloc(&a->cigar, a->n_alloc_cigar);
+                }
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* Bytes the buffers of one slot hold. */
+static uint64_t slot_bytes(const struct tl_seq *s)
+{
+        const struct aln_data *a = (const struct aln_data *) s->data;
+        uint64_t n = (uint64_t) s->seq->alloc_len + (uint64_t) s->qual->alloc_len;
+
+        if(a){
+                n += (uint64_t) a->md->alloc_len + 2 * (uint64_t) a->aln_len_alloc
+                        + 4 * (uint64_t) a->n_alloc_cigar;
+        }
+        return n;
+}
+
+/* Per-slot limit (SLOT_KEEP_LEN) and per-buffer total (WORKER_KEEP_BYTES): the per-slot limit
+ * alone still lets 4096 slots that each held one read just under it pin about 768 MB per worker
+ * (a crafted file can arrange that; real data does not, because a batch of long reads uses few
+ * slots). When the slots of a buffer hold more than WORKER_KEEP_BYTES after a batch, every slot
+ * gets small buffers again; the next batches grow them as needed. */
+#define WORKER_KEEP_BYTES ((uint64_t) 64 * 1024 * 1024)
+#define SLOT_SMALL_LEN 1024
+
 int trim_seq_buffer(struct tl_seq_buffer *sb, int n_used)
 {
+        uint64_t total = 0;
+
         ASSERT(sb != NULL, "No sb");
         ASSERT(n_used >= 0 && n_used <= sb->malloc_num, "Bad slot count");
         for(int i = 0; i < n_used; i++){
-                struct tl_seq *s = sb->sequences[i];
-                struct aln_data *a = (struct aln_data *) s->data;
-
-                /* tld_strbuf keeps its largest size and at least doubles it when it grows:
-                 * decide on the capacity, not on the length, or a slot whose reads stayed
-                 * below the limit could keep almost twice the limit per buffer */
-                if(s->seq->alloc_len > SLOT_KEEP_LEN){
-                        RUN(fresh_strbuf(&s->seq, 128));
-                }
-                if(s->qual->alloc_len > SLOT_KEEP_LEN){
-                        RUN(fresh_strbuf(&s->qual, 128));
-                }
-                if(a){
-                        if(a->md->alloc_len > SLOT_KEEP_LEN){
-                                RUN(fresh_strbuf(&a->md, 16));
-                        }
-                        if(a->aln_len_alloc > SLOT_KEEP_LEN){
-                                gfree(a->read);
-                                gfree(a->genome);
-                                a->read = NULL;
-                                a->genome = NULL;
-                                a->aln_len_alloc = 256;
-                                a->aln_len = 0;
-                                galloc(&a->read, a->aln_len_alloc);
-                                galloc(&a->genome, a->aln_len_alloc);
-                        }
-                        if(a->n_alloc_cigar > SLOT_KEEP_LEN / 4){
-                                gfree(a->cigar);
-                                a->cigar = NULL;
-                                a->n_alloc_cigar = 16;
-                                a->n_cigar = 0;
-                                galloc(&a->cigar, a->n_alloc_cigar);
-                        }
+                RUN(trim_slot(sb->sequences[i], SLOT_KEEP_LEN));
+        }
+        for(int i = 0; i < sb->malloc_num; i++){
+                total += slot_bytes(sb->sequences[i]);
+        }
+        if(total > WORKER_KEEP_BYTES){
+                for(int i = 0; i < sb->malloc_num; i++){
+                        RUN(trim_slot(sb->sequences[i], SLOT_SMALL_LEN));
                 }
         }
         return OK;

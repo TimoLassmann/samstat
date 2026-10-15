@@ -11,42 +11,6 @@
 #include "sam_bam_parse.h"
 
 
-int get_readable_cigar(struct aln_data *a, char **cigar)
-{
-        char buffer[1024];
-        char* ret = NULL;
-        tld_strbuf* b = NULL;
-        tld_strbuf_alloc(&b,16);
-
-        char Op;
-        int Oplen;
-        for(int i = 0;i < a->n_cigar;i++){
-                Op = bam_cigar_opchr(a->cigar[i]);
-                Oplen = bam_cigar_oplen(a->cigar[i]);
-                snprintf(buffer,1024,"%d%c", Oplen,Op);
-                tld_append(b, buffer);
-        }
-
-
-        /* LOG_MSG("CIGAR: %s", TLD_STR(b)); */
-
-        galloc(&ret,b->len+1);
-
-        memcpy(ret, TLD_STR(b),TLD_STRLEN(b));
-        ret[b->len] = 0;
-        /* LOG_MSG("CIGAR: %s", ret); */
-
-        *cigar = ret;
-
-        tld_strbuf_free(b);
-
-        return OK;
-ERROR:
-        tld_strbuf_free(b);
-        gfree(ret);
-        return FAIL;
-}
-
 int parse_alignment(struct tl_seq *s)
 {
         struct aln_data* a = NULL;

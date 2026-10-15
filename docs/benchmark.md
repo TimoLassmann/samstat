@@ -6,15 +6,15 @@
 
 ```sh
 cmake -S . -B ../samstat-build -DCMAKE_BUILD_TYPE=Release && cmake --build ../samstat-build -j
-BENCH_DIR=../samstat-bench sh tests/perf/bench.sh ../samstat-build/src/samstat [path/to/samstat-2.3.0]
+BENCH_DIR=/tmp/samstat-bench sh tests/perf/bench.sh ../samstat-build/src/samstat [path/to/samstat-2.3.0]
 ```
 
-Keep the build and `BENCH_DIR` outside the repository. The script generates SAM inputs with `tests/tools/make_longread_fixtures.py --reads N` (run through `uv run python`):
+Keep the build and `BENCH_DIR` outside the repository: the script refuses to run without `BENCH_DIR`, or with a `BENCH_DIR` inside a git work tree, and caps the input sizes below unless `BENCH_FORCE=1` (the published results used `BENCH_FORCE=1 BENCH_SHORT_READS=2000000 BENCH_ONT_READS=150000`). The script generates SAM inputs with `tests/tools/make_longread_fixtures.py --reads N` (run through `uv run python`):
 
 | Input | Default size |
 |---|---|
-| short reads, 150 bp | 2 000 000 reads (`BENCH_SHORT_READS`) |
-| ONT-like reads, 500 bp to 30 kb | 150 000 reads, about 1 Gb (`BENCH_ONT_READS`) |
+| short reads, 150 bp | 200 000 reads (`BENCH_SHORT_READS`, cap 200 000) |
+| ONT-like reads, 500 bp to 30 kb | 10 000 reads, about 70 Mb (`BENCH_ONT_READS`) |
 | 1 Mb reads | 8 reads (`BENCH_HUGE_READS`) |
 | FASTQ.gz | the short reads, converted with awk and gzip |
 

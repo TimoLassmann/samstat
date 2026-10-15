@@ -14,6 +14,7 @@ set(READER_OUT ${SAMSTAT_TEST_OUT_DIR}/reader)
 add_executable(unit_parse_alignment
   unit_parse_alignment.c
   ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
+  ${PROJECT_SOURCE_DIR}/src/htsinterface/precheck.c
   ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c)
 target_link_libraries(unit_parse_alignment PRIVATE htslib::hts)
 if(Threads_FOUND)

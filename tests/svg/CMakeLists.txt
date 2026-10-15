@@ -19,6 +19,7 @@ add_executable(report_plots_test
   ${PROJECT_SOURCE_DIR}/src/report/report_help.c
   ${PROJECT_SOURCE_DIR}/src/collect/collect.c
   ${PROJECT_SOURCE_DIR}/src/htsinterface/htsglue.c
+  ${PROJECT_SOURCE_DIR}/src/htsinterface/precheck.c
   ${PROJECT_SOURCE_DIR}/src/sambamparse/sam_bam_parse.c)
 target_link_libraries(report_plots_test PRIVATE htslib::hts)
 if(Threads_FOUND)

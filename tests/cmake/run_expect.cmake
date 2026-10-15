@@ -3,8 +3,8 @@
 # Optional:
 #   -DARGS=<list>                 command line; @OUTDIR@ and @GEN@ are substituted
 #   -DEXPECT_RC=<n>               expected exit code (default 0)
-#   -DEXPECT_STDERR_REGEX=<re>    must match the log output (stdout and stderr combined,
-#                                 samstat writes warnings to stdout and errors to stderr)
+#   -DEXPECT_STDERR_REGEX=<re>    must match the log output (stdout and stderr combined;
+#                                 samstat writes all diagnostics to stderr)
 #   -DEXPECT_NO_REGEX=<re>        must NOT match the log output
 #   -DEXPECT_FILES=<list>         files (relative to OUTDIR) that must exist and be non-empty
 #   -DEXPECT_NO_FILES=<list>      files (relative to OUTDIR) that must not exist

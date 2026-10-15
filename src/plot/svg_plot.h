@@ -167,4 +167,12 @@ int svg_swatch(tld_strbuf* o, const char* id, const char* color, const char* das
 int svg_swatch_row(tld_strbuf* o, const char* id, const svg_swatch_item* items, int n,
                    double font, const char* title, const char* desc);
 
+/*
+ * A key inside a figure: one line sample and label per item, left to right, wrapping onto a new
+ * row when the next item would pass width. svg_key_height gives the height the key needs (rows
+ * of 1.5 font); svg_key draws it with its top-left corner at (left, top).
+ */
+double svg_key_height(const svg_swatch_item* items, int n, double font, double width);
+int svg_key(tld_strbuf* o, double left, double top, double width, const svg_swatch_item* items, int n, double font);
+
 #endif

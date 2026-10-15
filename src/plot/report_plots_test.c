@@ -61,6 +61,7 @@ struct spec {
         int ident;        /* identity data present */
         int readlen;      /* short layout read length */
         int fill_all;     /* short layout: every one of the 1000 position bins has bases */
+        int one_len;      /* short layout: every read is readlen long (no trimmed tail) */
         uint64_t nreads;  /* per mate */
 };
 
@@ -99,10 +100,23 @@ static struct stat_collection* make(const struct spec* sp)
                         /* lengths */
                         uint64_t done = 0;
                         if (!sp->is_long) {
-                                s->acc->len_reads[r][m][collect_length_bin((uint64_t)sp->readlen)] += n;
-                                s->acc->len_bases[r][m][collect_length_bin((uint64_t)sp->readlen)] += n * (uint64_t)sp->readlen;
-                                s->total_bases += n * (uint64_t)sp->readlen;
-                                s->min_length = (uint64_t)sp->readlen;
+                                /* most reads full length, a tail of adapter-trimmed reads 1-20 bp shorter */
+                                const uint64_t trimmed = sp->one_len ? 0 : n / 10;
+                                for (uint64_t t = 0; t < trimmed; t++) {
+                                        uint64_t len = (uint64_t)sp->readlen - 1 - t % 20;
+                                        s->acc->len_reads[r][m][collect_length_bin(len)] += 1;
+                                        s->acc->len_bases[r][m][collect_length_bin(len)] += len;
+                                        s->total_bases += len;
+                                }
+                                s->acc->len_reads[r][m][collect_length_bin((uint64_t)sp->readlen)] += n - trimmed;
+                                s->acc->len_bases[r][m][collect_length_bin((uint64_t)sp->readlen)] += (n - trimmed) * (uint64_t)sp->readlen;
+                                s->total_bases += (n - trimmed) * (uint64_t)sp->readlen;
+                                if (trimmed && (uint64_t)sp->readlen - (trimmed < 20 ? trimmed : 20) < s->min_length) {
+                                        s->min_length = (uint64_t)sp->readlen - (trimmed < 20 ? trimmed : 20);
+                                }
+                                if ((uint64_t)sp->readlen < s->min_length) {
+                                        s->min_length = (uint64_t)sp->readlen;
+                                }
                                 s->max_length = (uint64_t)sp->readlen;
                         } else {
                                 double wsum = 0.0, w[40];
@@ -198,7 +212,7 @@ static struct stat_collection* make(const struct spec* sp)
                                         const int centre = sp->is_long ? 940 : 990;
                                         const int spread = sp->is_long ? 30 : 12;
                                         uint64_t left = n;
-                                        for (int b = centre - spread; b <= centre + spread && left; b++) {
+                                        for (int b = centre - spread; b <= centre + spread && b < COLLECT_N_IDENT && left; b++) {
                                                 double z = (double)(b - centre) / (spread / 2.0);
                                                 uint64_t c = (uint64_t)((double)n * exp(-z * z) / (spread * 1.4));
                                                 c = c > left ? left : c;
@@ -401,7 +415,7 @@ static void test_full_aligned_paired_short(void)
         for (int m = 0; m < 4; m++) {
                 char needle[96];
                 snprintf(needle, sizeof(needle), "stroke=\"%s\"", report_mapq_colour[m]);
-                CHECK(count_of(p[1], needle) == 2, "plot 1: one %s line per mate (%d)", report_mapq_colour[m], count_of(p[1], needle));
+                CHECK(count_of(p[1], needle) == 2 + 2, "plot 1: one %s line and one key sample per mate (%d)", report_mapq_colour[m], count_of(p[1], needle));
                 if (report_mapq_dash[m][0]) {
                         snprintf(needle, sizeof(needle), "stroke=\"%s\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-dasharray=\"%s\"", report_mapq_colour[m], report_mapq_dash[m]);
                         CHECK(count_of(p[1], needle) == 2, "plot 1: the %s line has its dash pattern", report_mapq_colour[m]);
@@ -409,7 +423,12 @@ static void test_full_aligned_paired_short(void)
         }
         CHECK(count_of(p[1], "<title>MAPQ &gt;= 30, Read 1</title>") == 1, "series title carries class and mate");
         CHECK(count_of(p[5], "stroke=\"#777777\"") == 0 && count_of(p[6], "stroke=\"#777777\"") == 0, "unmapped is not drawn in plots 5 and 6");
-        CHECK(count_of(p[3], "stroke=\"#777777\"") == 2, "unmapped is drawn in plot 3");
+        CHECK(count_of(p[3], "stroke=\"#777777\"") == 2 + 2, "unmapped is drawn in plot 3 (and in its key)");
+        /* the key inside each MAPQ-split figure: every class with its read count, in table order */
+        CHECK(count_of(p[1], "MAPQ &gt;= 30 (") == 2 && count_of(p[1], "Unmapped (") == 2, "plot 1: a key per mate");
+        CHECK(strstr(p[1], "MAPQ &gt;= 30 (") < strstr(p[1], "Unmapped ("), "key in table order");
+        CHECK(count_of(p[6], "Unmapped (") == 0, "plot 6 key: no unmapped class");
+        CHECK(count_of(p[4], "MAPQ &gt;= 30 (") == 0, "plot 4: no MAPQ key");
         for (int b = 0; b < 5; b++) {
                 char needle[64];
                 snprintf(needle, sizeof(needle), "stroke=\"%s\"", report_base_colour[b]);
@@ -641,14 +660,82 @@ static void test_na_lines(void)
         }
 }
 
+static char* render_shape(const struct stat_collection* s, int plot)
+{
+        tld_strbuf* o = NULL;
+        tld_strbuf_alloc(&o, 4096);
+        int rc = report_plot_render_shape(o, s, plot);
+        char* r = rc == OK ? strdup(TLD_STR(o)) : NULL;
+        tld_strbuf_free(o);
+        return r;
+}
+
+static void test_shape(void)
+{
+        /* 600 reads per mate: classes of 420, 90, 60 and 30 reads; the unmapped 30 are too few for a shape */
+        struct spec sp = {.paired = 1, .aligned = 1, .mapped = 1, .is_long = 0, .quals = 1, .md = 1, .ident = 1, .readlen = 150, .nreads = 600};
+        struct stat_collection* s = make(&sp);
+        CHECK(s != NULL && s->basic_nums[0][COLLECT_MAPQ_UNMAPPED] == 30, "shape collection");
+        if (!s) {
+                return;
+        }
+        for (int id = 1; id <= 6; id++) {
+                char name[32];
+                snprintf(name, sizeof(name), "shape view of plot %d", id);
+                char* d = render_shape(s, id);
+                CHECK(d != NULL, "%s renders", name);
+                if (!d) {
+                        continue;
+                }
+                if (id == 3 || id == 4 || id == 5) {
+                        CHECK(d[0] == 0, "%s: none (plots 3-5 are means, not counts)", name);
+                        free(d);
+                        continue;
+                }
+                check_markup(name, d);
+                char* again = render_shape(s, id);
+                CHECK(again && strcmp(again, d) == 0, "%s is not deterministic", name);
+                free(again);
+                char want[64];
+                snprintf(want, sizeof(want), "id=\"samstat-p%ds-r2-t\"", id);
+                CHECK(count_of(d, "<svg ") == 2 && strstr(d, want) != NULL, "%s: one figure per mate, own ids", name);
+                CHECK(count_of(d, "% of the reads in the class") == 2, "%s: share axis", name);
+                CHECK(strstr(d, "number of reads") == NULL, "%s: not a count axis", name);
+                CHECK(strstr(d, "N50") == NULL && strstr(d, "median") == NULL, "%s: no marker of all reads", name);
+                if (id != 6) {
+                        CHECK(count_of(d, "Unmapped (30 reads, too few to draw)") == 2, "%s: small class named in the key", name);
+                        CHECK(count_of(d, "stroke=\"#777777\"") == 2, "%s: small class only in the key", name);
+                }
+                free(d);
+        }
+        /* the counts view is unchanged by the shape view */
+        char* p1 = render(s, 1);
+        CHECK(p1 && strstr(p1, "number of reads") && count_of(p1, "Unmapped (30 reads)") == 2, "counts view keeps the small class");
+        free(p1);
+        stat_collection_free(s);
+
+        /* unaligned input: one line, nothing to compare */
+        struct spec su = {.paired = 0, .aligned = 0, .mapped = 0, .is_long = 1, .quals = 1, .readlen = 100, .nreads = 2000};
+        s = make(&su);
+        for (int id = 1; id <= 6 && s; id++) {
+                char* d = render_shape(s, id);
+                CHECK(d && d[0] == 0, "unaligned: no shape view of plot %d", id);
+                free(d);
+        }
+        stat_collection_free(s);
+}
+
 static void test_single_length(void)
 {
-        /* one read length (single_len.sam): the position axis ends at that length, the length plot is a 10 bp window */
-        struct spec sp = {.paired = 1, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 150, .nreads = 5000};
+        /* one read length (single_len.sam): the position axis ends at that length; plot 1 is a sentence, not a
+         * histogram of a single bar */
+        struct spec sp = {.paired = 1, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 150, .nreads = 5000,
+                          .one_len = 1};
         struct stat_collection* s = make(&sp);
         char* p1 = render(s, 1);
         char* p3 = render(s, 3);
-        CHECK(p1 && strstr(p1, "Read lengths range from 150 bp to 150 bp") != NULL, "length window of 10 bp: %.300s", p1 ? p1 : "(null)");
+        CHECK(p1 && strstr(p1, "<p class=\"plot-note\">All ") != NULL && strstr(p1, " reads are 150 bp long.</p>") != NULL &&
+              strstr(p1, "<svg") == NULL, "one length: a sentence: %.300s", p1 ? p1 : "(null)");
         CHECK(p3 && strstr(p3, "from position 1 to position 150") != NULL, "axis ends at 150");
         CHECK(p3 && strstr(p3, ">150<") != NULL, "150 is a tick label");
         free(p1);
@@ -771,11 +858,9 @@ static void test_clarity(void)
                 CHECK(s->n50_best == 1000000 && s->n50_exact && s->median_best == 1000000 && s->median_exact,
                       "exact display values: %" PRIu64 " %" PRIu64, s->n50_best, s->median_best);
                 char* p1 = render(s, 1);
-                CHECK(p1 && strstr(p1, "N50 1.0 Mb") != NULL && strstr(p1, "N50 ~") == NULL, "plot 1 label is exact: %s", p1 ? p1 : "(null)");
-                CHECK(p1 && strstr(p1, "range from 1.0 Mb to 1.0 Mb") != NULL, "min and max length are exact, in the unit of the Bases tile");
-                /* a lone bin on the log axis: at least three labelled ticks and a visible bar */
-                CHECK(p1 && strstr(p1, ">200 k<") != NULL && strstr(p1, ">1 M<") != NULL && strstr(p1, ">5 M<") != NULL,
-                      "lone bin: at least three labelled ticks");
+                /* one read: plot 1 is a sentence with the exact length, in the unit of the Bases tile */
+                CHECK(p1 && strstr(p1, "The read is 1.0 Mb long.") != NULL && strstr(p1, "~") == NULL, "plot 1 sentence is exact: %s",
+                      p1 ? p1 : "(null)");
                 free(p1);
                 stat_collection_free(s);
         }
@@ -997,6 +1082,7 @@ int main(int argc, char** argv)
         test_unaligned();
         test_na_lines();
         test_single_length();
+        test_shape();
         test_clarity();
         test_clarity_r2();
         test_locale();

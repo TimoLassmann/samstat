@@ -735,7 +735,7 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
 {
         const struct report_plot_help *h = &report_plot_help[plot_id - 1];
         char num[16];
-        size_t start;
+        tld_strbuf *fig = NULL;
         int has_figure;
 
         snprintf(num, sizeof(num), "%d", plot_id);
@@ -749,21 +749,45 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
         RUN(app(o, num));
         RUN(app(o, ".</span> "));
         RUN(esc(o, h->title));
-        RUN(app(o, "</h2>\n<p class=\"caption\">"));
-        RUN(esc(o, report_plot_caption(plot_id, s->is_aligned)));
-        RUN(app(o, is_paired(s) ? "</p>\n<div class=\"figs paired\">\n" : "</p>\n<div class=\"figs\">\n"));
-        start = o->len;
-        RUN(report_plot_render(o, s, plot_id));
-        has_figure = (strstr(TLD_STR(o) + start, "<svg") != NULL);
+        RUN(app(o, "</h2>\n"));
+        /* rendered first: a plot can be replaced by one sentence (one read length, too few reads), and then
+         * the caption and the explanation would describe a figure that is not there */
+        RUN(tld_strbuf_alloc(&fig, 1 << 14));
+        RUN(report_plot_render(fig, s, plot_id));
+        has_figure = (strstr(TLD_STR(fig), "<svg") != NULL);
+        if(has_figure){
+                RUN(app(o, "<p class=\"caption\">"));
+                RUN(esc(o, report_plot_caption(plot_id, s->is_aligned)));
+                RUN(app(o, "</p>\n"));
+        }
+        RUN(app(o, is_paired(s) && has_figure ? "<div class=\"figs paired\">\n" : "<div class=\"figs\">\n"));
+        RUN(app(o, TLD_STR(fig)));
+        tld_strbuf_free(fig);
+        fig = NULL;
         RUN(app(o, "</div>\n"));
 
-        /* an N/A line stands alone: the explanation would describe a figure that is not there */
         if(has_figure){
                 RUN(app(o, "<p class=\"good\"><strong>"));
                 RUN(esc(o, report_good_label));
                 RUN(app(o, "</strong> "));
                 RUN(esc(o, h->good));
-                RUN(app(o, "</p>\n<details>\n<summary>"));
+                RUN(app(o, "</p>\n"));
+                /* progressive disclosure: the counts above are the message; the shape view is opened on purpose */
+                RUN(tld_strbuf_alloc(&fig, 1 << 14));
+                RUN(report_plot_render_shape(fig, s, plot_id));
+                if(strstr(TLD_STR(fig), "<svg") != NULL){
+                        RUN(app(o, "<details class=\"shape\">\n<summary>"));
+                        RUN(esc(o, report_shape_label));
+                        RUN(app(o, "</summary>\n<div class=\"howto\">\n<p>"));
+                        RUN(esc(o, report_shape_caption));
+                        RUN(app(o, "</p>\n"));
+                        RUN(app(o, is_paired(s) ? "<div class=\"figs paired\">\n" : "<div class=\"figs\">\n"));
+                        RUN(app(o, TLD_STR(fig)));
+                        RUN(app(o, "</div>\n</div>\n</details>\n"));
+                }
+                tld_strbuf_free(fig);
+                fig = NULL;
+                RUN(app(o, "<details>\n<summary>"));
                 RUN(esc(o, report_how_to_read_label));
                 RUN(app(o, " "));
                 RUN(app(o, num));
@@ -789,6 +813,7 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
         RUN(app(o, "</section>\n"));
         return OK;
 ERROR:
+        tld_strbuf_free(fig);
         return FAIL;
 }
 

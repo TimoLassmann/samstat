@@ -68,6 +68,8 @@ EXTERN const char* const report_note_label;          /* "How it is calculated:" 
 EXTERN const char* const report_good_label;          /* "What good looks like:" */
 EXTERN const char* const report_look_label;          /* "Worth a look:" */
 EXTERN const char* const report_benign_label;        /* "Often benign:" */
+EXTERN const char* const report_shape_label;         /* "Compare the MAPQ classes by shape" (summary of the shape view) */
+EXTERN const char* const report_shape_caption;       /* what the shape view shows, and what it does not */
 EXTERN const char* const report_mapq_title;          /* MAPQ table heading */
 EXTERN const char* const report_mapq_caption;        /* MAPQ table caption */
 

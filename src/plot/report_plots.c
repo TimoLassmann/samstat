@@ -306,8 +306,55 @@ static void list_lines(const struct panel_data* p, char* buf, size_t n)
         }
 }
 
-static int figure(tld_strbuf* o, const char* id_base, const char* title, const char* desc,
-                  int mate, int nm, const struct panel_data* rows, int nrows, double ph)
+/*
+ * Key of a MAPQ-split figure, in table order (MAPQ >= 30 first): every class with reads in this
+ * mate, with its read count, so that a flat line at zero explains itself. A class that has reads
+ * but no line in any row (plots 3 and 5: fewer than 50 reads at every position; the shape view:
+ * fewer than 50 reads) says so. Returns the number of items.
+ */
+#define KEY_LABEL 96
+static int mapq_key(const struct stat_collection* s, int mate, const struct panel_data* rows, int nrows,
+                    svg_swatch_item* items, char (*labels)[KEY_LABEL])
+{
+        const struct panel_data* d = &rows[0];
+        int n = 0;
+
+        if (!s || !s->is_aligned || d->nl < 2) {
+                return 0;
+        }
+        for (int k = d->nl - 1; k >= 0; k--) {
+                uint64_t reads = 0, any = 0;
+                char cnt[48];
+                int drawn = 0;
+                for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                        if (d->li[k].mask & (1u << m)) {
+                                reads += s->basic_nums[mate][m];
+                                for (int r = 0; r < mates(s); r++) {
+                                        any += s->basic_nums[r][m];
+                                }
+                        }
+                }
+                /* the classes of either mate: Read 1 and Read 2 get keys of the same height, so that
+                 * their panels stay side by side */
+                if (any == 0) {
+                        continue;
+                }
+                for (int r = 0; r < nrows; r++) {
+                        drawn |= has_values(rows[r].v[k], rows[r].n, rows[r].step);
+                }
+                fmt_count(cnt, sizeof(cnt), reads);
+                snprintf(labels[n], KEY_LABEL, "%s (%s read%s%s)", d->li[k].label, cnt, reads == 1 ? "" : "s",
+                         drawn || reads == 0 ? "" : ", too few to draw");
+                items[n] = (svg_swatch_item){labels[n], d->li[k].colour, d->li[k].dash};
+                n++;
+        }
+        return n;
+}
+
+/* One figure of one mate. key_s: the collection whose MAPQ classes the lines are (a key is drawn
+ * above the panels), or NULL for a figure whose lines are not MAPQ classes (plot 4). */
+static int figure(tld_strbuf* o, const struct stat_collection* key_s, const char* id_base, const char* title,
+                  const char* desc, int mate, int nm, const struct panel_data* rows, int nrows, double ph)
 {
         svg_grid g;
         svg_panel p;
@@ -315,13 +362,20 @@ static int figure(tld_strbuf* o, const char* id_base, const char* title, const c
         char ttl[256];
         char sertitle[128];
         const int titles = 1;
+        svg_swatch_item key[MAXL];
+        char key_label[MAXL][KEY_LABEL];
 
         const double fw = nm == 2 ? FIG_W_PAIR : FIG_W_ONE;
         const double font = nm == 2 ? FONT_PAIR : FONT;
+        const int nkey = mapq_key(key_s, mate, rows, nrows, key, key_label);
 
         svg_grid_init(&g, nrows, 1, fw, 300.0, font, titles);
-        double h = g.mt + g.mb + (nrows - 1) * g.gap_y + nrows * ph;
+        const double kh = nkey ? svg_key_height(key, nkey, font, fw - 1.5 * font) + 0.5 * font : 0.0;
+        double h = kh + g.mt + g.mb + (nrows - 1) * g.gap_y + nrows * ph;
         svg_grid_init(&g, nrows, 1, fw, h, font, titles);
+        /* the key sits above the first panel: move the panels down by its height */
+        g.mt += kh;
+        g.ph = ph;
 
         if (nm == 2) {
                 snprintf(id, sizeof(id), "%s-r%d", id_base, mate + 1);
@@ -331,6 +385,9 @@ static int figure(tld_strbuf* o, const char* id_base, const char* title, const c
                 snprintf(ttl, sizeof(ttl), "%s", title);
         }
         TRY(svg_begin(o, id, fw, h, font, ttl, desc));
+        if (nkey) {
+                TRY(svg_key(o, 0.5 * font, 0.5 * font, fw - 1.5 * font, key, nkey, font));
+        }
         for (int r = 0; r < nrows; r++) {
                 const struct panel_data* d = &rows[r];
                 TRY(svg_grid_panel_ex(o, &g, r, 0, d->title, &d->x, &d->y, d->x_tick_max, &p));
@@ -527,6 +584,57 @@ static void len_plot_edges(int is_long, double* e, int n)
 }
 
 
+/*
+ * The shape view of plots 1, 2 and 6 (the second, collapsed figure): every line is scaled to the
+ * reads of its own class, so that it adds up to 100 % and a class of 40 reads can be compared with
+ * one of 40 000 by shape. A class with fewer than REPORT_MIN_POS_BASES reads in a mate is left out
+ * (its array is set to NULL): a handful of reads would draw a jagged line as tall as the others.
+ * cnt[r][k][off .. off + n - 1] are the drawn bins. Sets *ymax to the tallest share and returns 1
+ * when some mate keeps at least two lines (one line has nothing to be compared with), else 0.
+ */
+static int shape_scale(double* cnt[2][MAXL], int nm, int nl, int off, int n, double* ymax)
+{
+        int any = 0;
+
+        *ymax = 0.0;
+        for (int r = 0; r < nm; r++) {
+                int kept = 0;
+                for (int k = 0; k < nl; k++) {
+                        double t = 0.0;
+                        if (!cnt[r][k]) {
+                                continue;
+                        }
+                        for (int d = off; d < off + n; d++) {
+                                t += cnt[r][k][d];
+                        }
+                        if (t < (double)REPORT_MIN_POS_BASES) {
+                                cnt[r][k] = NULL;
+                                continue;
+                        }
+                        for (int d = off; d < off + n; d++) {
+                                cnt[r][k][d] *= 100.0 / t;
+                                *ymax = cnt[r][k][d] > *ymax ? cnt[r][k][d] : *ymax;
+                        }
+                        kept++;
+                }
+                any |= (kept >= 2);
+        }
+        return any;
+}
+
+static svg_axis share_axis(double ymax)
+{
+        return (svg_axis){0.0, svg_nice_ceil(ymax * 1.04, 5), 0, "% of the reads in the class", 0};
+}
+
+static void shape_desc(char* buf, size_t n, const char* what, const char* names)
+{
+        snprintf(buf, n,
+                 "Share of the reads of each MAPQ class %s. Each line adds up to 100%%, so that classes of "
+                 "different sizes are compared by shape, not by number. Classes with fewer than %s reads are "
+                 "left out. Lines: %s.", what, REPORT_MIN_POS_BASES_STR, names);
+}
+
 /* Index into report_plot_help[] for plot ids 1..6. */
 static const struct report_plot_help* help_of(int plot_id)
 {
@@ -542,7 +650,7 @@ static const char* mate_title(int nm, int r)
 /* plot 1: how long are the reads?                                      */
 /* ------------------------------------------------------------------ */
 
-static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
+static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct pool* pl, int shape)
 {
         const int is_long = (s->layout == COLLECT_LAYOUT_LONG);
         const int nb = len_n_plot_bins(is_long);
@@ -553,8 +661,23 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
         int bmin = nb, bmax = -1;
         double ymax = 0.0;
 
+        if (shape && (!s->is_aligned || s->total_bases == 0 || s->min_length == s->max_length)) {
+                return OK;      /* no shape view: one line, or no histogram */
+        }
         if (s->total_bases == 0) {
                 return na_line(o, help_of(1)->na_no_sequence);
+        }
+        if (s->min_length == s->max_length) {
+                /* a histogram of one length is a single bar: the sentence says it better */
+                char nr[48], len[48], text[160];
+                fmt_count(nr, sizeof(nr), s->n_total);
+                fmt_len(len, sizeof(len), s->max_length, 1);
+                if (s->n_total == 1) {
+                        snprintf(text, sizeof(text), "The read is %s long.", len);
+                } else {
+                        snprintf(text, sizeof(text), "All %s reads are %s long.", nr, len);
+                }
+                return html_para(o, "plot-note", NULL, text);
         }
         for (int r = 0; r < nm; r++) {
                 for (int k = 0; k < nl; k++) {
@@ -583,10 +706,13 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                 }
         }
         if (bmax < 0) {
-                return na_line(o, NA_NO_READS);
+                return shape ? OK : na_line(o, NA_NO_READS);
         }
 
         const int n = bmax - bmin + 1;
+        if (shape && !shape_scale(cnt, nm, nl, bmin, n, &ymax)) {
+                return OK;
+        }
         double* edges = pool_alloc(pl, (size_t)nb + 1);
         if (!edges) {
                 return FAIL;
@@ -618,7 +744,7 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                 }
                 xa = (svg_axis){lo, hi, 0, "read length (bp)", 1};
         }
-        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads", 1};
+        svg_axis ya = shape ? share_axis(ymax) : (svg_axis){0.0, count_top(ymax), 0, "number of reads", 1};
 
         char lo_s[48], hi_s[48], n50_s[48], names[200], desc[900];
         fmt_len(lo_s, sizeof(lo_s), s->min_length, 1);
@@ -637,9 +763,9 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                 pd.nl = nl;
                 for (int k = 0; k < nl; k++) {
                         pd.li[k] = li[k];
-                        pd.v[k] = has_values(cnt[r][k] + bmin, n, 1) ? cnt[r][k] + bmin : NULL;
+                        pd.v[k] = cnt[r][k] && has_values(cnt[r][k] + bmin, n, 1) ? cnt[r][k] + bmin : NULL;
                 }
-                if (s->n50_best > 0) {
+                if (!shape && s->n50_best > 0) {
                         pd.has_vline = 1;
                         pd.vline = (double)s->n50_best;
                         snprintf(pd.vlabel, sizeof(pd.vlabel), "N50 %s", n50_s);
@@ -649,7 +775,10 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
                          "Number of reads per read-length bin%s. Read lengths range from %s to %s. Lines: %s. "
                          "The dashed vertical line marks N50, %s: half of all bases are in reads at least this long.",
                          is_long ? " on a log scale" : "", lo_s, hi_s, names, n50_s);
-                if (figure(o, "samstat-p1", help_of(1)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
+                if (shape) {
+                        shape_desc(desc, sizeof(desc), is_long ? "per read-length bin, on a log scale" : "per read length", names);
+                }
+                if (figure(o, s, shape ? "samstat-p1s" : "samstat-p1", help_of(1)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
         }
@@ -660,15 +789,19 @@ static int plot_length(tld_strbuf* o, const struct stat_collection* s, struct po
 /* plot 2: how good is each read?                                       */
 /* ------------------------------------------------------------------ */
 
-static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
+static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct pool* pl, int shape)
 {
         const int nm = mates(s);
         struct lineinfo li[MAXL];
         const int nl = get_lines(s, 1, li);
         double* cnt[2][MAXL];
         int qmax = -1;
+        int qmin = COLLECT_N_Q;
         double ymax = 0.0;
 
+        if (shape && (!s->is_aligned || s->qual_bases_all == 0)) {
+                return OK;
+        }
         if (s->qual_bases_all == 0) {
                 return na_line(o, help_of(2)->na_no_quality);
         }
@@ -689,18 +822,31 @@ static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct poo
                         for (int q = 0; q < COLLECT_N_Q; q++) {
                                 if (cnt[r][k][q] > 0.0) {
                                         qmax = q > qmax ? q : qmax;
+                                        qmin = q < qmin ? q : qmin;
                                         ymax = cnt[r][k][q] > ymax ? cnt[r][k][q] : ymax;
                                 }
                         }
                 }
         }
         if (qmax < 0) {
-                return na_line(o, help_of(2)->na_no_quality);
+                return shape ? OK : na_line(o, help_of(2)->na_no_quality);
         }
-        const int n = qmax + 1;
-        /* the axis ends at the next multiple of 5 past the last bin, so that the last bar is not the frame */
-        svg_axis xa = {0.0, 5.0 * floor((double)n / 5.0 + 1.0), 0, "average base quality of the read (Q)", 1};
-        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads", 1};
+        /*
+         * The x axis spans the data, from the multiple of 5 below the first bin to the multiple of 5
+         * past the last one (a bar is never the frame). It does not start at Q0: the counts are the
+         * bar heights, which start at 0; the quality is a position, and reads between Q25 and Q35
+         * squeezed into the right quarter of a Q0-Q35 axis would be hard to read.
+         */
+        const int n = qmax - qmin + 1;
+        if (shape && !shape_scale(cnt, nm, nl, qmin, n, &ymax)) {
+                return OK;
+        }
+        svg_axis xa = {5.0 * floor((double)(qmin - 1) / 5.0), 5.0 * floor((double)(qmax + 1) / 5.0 + 1.0), 0,
+                       "average base quality of the read (Q)", 1};
+        if (xa.lo < 0.0) {
+                xa.lo = 0.0;
+        }
+        svg_axis ya = shape ? share_axis(ymax) : (svg_axis){0.0, count_top(ymax), 0, "number of reads", 1};
         char names[200], desc[700];
 
         for (int r = 0; r < nm; r++) {
@@ -711,18 +857,21 @@ static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct poo
                 pd.y = ya;
                 pd.step = 1;
                 pd.n = n;
-                pd.x0 = 0.0;
+                pd.x0 = (double)qmin;
                 pd.dx = 1.0;
                 pd.nl = nl;
                 for (int k = 0; k < nl; k++) {
                         pd.li[k] = li[k];
-                        pd.v[k] = has_values(cnt[r][k], n, 1) ? cnt[r][k] : NULL;
+                        pd.v[k] = cnt[r][k] && has_values(cnt[r][k] + qmin, n, 1) ? cnt[r][k] + qmin : NULL;
                 }
                 list_lines(&pd, names, sizeof(names));
                 snprintf(desc, sizeof(desc),
-                         "Number of reads by their mean base quality, from Q0 to Q%d. Lines: %s. "
-                         "Qualities are averaged as error probabilities.", n, names);
-                if (figure(o, "samstat-p2", help_of(2)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
+                         "Number of reads by their mean base quality, from Q%d to Q%d. Lines: %s. "
+                         "Qualities are averaged as error probabilities.", qmin, qmax, names);
+                if (shape) {
+                        shape_desc(desc, sizeof(desc), "by mean base quality of the read", names);
+                }
+                if (figure(o, s, shape ? "samstat-p2s" : "samstat-p2", help_of(2)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
         }
@@ -806,7 +955,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
                          "Gaps mean that no base with a quality was seen or that fewer than " REPORT_MIN_POS_BASES_STR
                          " reads of that line cover the position.",
                          range, s->is_aligned ? ", aligned part of the read" : "", names);
-                if (figure(o, "samstat-p3", help_of(3)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
+                if (figure(o, s, "samstat-p3", help_of(3)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
         }
@@ -895,7 +1044,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                          "One line per base, each with its own dash pattern; the line key is above the figure. "
                          "Positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads are not drawn.",
                          range, s->is_aligned ? ", aligned part of the read" : "");
-                if (figure(o, "samstat-p4", help_of(4)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
+                if (figure(o, NULL, "samstat-p4", help_of(4)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
         }
@@ -1040,7 +1189,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                          "A line is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
                          md_total ? "Mismatches, insertions and deletions" : "Insertions and deletions", range, names,
                          n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");
-                if (figure(o, "samstat-p5", help_of(5)->title, desc, r, nm, rows, nrows, PH_ROW) != OK) {
+                if (figure(o, s, "samstat-p5", help_of(5)->title, desc, r, nm, rows, nrows, PH_ROW) != OK) {
                         return FAIL;
                 }
         }
@@ -1051,7 +1200,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
 /* plot 6: how accurate are the aligned reads?                          */
 /* ------------------------------------------------------------------ */
 
-static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
+static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct pool* pl, int shape)
 {
         const int nm = mates(s);
         struct lineinfo li[MAXL];
@@ -1060,6 +1209,9 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
         uint64_t all[COLLECT_N_IDENT];
 
         if (!s->is_aligned) {
+                return OK;
+        }
+        if (shape && (n_mapped(s) == 0 || s->identity_reads == 0)) {
                 return OK;
         }
         if (n_mapped(s) == 0) {
@@ -1148,8 +1300,11 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                         }
                 }
         }
+        if (shape && !shape_scale(h, nm, nl, 0, n, &ymax)) {
+                return OK;
+        }
         svg_axis xa = {(double)lo_pct, 100.0, 0, "identity to the reference (%)", 1};
-        svg_axis ya = {0.0, count_top(ymax), 0, "number of reads", 1};
+        svg_axis ya = shape ? share_axis(ymax) : (svg_axis){0.0, count_top(ymax), 0, "number of reads", 1};
         char names[200], desc[900], med[48];
 
         for (int r = 0; r < nm; r++) {
@@ -1165,9 +1320,9 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                 pd.nl = nl;
                 for (int k = 0; k < nl; k++) {
                         pd.li[k] = li[k];
-                        pd.v[k] = has_values(h[r][k], n, 1) ? h[r][k] : NULL;
+                        pd.v[k] = h[r][k] && has_values(h[r][k], n, 1) ? h[r][k] : NULL;
                 }
-                if (isfinite(s->median_identity)) {
+                if (!shape && isfinite(s->median_identity)) {
                         fmt_dec(med, sizeof(med), 1, s->median_identity);
                         pd.has_vline = 1;
                         pd.vline = s->median_identity;
@@ -1182,7 +1337,10 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                          "The last bin includes the reads with exactly 100%% identity.",
                          lo_pct, k10 == 10 ? "1 percentage point" : k10 == 5 ? "0.5 percentage points"
                                  : k10 == 2 ? "0.2 percentage points" : "0.1 percentage points", names, med);
-                if (figure(o, "samstat-p6", help_of(6)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
+                if (shape) {
+                        shape_desc(desc, sizeof(desc), "by identity to the reference", names);
+                }
+                if (figure(o, s, shape ? "samstat-p6s" : "samstat-p6", help_of(6)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
                         return FAIL;
                 }
         }
@@ -1193,7 +1351,7 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
 /* public interface                                                     */
 /* ------------------------------------------------------------------ */
 
-int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_id)
+static int render(tld_strbuf* o, const struct stat_collection* s, int plot_id, int shape)
 {
         struct pool pl = {NULL, 0, 0};
         int rc = FAIL;
@@ -1215,10 +1373,10 @@ int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_
         }
         switch (plot_id) {
         case 1:
-                rc = plot_length(o, s, &pl);
+                rc = plot_length(o, s, &pl, shape);
                 break;
         case 2:
-                rc = plot_readq(o, s, &pl);
+                rc = plot_readq(o, s, &pl, shape);
                 break;
         case 3:
                 rc = plot_posq(o, s, &pl);
@@ -1230,7 +1388,7 @@ int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_
                 rc = plot_errors(o, s, &pl);
                 break;
         default:
-                rc = plot_identity(o, s, &pl);
+                rc = plot_identity(o, s, &pl, shape);
                 break;
         }
         free(pl.d);
@@ -1238,6 +1396,22 @@ int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_
 ERROR:
         free(pl.d);
         return FAIL;
+}
+
+int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_id)
+{
+        return render(o, s, plot_id, 0);
+}
+
+int report_plot_render_shape(tld_strbuf* o, const struct stat_collection* s, int plot_id)
+{
+        if (!o || !s || (plot_id != 1 && plot_id != 2 && plot_id != 6)) {
+                return OK;
+        }
+        if (s->n_total == 0 || !s->is_aligned) {
+                return OK;
+        }
+        return render(o, s, plot_id, 1);
 }
 
 int report_mapq_swatch(tld_strbuf* o, int mapq_class)

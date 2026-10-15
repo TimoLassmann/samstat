@@ -77,6 +77,11 @@ const char* const report_note_label        = "How it is calculated:";
 const char* const report_good_label        = "What good looks like:";
 const char* const report_look_label        = "Worth a look:";
 const char* const report_benign_label      = "Often benign:";
+const char* const report_shape_label       = "Compare the MAPQ classes by shape";
+const char* const report_shape_caption     =
+        "The same reads, with each line scaled to its own class so that it adds up to 100%. A small class is drawn "
+        "as tall as a large one: this shows whether, for example, the unmapped reads are shorter or of lower quality, "
+        "not how many there are. Classes with fewer than 50 reads are left out.";
 const char* const report_mapq_title        = "How well did reads map?";
 const char* const report_mapq_caption      = "MAPQ is the aligner's confidence that a read is placed correctly; aligners scale it differently.";
 

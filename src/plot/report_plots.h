@@ -55,6 +55,13 @@ static const char* const report_base_dash[5] = {"", "6 3", "2 3", "8 3 2 3", "12
  */
 int report_plot_render(tld_strbuf* o, const struct stat_collection* s, int plot_id);
 
+/*
+ * The shape view of plots 1, 2 and 6 on aligned input: the same histogram with every MAPQ class
+ * scaled to 100 % of its own reads (ids "samstat-p<plot>s[-r1|-r2]"). Writes nothing when it does
+ * not apply: another plot, unaligned input, or fewer than two classes with 50 reads or more.
+ */
+int report_plot_render_shape(tld_strbuf* o, const struct stat_collection* s, int plot_id);
+
 /* One small <svg> with the line sample (colour and dash) of a MAPQ class 0..3 (the MAPQ table). */
 int report_mapq_swatch(tld_strbuf* o, int mapq_class);
 

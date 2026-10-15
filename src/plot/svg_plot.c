@@ -443,6 +443,35 @@ int svg_grid_panel(tld_strbuf* o, const svg_grid* g, int r, int c, const char* t
         return svg_grid_panel_ex(o, g, r, c, title, x, y, 0.0, p);
 }
 
+/*
+ * A log x axis labels 1, 2 and 5 of every decade when those labels physically fit: the narrowest
+ * gap (1 to 2, 30 % of a decade) must hold half of each neighbouring label plus a little space.
+ * Label widths are estimated as for titles (0.62 em per character). Returns the tick count, or 0
+ * if they do not fit (the caller then uses the usual tick count for the width).
+ */
+static int log_ticks_if_they_fit(const svg_panel* p, double* v, int* major, double* step)
+{
+        char a[48], b[48];
+        int n = svg_ticks(&p->x, 40, v, major, SVG_MAX_TICKS, step);
+        if (n < 2) {
+                return 0;
+        }
+        for (int i = 0; i < n; i++) {
+                if (!major[i]) {
+                        return 0;       /* the axis is too long for every 1, 2, 5 */
+                }
+        }
+        for (int i = 1; i < n; i++) {
+                svg_tick_label(&p->x, *step, v[i - 1], a, sizeof(a));
+                svg_tick_label(&p->x, *step, v[i], b, sizeof(b));
+                double need = 0.31 * p->font * (double)(strlen(a) + strlen(b)) + 0.8 * p->font;
+                if (px(p, v[i]) - px(p, v[i - 1]) < need) {
+                        return 0;
+                }
+        }
+        return n;
+}
+
 int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char* title,
                       const svg_axis* x, const svg_axis* y, double x_tick_max, svg_panel* p)
 {
@@ -464,7 +493,10 @@ int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char
 
         double right = p->left + p->w;
         double bottom = p->top + p->h;
-        int nx = svg_ticks(&p->x, (int)(p->w / (4.5 * f)), xv, xm, SVG_MAX_TICKS, &xstep);
+        int nx = p->x.log ? log_ticks_if_they_fit(p, xv, xm, &xstep) : 0;
+        if (nx == 0) {
+                nx = svg_ticks(&p->x, (int)(p->w / (4.5 * f)), xv, xm, SVG_MAX_TICKS, &xstep);
+        }
         int ny = svg_ticks(&p->y, (int)(p->h / (3.0 * f)), yv, ym, SVG_MAX_TICKS, &ystep);
         if (nx < 0 || ny < 0) {
                 ERROR_MSG("svg_plot: ticks failed");
@@ -768,6 +800,56 @@ int svg_swatch_row(tld_strbuf* o, const char* id, const svg_swatch_item* items, 
                 x += 42.0 + 0.62 * font * (double)strlen(label) + 14.0;
         }
         return svg_end(o);
+ERROR:
+        return FAIL;
+}
+
+/* Width of one key item: line sample, gap, label, gap to the next item. */
+static double key_item_w(const svg_swatch_item* it, double font)
+{
+        return 36.0 + 6.0 + 0.62 * font * (double)strlen(it->label ? it->label : "") + 14.0;
+}
+
+/* Columns of a key: every column as wide as the widest item, as many as fit (at least one), so that
+ * the items read in order, left to right and then down, like the rows of a table. */
+static int key_cols(const svg_swatch_item* items, int n, double font, double width, double* col_w)
+{
+        double w = 0.0;
+        for (int i = 0; i < n; i++) {
+                double iw = key_item_w(&items[i], font);
+                w = iw > w ? iw : w;
+        }
+        int cols = (int)(width / w);
+        cols = cols < 1 ? 1 : cols > n ? n : cols;
+        *col_w = w;
+        return cols;
+}
+
+double svg_key_height(const svg_swatch_item* items, int n, double font, double width)
+{
+        double col_w;
+        if (n < 1) {
+                return 0.0;
+        }
+        int cols = key_cols(items, n, font, width, &col_w);
+        return (double)((n + cols - 1) / cols) * 1.5 * font;
+}
+
+int svg_key(tld_strbuf* o, double left, double top, double width, const svg_swatch_item* items, int n, double font)
+{
+        double col_w;
+        if (n < 1) {
+                return OK;
+        }
+        int cols = key_cols(items, n, font, width, &col_w);
+        for (int i = 0; i < n; i++) {
+                const char* label = items[i].label ? items[i].label : "";
+                double x = left + (double)(i % cols) * col_w;
+                double y = top + (double)(i / cols) * 1.5 * font + 0.75 * font;
+                TRY(sample(o, x, x + 36.0, y, items[i].color, items[i].dash));
+                TRY(pf(o, "<text x=\"%f\" y=\"%f\">%e</text>", x + 42.0, y + 0.35 * font, label));
+        }
+        return OK;
 ERROR:
         return FAIL;
 }

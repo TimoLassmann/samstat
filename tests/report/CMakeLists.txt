@@ -365,7 +365,7 @@ plot_set_test(clarity_r2:hidden_below_50 "${GEN_DIR}/perfect49.sam"
 # 60 reads: plots 3-5 are drawn; the all-zero error panels say so; the lines carry their colours
 plot_set_test(clarity_r2:drawn_from_50 "${GEN_DIR}/perfect60.sam"
   "-DTITLES=${TITLES_ALIGNED}"
-  "-DCONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|>none detected<|A panel labelled none detected|In each row, positions backed by fewer than 50 bases of that class are not drawn."
+  "-DCONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|>none detected<|A panel labelled none detected|In each row, positions covered by fewer than 50 reads of that class are not drawn."
   "-DNOT_CONTAINS=Too few reads|are hidden|0.5<"
   "-DSVG_A11Y=1")
 # exactly 50 reads: drawn

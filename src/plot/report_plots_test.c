@@ -1131,6 +1131,29 @@ static void test_base_rows(void)
                 stat_collection_free(s);
         }
 
+        /* long layout: 49 long unmapped reads have thousands of bases in every 1 % bin, but plot 4
+         * follows the line rule (50 reads) and draws nothing in their row */
+        {
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .is_long = 1, .quals = 1, .md = 1, .ident = 1, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                CHECK(s != NULL, "long collection (plot 4)");
+                if (s) {
+                        s->basic_nums[0][COLLECT_MAPQ_UNMAPPED] = 49;
+                        CHECK(stat_collection_finalise(s) == OK, "finalise");
+                        uint64_t bases = 0;
+                        for (int b = 0; b < COLLECT_N_BASE; b++) {
+                                bases += s->acc->pos_rel[0][COLLECT_MAPQ_UNMAPPED][50].comp[b];
+                        }
+                        CHECK(bases >= 50, "the unmapped class has bases in the bin (%llu)", (unsigned long long)bases);
+                        char* p4 = render(s, 4);
+                        CHECK(p4 && !path_d_of(p4, "Base A, Unmapped", d, sizeof(d)), "plot 4: 49 long reads draw nothing");
+                        CHECK(p4 && path_d_of(p4, "Base A, MAPQ &gt;= 30", d, sizeof(d)), "plot 4: MAPQ >= 30 is drawn");
+                        CHECK(p4 && strstr(p4, "covered by fewer than 50 reads of that class are not drawn") != NULL, "plot 4 description");
+                        free(p4);
+                        stat_collection_free(s);
+                }
+        }
+
         /* long layout: a class of 49 long reads has thousands of MD-backed bases in every 1 % bin, but
          * its mismatch row follows the line rule (50 reads) and is not drawn, like its indel lines */
         {

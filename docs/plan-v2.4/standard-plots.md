@@ -255,7 +255,7 @@ A single-length short-read library shows one honest spike in the middle of a 10 
 | Lines | IGV nucleotide colours (revised 2026-10-18; 2.4.0 used green/purple/black/brown/blue): A green `#009600` solid, C blue `#0000FF` dashed `6 3`, G orange `#D17105` dotted `2 3`, T red `#FF0000` dash-dot `8 3 2 3`, N grey `#808080` long-dashed `12 3`. Every base has its own dash pattern (WCAG 1.4.1), so telling green A from red T never rests on colour alone in plot 4; every colour has at least 3:1 contrast on white (WCAG 1.4.11; G is the lowest at 3.5:1). None of the hex values is in the MAPQ palette. |
 | Legend | one inline row of five swatches A C G T N above the panels |
 | Panels | one row per MAPQ class with reads (aligned input: up to 4, `Unmapped` included, because unmapped and poorly mapped reads are where N calls, adapters and added bases show), each row titled with the class label; R1, R2 as columns. Unaligned input: one row, `all reads`. Rows are short (about half the height of a plot 3 panel) and share the x-axis (encoding rule 9, `decisions.md` A3 revised) |
-| Thin bins | a bin backed by fewer than 50 bases **in that class** is a gap in that row |
+| Thin bins | a bin covered by fewer than 50 reads **of that class** is a gap in that row (the rule of plots 3 and 5; on the absolute axis that is 50 bases, on the relative axis 50 reads, so a few long reads do not fill a row) |
 | N/A note | no sequence in any read: `Not available: the input has no sequence.` |
 | FastQC equivalent | Per Base Sequence Content + Per Base N Content |
 

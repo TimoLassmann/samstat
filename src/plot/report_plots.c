@@ -987,7 +987,8 @@ static uint64_t class_reads(const struct stat_collection* s, int r, unsigned mas
  * Plot 4. Aligned input: one short row per MAPQ class with reads in either mate, in table order
  * (encoding rule 9), so that composition of the unmapped and poorly mapped reads can be held
  * against the MAPQ >= 30 row. Unaligned input: one row of all reads, as tall as plot 3.
- * A position backed by fewer than REPORT_MIN_POS_BASES bases of the row's class is a gap.
+ * A position covered by fewer than REPORT_MIN_POS_BASES reads of the row's classes is a gap (the
+ * rule of plots 3 and 5: on the relative axis a few long reads would otherwise fill every bin).
  */
 #define COMP_ROWS COLLECT_N_MAPQ
 static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
@@ -1047,8 +1048,9 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                                 for (int b = 0; b < 5; b++) {
                                         tot += c[b];
                                 }
+                                const int thin = tot < ax.min_bases || line_support(s, &ax, r, rmask[row], i) < ax.min_bases;
                                 for (int b = 0; b < 5; b++) {
-                                        v[r][row][b][i] = (tot && tot >= ax.min_bases) ? 100.0 * (double)c[b] / (double)tot : NAN;
+                                        v[r][row][b][i] = (tot && !thin) ? 100.0 * (double)c[b] / (double)tot : NAN;
                                 }
                         }
                 }
@@ -1105,7 +1107,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
                                  "Percentage of A, C, G, T and N at each position along the read, %s, aligned part of the read, "
                                  "one row per MAPQ class, sharing the position axis. Rows: %s. "
                                  "One line per base, each with its own dash pattern; the line key is above the figure. "
-                                 "In each row, positions backed by fewer than " REPORT_MIN_POS_BASES_STR " bases of that class are not drawn.",
+                                 "In each row, positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads of that class are not drawn.",
                                  range, names);
                 }
                 if (figure(o, NULL, "samstat-p4", help_of(4)->title, desc, r, nm, rows, nrow,

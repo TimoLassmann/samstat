@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.3.0", "input_file": "hardclip_softclip.sam"},
+"meta": {"samstat_version": "2.4.0", "input_file": "hardclip_softclip.sam"},
 "summary": {
 "total_reads": 2,
 "read1_reads": 2,

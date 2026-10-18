@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.3.0", "input_file": "fieldarith.sam"},
+"meta": {"samstat_version": "2.4.0", "input_file": "fieldarith.sam"},
 "summary": {
 "total_reads": 8,
 "read1_reads": 8,

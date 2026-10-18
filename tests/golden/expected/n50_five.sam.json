@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.3.0", "input_file": "n50_five.sam"},
+"meta": {"samstat_version": "2.4.0", "input_file": "n50_five.sam"},
 "summary": {
 "total_reads": 5,
 "read1_reads": 5,

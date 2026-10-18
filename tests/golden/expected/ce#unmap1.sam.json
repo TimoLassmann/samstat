@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.3.0", "input_file": "ce#unmap1.sam"},
+"meta": {"samstat_version": "2.4.0", "input_file": "ce#unmap1.sam"},
 "summary": {
 "total_reads": 10,
 "read1_reads": 10,

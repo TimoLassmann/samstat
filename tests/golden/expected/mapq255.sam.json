@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.3.0", "input_file": "mapq255.sam"},
+"meta": {"samstat_version": "2.4.0", "input_file": "mapq255.sam"},
 "summary": {
 "total_reads": 7,
 "read1_reads": 7,

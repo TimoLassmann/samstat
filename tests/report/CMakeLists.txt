@@ -375,10 +375,10 @@ plot_set_test(clarity_r2:drawn_at_50 "${GEN_DIR}/perfect50.sam"
 plot_set_test(clarity_r2:errors_drawn "${GEN_DIR}/mismatch60.sam"
   "-DCONTAINS=id=\"samstat-p5-t\""
   "-DNOT_CONTAINS=Too few reads")
-# the base colours: contrast >= 5:1 on white, no shared hex with the MAPQ lines (stroke attribute of plot 4)
+# the base colours are the IGV ones (stroke attribute of plot 4); the 2.4.0 palette is gone
 plot_set_test(clarity_r2:base_colours "${GEN_DIR}/perfect60.sam"
-  "-DCONTAINS=stroke=\"#007A5A\"|stroke=\"#A8467F\"|stroke=\"#1F6FA8\""
-  "-DNOT_CONTAINS=#CC79A7|#2E86C1|#009E73")
+  "-DCONTAINS=stroke=\"#009600\"|stroke=\"#0000FF\"|stroke=\"#D17105\"|stroke=\"#FF0000\"|stroke=\"#808080\""
+  "-DNOT_CONTAINS=#007A5A|#A8467F|#8C5A00|#1F6FA8")
 # plot 6 ends at 100: whole-number ticks 95-100 and no tick or bar past 100
 plot_set_test(clarity_r2:identity_axis "${GEN_DIR}/perfect60.sam" -DSCOPE=samstat-p6
   "-DCONTAINS=from 95% to 100%, in bins of 1 percentage point|The last bin includes the reads with exactly 100% identity.|>95<|>100<"

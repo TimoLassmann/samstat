@@ -934,7 +934,7 @@ static int plot_posq(tld_strbuf* o, const struct stat_collection* s, struct pool
 
 static const char* const base_name[5] = {"A", "C", "G", "T", "N"};
 static const char* const base_series[5] = {"Base A", "Base C", "Base G", "Base T", "Base N"};
-static const char* const base_colour_name[5] = {"green", "reddish purple", "black", "brown", "blue"};
+static const char* const base_colour_name[5] = {"green", "blue", "orange", "red", "grey"};
 static const char* const base_dash_name[5] = {"solid line", "dashed line", "dotted line", "dash-dot line", "long-dashed line"};
 
 /* The A C G T N key above the figures of plots 4 and 5: one row of five swatches (with their dash

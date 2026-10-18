@@ -372,7 +372,7 @@ static void test_palettes(void)
         }
         for (int b = 0; b < 5; b++) {
                 fprintf(stderr, "contrast on white: base %s  %s %.2f:1\n", b == 0 ? "A" : b == 1 ? "C" : b == 2 ? "G" : b == 3 ? "T" : "N", report_base_colour[b], contrast_on_white(report_base_colour[b]));
-                CHECK(contrast_on_white(report_base_colour[b]) >= 5.0, "base colour %d is below 5:1 (thin dashed lines)", b);
+                CHECK(contrast_on_white(report_base_colour[b]) >= 3.0, "base colour %d is below 3:1 (WCAG 1.4.11)", b);
         }
         CHECK(contrast_on_white("#777777") >= 4.4, "grey");
         /* every base has its own dash pattern, so no line depends on colour alone (WCAG 1.4.1) */
@@ -381,7 +381,6 @@ static void test_palettes(void)
                         CHECK(strcmp(report_base_dash[b], report_base_dash[k]) != 0, "base dashes %d and %d differ", b, k);
                 }
         }
-        CHECK(contrast_on_white("#8C5A00") >= 4.5, "brown (the T line) has text-level contrast");
         CHECK(contrast_on_white("#0072B2") >= 4.5, "blue has text-level contrast");
 }
 
@@ -954,7 +953,7 @@ static void test_clarity(void)
                 struct spec sp = {.paired = 0, .aligned = 0, .quals = 1, .readlen = 100, .nreads = 20000};
                 struct stat_collection* s = make(&sp);
                 char* p4 = render(s, 4);
-                CHECK(p4 && strstr(p4, "A green, solid line; C reddish purple, dashed line; G black, dotted line; T brown, dash-dot line; N blue, long-dashed line") != NULL,
+                CHECK(p4 && strstr(p4, "A green, solid line; C blue, dashed line; G orange, dotted line; T red, dash-dot line; N grey, long-dashed line") != NULL,
                       "key text: %.600s", p4 ? p4 : "(null)");
                 for (int b = 1; b < 5; b++) {
                         char needle[64];

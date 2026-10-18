@@ -45,7 +45,8 @@ struct stat_collection;
  */
 static const char* const report_mapq_colour[4] = {"#0072B2", "#B86E00", "#D55E00", "#777777"};
 static const char* const report_mapq_dash[4] = {"", "8 4", "3 4", "12 4 2 4"};
-static const char* const report_base_colour[5] = {"#007A5A", "#A8467F", "#000000", "#8C5A00", "#1F6FA8"};
+/* IGV nucleotide colours, the ones readers know from genome browsers */
+static const char* const report_base_colour[5] = {"#009600", "#0000FF", "#D17105", "#FF0000", "#808080"};
 static const char* const report_base_dash[5] = {"", "6 3", "2 3", "8 3 2 3", "12 3"};
 
 /* Line of unaligned input (one line, "all reads"). */

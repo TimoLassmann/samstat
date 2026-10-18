@@ -1131,6 +1131,27 @@ static void test_base_rows(void)
                 stat_collection_free(s);
         }
 
+        /* long layout: a class of 49 long reads has thousands of MD-backed bases in every 1 % bin, but
+         * its mismatch row follows the line rule (50 reads) and is not drawn, like its indel lines */
+        {
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .is_long = 1, .quals = 1, .md = 1, .ident = 1, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                CHECK(s != NULL, "long collection");
+                if (s) {
+                        s->basic_nums[0][COLLECT_MAPQ_LT10] = 49;
+                        CHECK(stat_collection_finalise(s) == OK, "finalise");
+                        CHECK(s->acc->pos_rel[0][COLLECT_MAPQ_LT10][50].aligned_md >= 50, "the class has MD-backed bases");
+                        char* p5 = render(s, 5);
+                        CHECK(p5 && !path_d_of(p5, "Mismatches at read base G, MAPQ &lt; 10", d, sizeof(d)),
+                              "plot 5: 49 long reads draw no mismatch row");
+                        CHECK(p5 && path_d_of(p5, "Mismatches at read base G, MAPQ &gt;= 30", d, sizeof(d)), "plot 5: MAPQ >= 30 is drawn");
+                        CHECK(p5 && strstr(p5, "fewer than 50 of its reads cover the position or fewer than 50 aligned bases") != NULL,
+                              "plot 5 description states both rules");
+                        free(p5);
+                        stat_collection_free(s);
+                }
+        }
+
         /*
          * Stack order and height: constant per-base mismatch counts A 100, C 200, G 300, T 400, N 50 per
          * 100,000 MD-backed bases (total 1.05 %). The areas are drawn top first (N, T, G, C, A), each from

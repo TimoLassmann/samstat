@@ -1147,8 +1147,9 @@ static double err_top(double ymax)
  * mismatch_base[b] / aligned_md, bottom to top A C G T N, so that the top of the stack is the
  * class's total mismatch rate; then insertions and deletions, one line per mapped class. Each row
  * has its own y scale, shared by Read 1 and Read 2. A mismatch row has a gap where fewer than
- * REPORT_MIN_POS_BASES MD-backed bases of its class are aligned at the position; a line, where
- * fewer than that many of its reads cover it.
+ * REPORT_MIN_POS_BASES of its class's reads cover the position (the rule of the lines, so that a
+ * few long reads do not draw a row on the relative axis) or fewer than that many MD-backed bases
+ * of its class are aligned there; a line, where fewer than that many of its reads cover it.
  */
 static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
 {
@@ -1229,16 +1230,18 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                         }
                         for (int i = 0; i < ax.nb; i++) {
                                 const uint64_t den = pb[i].aligned_md;
+                                const int thin = den < ax.min_bases ||
+                                                 line_support(s, &ax, r, 1u << mrow_class[row], i) < ax.min_bases;
                                 double cum = 0.0;
                                 for (int b = 0; b < 5; b++) {
-                                        if (den < ax.min_bases) {
+                                        if (thin) {
                                                 v[r][row][b][i] = NAN;   /* gap */
                                                 continue;
                                         }
                                         cum += 100.0 * (double)pb[i].mismatch_base[b] / (double)den;
                                         v[r][row][b][i] = cum;
                                 }
-                                if (den >= ax.min_bases) {
+                                if (!thin) {
                                         seen[r][row] = 1;
                                         pmax[r][row] = cum > pmax[r][row] ? cum : pmax[r][row];
                                         ymax[row] = cum > ymax[row] ? cum : ymax[row];
@@ -1354,7 +1357,8 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                  "Mismatch rows, one per MAPQ class: %s. Each is a stack of filled areas, one per read base, bottom to top A, C, G, T, N; "
                                  "the top edge of the stack is the total mismatch rate of the class; the colour key is above the figure. "
                                  "Insertion and deletion lines: %s.%s "
-                                 "A mismatch row is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " aligned bases of its class have an MD tag or X operations, "
+                                 "A mismatch row is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position or fewer than "
+                                 REPORT_MIN_POS_BASES_STR " aligned bases of its class have an MD tag or X operations, "
                                  "a line where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
                                  range, mnames, names,
                                  n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");

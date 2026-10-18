@@ -267,7 +267,7 @@ SAMStat's differentiator. Full page width, the tallest figure.
 |---|---|
 | Data | per bin: `mismatch_base.{A,C,G,T,N} / aligned_md` per mapped class; `insertions / aligned`, `deletions / aligned` |
 | Layout | rows stacked vertically, sharing one x-axis: one **mismatch row per mapped MAPQ class with data** (`Mismatches, MAPQ >= 30`, `Mismatches, MAPQ 10-29`, `Mismatches, MAPQ < 10`), then Insertions, then Deletions. Paired: two columns (R1, R2) |
-| Mismatch rows | stacked areas of the five per-base rates, bottom to top A, C, G, T, N, in the plot 4 base colours (fill, no dash); the top edge of the stack is the total mismatch rate of that class. A bin with fewer than 50 `aligned_md` bases in that class is a gap. Legend: the A C G T N swatch row (encoding rule 4) |
+| Mismatch rows | stacked areas of the five per-base rates, bottom to top A, C, G, T, N, in the plot 4 base colours (fill, no dash); the top edge of the stack is the total mismatch rate of that class. A bin is a gap where fewer than 50 reads of that class cover it (the rule of the lines; on the relative axis a few long reads would otherwise fill every bin) or it has fewer than 50 `aligned_md` bases in that class. Legend: the A C G T N swatch row (encoding rule 4) |
 | x | layout axis and x range (3.2) |
 | y | % of aligned bases, linear from 0. Each row has its own y-scale (each mismatch row too: the point is where along the read each class goes wrong, and a low-MAPQ row can be 10x the MAPQ >= 30 row), **shared between the R1 and R2 columns**. A row that is zero at every position keeps a whole-number scale (0, 2, 4) and is labelled `none detected` inside the panel |
 | Lines | insertion and deletion rows: one per mapped MAPQ class (>= 30, 10-29, < 10). Bins with `aligned` = 0 are gaps |
@@ -316,7 +316,8 @@ Caption, aligned input: `Mean base quality at each position along the read, one 
 **Plot 4. Is base composition even along the read?**
 Caption, aligned input: `Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.` Unaligned input: `Percentage of A, C, G, T and N at each position along the read.`
 - What good looks like: roughly parallel, flat lines, and the same picture in every row.
-- Worth a look: a row that differs from the MAPQ >= 30 row, such as more N or one base piling up at the start of unmapped or poorly mapped reads (the reason they did not map); an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).
+- Worth a look, unaligned input (no MAPQ rows): `An N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).`
+- Worth a look, aligned input: a row that differs from the MAPQ >= 30 row, such as more N or one base piling up at the start of unmapped or poorly mapped reads (the reason they did not map); an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).
 - Often benign: uneven first positions in random-primed libraries; amplicon and bisulfite libraries are uneven by design.
 
 **Plot 5. Where along the read do errors occur?**

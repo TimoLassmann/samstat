@@ -693,6 +693,21 @@ static void test_tick_max(void)
         CHECK(p.x.hi == 101.0, "the axis itself still runs to 101");
         CHECK(svg_check(TLD_STR(o), err, sizeof(err)), "%s", err);
 
+        /* bin edges: one short tick per edge inside the axis; none when edges would be closer
+         * than 3 units, none on a log axis */
+        svg_axis xb = {86, 100, 0, NULL, 1}, xl = {100, 1e5, 1, NULL, 0};
+        svg_grid_init(&g, 1, 1, 420, 300, 14, 0);
+        CHECK(svg_grid_panel(o, &g, 0, 0, NULL, &xb, &ya, &p) == OK, "bin panel");
+        tld_strbuf_clear(o);
+        CHECK(svg_bin_ticks(o, &p, 86.0, 1.0) == OK && count_of(TLD_STR(o), "v2.5") == 15, "edges 86..100: %s", TLD_STR(o));
+        tld_strbuf_clear(o);
+        CHECK(svg_bin_ticks(o, &p, 85.5, 1.0) == OK && count_of(TLD_STR(o), "v2.5") == 14, "edges 86.5..99.5: %s", TLD_STR(o));
+        tld_strbuf_clear(o);
+        CHECK(svg_bin_ticks(o, &p, 86.0, 0.01) == OK && TLD_STRLEN(o) == 0, "too dense: nothing drawn");
+        CHECK(svg_grid_panel(o, &g, 0, 0, NULL, &xl, &ya, &p) == OK, "log panel");
+        tld_strbuf_clear(o);
+        CHECK(svg_bin_ticks(o, &p, 100.0, 1000.0) == OK && TLD_STRLEN(o) == 0, "log axis: nothing drawn");
+
         /* rows are far enough apart for the next panel title (1 row of titles + the last tick label) */
         svg_grid_init(&g, 3, 1, 420, 400, 14, 1);
         CHECK(g.gap_y >= 3.0 * 14, "row gap %g", g.gap_y);

@@ -200,6 +200,7 @@ struct panel_data {
         svg_axis y;
         double x_tick_max;      /* x ticks above this are dropped; 0 = no limit */
         int step;               /* 1 = step histogram, 0 = line */
+        int bin_ticks;          /* 1 = a short tick at every bin edge x0 + i * dx (plots 2 and 6) */
         int n;
         const double* xe;       /* x values / bin edges, or NULL for x0 + i * dx */
         double x0;
@@ -352,6 +353,9 @@ static int figure(tld_strbuf* o, const struct stat_collection* key_s, const char
         for (int r = 0; r < nrows; r++) {
                 const struct panel_data* d = &rows[r];
                 TRY(svg_grid_panel_ex(o, &g, r, 0, d->title, &d->x, &d->y, d->x_tick_max, &p));
+                if (d->bin_ticks) {
+                        TRY(svg_bin_ticks(o, &p, d->x0, d->dx));
+                }
                 for (int j = 0; j < d->nl; j++) {
                         const int k = d->stack_mask ? d->nl - 1 - j : j;
                         if (!d->v[k]) {
@@ -808,7 +812,7 @@ static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct poo
                 return OK;
         }
         svg_axis xa = {5.0 * floor((double)(qmin - 1) / 5.0), 5.0 * floor((double)(qmax + 1) / 5.0 + 1.0), 0,
-                       "average base quality of the read (Q)", 1};
+                       "average base quality per read (Q), 1-Q bins", 1};
         if (xa.lo < 0.0) {
                 xa.lo = 0.0;
         }
@@ -825,6 +829,7 @@ static int plot_readq(tld_strbuf* o, const struct stat_collection* s, struct poo
                 pd.n = n;
                 pd.x0 = (double)qmin;
                 pd.dx = 1.0;
+                pd.bin_ticks = 1;
                 pd.nl = nl;
                 for (int k = 0; k < nl; k++) {
                         pd.li[k] = li[k];
@@ -1475,9 +1480,10 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
         if (shape && !shape_scale(h, nm, nl, 0, n, &ymax)) {
                 return OK;
         }
-        svg_axis xa = {(double)lo_pct, 100.0, 0, "identity to the reference (%)", 1};
+        char names[200], desc[900], med[48], xlab[64];
+        snprintf(xlab, sizeof(xlab), "identity to the reference (%%), %g-point bins", bw);
+        svg_axis xa = {(double)lo_pct, 100.0, 0, xlab, 1};
         svg_axis ya = shape ? share_axis(ymax) : (svg_axis){0.0, count_top(ymax), 0, "number of reads", 1};
-        char names[200], desc[900], med[48];
 
         for (int r = 0; r < nm; r++) {
                 struct panel_data pd;
@@ -1489,6 +1495,7 @@ static int plot_identity(tld_strbuf* o, const struct stat_collection* s, struct 
                 pd.n = n;
                 pd.x0 = (double)lo_pct;
                 pd.dx = bw;
+                pd.bin_ticks = 1;
                 pd.nl = nl;
                 for (int k = 0; k < nl; k++) {
                         pd.li[k] = li[k];

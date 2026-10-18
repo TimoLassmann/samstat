@@ -898,6 +898,27 @@ ERROR:
         return FAIL;
 }
 
+int svg_bin_ticks(tld_strbuf* o, const svg_panel* p, double x0, double dx)
+{
+        if (dx <= 0.0 || p->x.log || px(p, x0 + dx) - px(p, x0) < 3.0) {
+                return OK;
+        }
+        const double k0 = ceil((p->x.lo - x0) / dx - 1e-9);
+        const double k1 = floor((p->x.hi - x0) / dx + 1e-9);
+        const double bottom = p->top + p->h;
+        if (k1 < k0) {
+                return OK;
+        }
+        TRY(pf(o, "<path fill=\"none\" stroke=\"" SVG_AXIS_COLOR "\" stroke-width=\"1\" d=\""));
+        for (double k = k0; k <= k1; k += 1.0) {
+                TRY(pf(o, "M%f,%fv2.5", px(p, x0 + k * dx), bottom));
+        }
+        TRY(pf(o, "\"/>"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 /* ------------------------------------------------------------------ */
 /* swatches                                                             */
 /* ------------------------------------------------------------------ */

@@ -419,6 +419,12 @@ static void test_full_aligned_paired_short(void)
         CHECK(strstr(p[4], "Is base composition even along the read? Read 2") != NULL, "plot 4 title");
         CHECK(strstr(p[5], "Where along the read do errors occur? Read 1") != NULL, "plot 5 title");
         CHECK(strstr(p[6], "How accurate are the aligned reads? Read 2") != NULL, "plot 6 title");
+        /* the histograms of plots 2 and 6 mark every bin edge and say how wide a bin is; plot 1 does not */
+        CHECK(strstr(p[2], ">average base quality per read (Q), 1-Q bins<") != NULL, "plot 2 x label");
+        CHECK(strstr(p[6], ">identity to the reference (%), 1-point bins<") != NULL ||
+              strstr(p[6], ">identity to the reference (%), 0.1-point bins<") != NULL, "plot 6 x label");
+        CHECK(count_of(p[2], "v2.5") > 0 && count_of(p[6], "v2.5") > 0, "plots 2 and 6 have bin-edge ticks");
+        CHECK(count_of(p[1], "v2.5") == 0, "plot 1 has none (%d)", count_of(p[1], "v2.5"));
 
         /* encoding: panels are titled Read 1 / Read 2; lines carry the fixed colour AND dash; <= 5 lines per panel */
         CHECK(count_of(p[1], ">Read 1<") == 1 && count_of(p[1], ">Read 2<") == 1, "panel titles in plot 1");

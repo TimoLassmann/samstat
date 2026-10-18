@@ -170,6 +170,13 @@ int svg_area(tld_strbuf* o, const svg_panel* p, const svg_series* s, double tol)
 /* Dashed black vertical line at data value x with a text label beside it. */
 int svg_vline(tld_strbuf* o, const svg_panel* p, double x, const char* label);
 
+/*
+ * Short unlabelled x tick marks at every bin edge x0 + k * dx inside the x range of a linear
+ * axis, so that a bar starting at a labelled tick visibly ends at the next edge. Nothing is
+ * drawn when neighbouring edges are less than 3 units apart.
+ */
+int svg_bin_ticks(tld_strbuf* o, const svg_panel* p, double x0, double dx);
+
 /* Short text centred in the plotting area of panel p (for example "none detected" in a flat panel). */
 int svg_panel_note(tld_strbuf* o, const svg_panel* p, const char* text);
 

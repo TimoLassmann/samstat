@@ -228,7 +228,7 @@ A single-length short-read library shows one honest spike in the middle of a 10 
 | | |
 |---|---|
 | Data | `read{1,2}.read_mean_q[m]` |
-| x | per-read mean Q (Phred), linear, 0 to max non-empty bin + 1 |
+| x | per-read mean Q (Phred), linear, 0 to max non-empty bin + 1. Label `average base quality per read (Q), 1-Q bins`; a short unlabelled tick at every bin edge (bins are `[q, q+1)`, drawn edge to edge, not centred on a tick) when edges are at least 3 units apart |
 | y | reads per Q bin |
 | Lines | one per MAPQ class |
 | N/A note | FASTA or no qualities: `Not available: the input has no base qualities.` |
@@ -281,7 +281,7 @@ Rates replace the 2.3 raw counts (GitHub issue #12).
 | | |
 |---|---|
 | Data | `read{1,2}.identity[m]`, mapped classes |
-| x | identity %, linear, from `floor` of the 1st-percentile bin (whole %, at most 95: the axis is at least 5 points wide, whole-number ticks) to 100; no tick, bar or axis beyond 100 |
+| x | identity %, linear, from `floor` of the 1st-percentile bin (whole %, at most 95: the axis is at least 5 points wide, whole-number ticks) to 100; no tick, bar or axis beyond 100 . Label `identity to the reference (%), <w>-point bins`, w = the bin width; a short unlabelled tick at every bin edge when edges are at least 3 units apart |
 | y | reads per bin: 0.1% bins in long layout; 1% bins in short layout (10 stored bins summed); the stored exact-100% bin joins the last bin, which ends at 100 (`[99, 100]` or `[99.9, 100]`), because a 150 bp read can only take identity steps of about 0.7% |
 | Lines | one per mapped MAPQ class |
 | Marks | vertical dashed black line at the median, labelled `median <value>%` |

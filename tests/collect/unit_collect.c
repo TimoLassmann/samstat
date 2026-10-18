@@ -14,6 +14,9 @@
  *   mean Q       128-bit error sum above UINT64_MAX
  *   fixtures     summary values of the long-read fixtures
  *   merge fields merge adds the first and the last counter of every accumulator array
+ *   mismatch base mismatches split by the read base: per-base values, sum == mismatches,
+ *                reverse-strand reads in read orientation, non-ACGT as N, CIGAR X without MD,
+ *                nothing for unmapped reads or inserted bases, merge sums it
  *   free         stat_collection_free copes with members that were never allocated (the
  *                state the error path of stat_collection_alloc frees)
  */
@@ -318,6 +321,9 @@ static int test_merge_fields(void)
         x->read_q[R][M][COLLECT_N_Q - 1] = 19;                  y->read_q[R][M][COLLECT_N_Q - 1] = 20;
         x->identity[0][0][0] = 21;                              y->identity[0][0][0] = 22;
         x->identity[R][M][COLLECT_N_IDENT - 1] = 23;            y->identity[R][M][COLLECT_N_IDENT - 1] = 24;
+        x->pos_abs[0][0][0].mismatch_base[0] = 25;              y->pos_abs[0][0][0].mismatch_base[0] = 26;
+        x->pos_rel[R][M][COLLECT_REL_BINS - 1].mismatch_base[COLLECT_N_BASE - 1] = 27;
+        y->pos_rel[R][M][COLLECT_REL_BINS - 1].mismatch_base[COLLECT_N_BASE - 1] = 28;
         a->min_length = 30;
         a->max_length = 70;
         b->min_length = 50;
@@ -337,14 +343,16 @@ static int test_merge_fields(void)
         CHECK_U("read_q last", x->read_q[R][M][COLLECT_N_Q - 1], 39);
         CHECK_U("identity first", x->identity[0][0][0], 43);
         CHECK_U("identity last", x->identity[R][M][COLLECT_N_IDENT - 1], 47);
+        CHECK_U("mismatch_base first", x->pos_abs[0][0][0].mismatch_base[0], 51);
+        CHECK_U("mismatch_base last", x->pos_rel[R][M][COLLECT_REL_BINS - 1].mismatch_base[COLLECT_N_BASE - 1], 55);
         CHECK_U("min_length", a->min_length, 30);
         CHECK_U("max_length", a->max_length, 90);
-        /* nothing else was touched: the counters add up to 1 + 2 + ... + 24 */
+        /* nothing else was touched: the counters add up to 1 + 2 + ... + 28 */
         flat = (const uint64_t *) x;
         for(size_t i = 0; i < sizeof(struct collect_acc) / sizeof(uint64_t); i++){
                 total += flat[i];
         }
-        CHECK_U("sum of all counters", total, 300);
+        CHECK_U("sum of all counters", total, 406);
         /* src is left as it was */
         CHECK_U("src identity last", y->identity[R][M][COLLECT_N_IDENT - 1], 24);
 
@@ -608,6 +616,185 @@ static int test_per_record(void)
         return OK;
 }
 
+/* --- mismatches by read base --------------------------------------------------------------- */
+
+/* Every bin of every mate, class and axis: the five base counts add up to mismatches. */
+static int mismatch_base_sums(const struct stat_collection *s, const char *ctx)
+{
+        int ok = 1;
+        for(int r = 0; r < COLLECT_N_MATE; r++){
+                for(int m = 0; m < COLLECT_N_MAPQ; m++){
+                        for(int axis = 0; axis < 2; axis++){
+                                const struct collect_pos_bin *pb = axis ? s->acc->pos_rel[r][m] : s->acc->pos_abs[r][m];
+                                const int nb = axis ? COLLECT_REL_BINS : COLLECT_ABS_BINS;
+                                for(int i = 0; i < nb; i++){
+                                        uint64_t sum = 0;
+                                        for(int k = 0; k < COLLECT_N_BASE; k++){
+                                                sum += pb[i].mismatch_base[k];
+                                        }
+                                        if(sum != pb[i].mismatches){
+                                                fprintf(stderr, "  %s: %s r=%d m=%d bin %d: mismatch_base adds up to %llu, mismatches %llu\n",
+                                                        ctx, axis ? "relative" : "absolute", r, m, i,
+                                                        (unsigned long long) sum, (unsigned long long) pb[i].mismatches);
+                                                ok = 0;
+                                        }
+                                }
+                        }
+                }
+        }
+        return ok;
+}
+
+/* All five base counts of one bin */
+#define CHECK_MB(WHAT, PB, A, C, G, T, N) do{                                   \
+                const struct collect_pos_bin *pb_ = (PB);                       \
+                CHECK_U(WHAT " A", pb_->mismatch_base[0], A);                   \
+                CHECK_U(WHAT " C", pb_->mismatch_base[1], C);                   \
+                CHECK_U(WHAT " G", pb_->mismatch_base[2], G);                   \
+                CHECK_U(WHAT " T", pb_->mismatch_base[3], T);                   \
+                CHECK_U(WHAT " N", pb_->mismatch_base[4], N);                   \
+        }while(0)
+
+/* 10 bp reads, so relative bin = 10 * position:
+ *   fwd5   MAPQ 60, MD 0C0A0A0A0A5: mismatches at 0..4 with read bases A C G T N
+ *   eqx    MAPQ 60, 4=1X5=, no MD: one mismatch at 4, read base A (reference unknown)
+ *   ins    MAPQ 60, 2M1I7M, MD 9: no mismatch; the inserted G at 2 is not one
+ *   rev    MAPQ 20, flag 16, stored AAAAAAAAAG, MD 9A0: the stored last base G is read
+ *          position 0 in read orientation, read base C
+ *   iupac  MAPQ 5, SEQ RCGTACGTAC, MD 0A9: read base R counts as N
+ *   nomd   MAPQ 5, 10M, no MD: no mismatches known
+ *   unm    unmapped, SEQ with N: no mismatches
+ *   r2rev  read 2 (flags 128 + 16 + 1), MAPQ 60, stored TTTTTTTTTA, MD 0C9: the stored first
+ *          base T is read position 9, read base A */
+#define MB_RECORDS                                                                              \
+        "fwd5\t0\tchr1\t1\t60\t10M\t*\t0\t0\tACGTNACGTA\tIIIIIIIIII\tMD:Z:0C0A0A0A0A5\n"         \
+        "eqx\t0\tchr1\t1\t60\t4=1X5=\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n"                        \
+        "ins\t0\tchr1\t1\t60\t2M1I7M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\tMD:Z:9\n"                \
+        "rev\t16\tchr1\t1\t20\t10M\t*\t0\t0\tAAAAAAAAAG\tIIIIIIIIII\tMD:Z:9A0\n"                \
+        "iupac\t0\tchr1\t1\t5\t10M\t*\t0\t0\tRCGTACGTAC\tIIIIIIIIII\tMD:Z:0A9\n"                \
+        "nomd\t0\tchr1\t1\t5\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n"                          \
+        "unm\t4\t*\t0\t0\t*\t*\t0\t0\tNNNNACGTNN\tIIIIIIIIII\n"                                 \
+        "r2rev\t145\tchr1\t1\t60\t10M\t=\t1\t0\tTTTTTTTTTA\tIIIIIIIIII\tMD:Z:0C9\n"
+
+static int test_mismatch_base(void)
+{
+        const char *ctx = "mismatch base";
+        char name[64] = "unit_collect_mb.sam";
+        int ok = 0;
+        struct stat_collection *s = read_synthetic(name, MB_RECORDS, 4096, &ok);
+        const struct collect_pos_bin *ge30 = NULL;
+        const struct collect_pos_bin *rel_ge30 = NULL;
+        uint64_t total = 0;
+
+        if(!ok){
+                return OK;
+        }
+        CHECK_U("total_reads", s->n_total, 8);
+        CHECK(mismatch_base_sums(s, ctx), "%s: mismatch_base does not add up to mismatches", ctx);
+
+        /* MAPQ >= 30, read 1: fwd5 at 0..4, eqx at 4 */
+        ge30 = s->acc->pos_abs[0][COLLECT_MAPQ_GE30];
+        CHECK_MB("abs ge30 pos 0", &ge30[0], 1, 0, 0, 0, 0);
+        CHECK_MB("abs ge30 pos 1", &ge30[1], 0, 1, 0, 0, 0);
+        CHECK_MB("abs ge30 pos 2 (inserted G not counted)", &ge30[2], 0, 0, 1, 0, 0);
+        CHECK_MB("abs ge30 pos 3", &ge30[3], 0, 0, 0, 1, 0);
+        CHECK_MB("abs ge30 pos 4 (N from MD, A from X)", &ge30[4], 1, 0, 0, 0, 1);
+        CHECK_U("abs ge30 pos 4 mismatches", ge30[4].mismatches, 2);
+        for(int i = 5; i < COLLECT_ABS_BINS; i++){
+                CHECK_MB("abs ge30 beyond pos 4", &ge30[i], 0, 0, 0, 0, 0);
+        }
+        /* the same on the relative axis, bin = 10 * position */
+        rel_ge30 = s->acc->pos_rel[0][COLLECT_MAPQ_GE30];
+        CHECK_MB("rel ge30 bin 0", &rel_ge30[0], 1, 0, 0, 0, 0);
+        CHECK_MB("rel ge30 bin 10", &rel_ge30[10], 0, 1, 0, 0, 0);
+        CHECK_MB("rel ge30 bin 20", &rel_ge30[20], 0, 0, 1, 0, 0);
+        CHECK_MB("rel ge30 bin 30", &rel_ge30[30], 0, 0, 0, 1, 0);
+        CHECK_MB("rel ge30 bin 40", &rel_ge30[40], 1, 0, 0, 0, 1);
+
+        /* MAPQ 10-29: the reverse-strand read, complemented and at read position 0 */
+        CHECK_MB("abs 10-29 pos 0 (reverse strand)", &s->acc->pos_abs[0][COLLECT_MAPQ_10_29][0], 0, 1, 0, 0, 0);
+        CHECK_MB("abs 10-29 pos 9", &s->acc->pos_abs[0][COLLECT_MAPQ_10_29][9], 0, 0, 0, 0, 0);
+        CHECK_MB("rel 10-29 bin 0", &s->acc->pos_rel[0][COLLECT_MAPQ_10_29][0], 0, 1, 0, 0, 0);
+
+        /* MAPQ < 10: IUPAC R counts as N; the read without MD adds nothing */
+        CHECK_MB("abs lt10 pos 0 (R as N)", &s->acc->pos_abs[0][COLLECT_MAPQ_LT10][0], 0, 0, 0, 0, 1);
+        CHECK_U("abs lt10 pos 0 mismatches", s->acc->pos_abs[0][COLLECT_MAPQ_LT10][0].mismatches, 1);
+
+        /* read 2, reverse strand: stored first base T is read position 9, read base A */
+        CHECK_MB("read 2 abs ge30 pos 9 (reverse strand)", &s->acc->pos_abs[1][COLLECT_MAPQ_GE30][9], 1, 0, 0, 0, 0);
+        CHECK_MB("read 2 abs ge30 pos 0", &s->acc->pos_abs[1][COLLECT_MAPQ_GE30][0], 0, 0, 0, 0, 0);
+        CHECK_MB("read 2 rel ge30 bin 90", &s->acc->pos_rel[1][COLLECT_MAPQ_GE30][90], 1, 0, 0, 0, 0);
+
+        /* unmapped: nothing, on either mate and axis */
+        for(int r = 0; r < COLLECT_N_MATE; r++){
+                for(int i = 0; i < COLLECT_ABS_BINS; i++){
+                        for(int k = 0; k < COLLECT_N_BASE; k++){
+                                total += s->acc->pos_abs[r][COLLECT_MAPQ_UNMAPPED][i].mismatch_base[k];
+                        }
+                }
+                for(int i = 0; i < COLLECT_REL_BINS; i++){
+                        for(int k = 0; k < COLLECT_N_BASE; k++){
+                                total += s->acc->pos_rel[r][COLLECT_MAPQ_UNMAPPED][i].mismatch_base[k];
+                        }
+                }
+        }
+        CHECK_U("unmapped mismatch_base", total, 0);
+
+        /* every mismatch once per axis: 5 (fwd5) + 1 (eqx) + 1 (rev) + 1 (iupac) + 1 (r2rev) */
+        for(int axis = 0; axis < 2; axis++){
+                total = 0;
+                for(int r = 0; r < COLLECT_N_MATE; r++){
+                        for(int m = 0; m < COLLECT_N_MAPQ; m++){
+                                const int nb = axis ? COLLECT_REL_BINS : COLLECT_ABS_BINS;
+                                for(int i = 0; i < nb; i++){
+                                        const struct collect_pos_bin *pb = axis ? &s->acc->pos_rel[r][m][i] : &s->acc->pos_abs[r][m][i];
+                                        for(int k = 0; k < COLLECT_N_BASE; k++){
+                                                total += pb->mismatch_base[k];
+                                        }
+                                }
+                        }
+                }
+                CHECK_U(axis ? "relative mismatch_base total" : "absolute mismatch_base total", total, 9);
+        }
+        stat_collection_free(s);
+
+        /* one record per chunk over three collections, merged: the same accumulators */
+        {
+                char path[64] = "unit_collect_mb_merge.sam";
+                struct stat_collection *whole = NULL;
+                struct stat_collection *parts[3] = {NULL, NULL, NULL};
+                FILE *fp = fopen(path, "w");
+
+                CHECK(fp != NULL, "%s: cannot write %s", ctx, path);
+                if(!fp){
+                        return OK;
+                }
+                fputs(SAM_HEADER, fp);
+                fputs(MB_RECORDS, fp);
+                fclose(fp);
+                whole = read_one(path);
+                if(whole && read_into(path, parts, 3, 1) == OK){
+                        RUN(stat_collection_merge(parts[0], parts[1]));
+                        RUN(stat_collection_merge(parts[0], parts[2]));
+                        RUN(stat_collection_finalise(parts[0]));
+                        CHECK(same_collection(parts[0], whole, ctx), "%s: merged parts differ from the whole file", ctx);
+                        CHECK(mismatch_base_sums(parts[0], ctx), "%s: merged mismatch_base does not add up", ctx);
+                        CHECK_MB("merged abs ge30 pos 4", &parts[0]->acc->pos_abs[0][COLLECT_MAPQ_GE30][4], 1, 0, 0, 0, 1);
+                }else{
+                        n_failed++;
+                }
+                for(int i = 0; i < 3; i++){
+                        stat_collection_free(parts[i]);
+                }
+                stat_collection_free(whole);
+                remove(path);
+        }
+        return OK;
+ERROR:
+        n_failed++;
+        return FAIL;
+}
+
 /* --- identity of a hand-computed CIGAR ------------------------------------------------------ */
 
 static int test_identity_bins(void)
@@ -783,6 +970,7 @@ static int test_fixtures(void)
                                 }
                         }
                 }
+                CHECK(mismatch_base_sums(s, ctx), "%s: mismatch_base does not add up to mismatches", ctx);
                 MAYBE_U("mismatch_bases", sum_mis, e->mismatch);
                 MAYBE_U("insertion_events", sum_ins, e->ins);
                 MAYBE_U("deletion_events", sum_del, e->del);
@@ -827,6 +1015,7 @@ int main(void)
         test_free_partial();
         test_position_bins();
         test_per_record();
+        test_mismatch_base();
         test_identity_bins();
         test_mean_q_128();
         test_fixtures();

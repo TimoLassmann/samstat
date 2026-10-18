@@ -41,6 +41,7 @@ static int json_v2(struct jout *o, struct stat_collection *s, const char *filena
 static int json_v2_summary(struct jout *o, struct stat_collection *s);
 static int json_v2_read(struct jout *o, struct stat_collection *s, int r);
 static int json_v2_per_class(struct jout *o, const char *base, size_t class_stride, size_t stride, int n);
+static int json_v2_per_class_base(struct jout *o, const char *base, size_t class_stride, size_t stride, int n);
 static int json_v2_pos_block(struct jout *o, const struct collect_pos_bin *bins, int n_bins);
 
 int json_report_write(struct stat_collection *s, struct samstat_param *p, int id)
@@ -202,7 +203,31 @@ ERROR:
         return FAIL;
 }
 
-/* bins = acc->pos_*[r][0]; the classes follow at a stride of n_bins bins */
+/* {"mapq_ge30": {"A": [...], "C": [...], ...}, ...}: as json_v2_per_class, with the five base
+ * counters (A C G T N, consecutive uint64_t) of each element at base */
+int json_v2_per_class_base(struct jout *o, const char *base, size_t class_stride, size_t stride, int n)
+{
+        RUN(json_append(o, "{"));
+        for(int m = 0; m < JSON_N_BIN; m++){
+                RUN(json_key(o, bin_id[m]));
+                RUN(json_append(o, "{"));
+                for(int k = 0; k < JSON_N_BASE; k++){
+                        RUN(json_key(o, base_name[k]));
+                        RUN(json_strided(o, base + (size_t) m * class_stride + (size_t) k * sizeof(uint64_t), stride, n));
+                        if(k + 1 < JSON_N_BASE){
+                                RUN(json_append(o, ", "));
+                        }
+                }
+                RUN(json_append(o, m + 1 < JSON_N_BIN ? "}, " : "}"));
+        }
+        RUN(json_append(o, "}"));
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* bins = acc->pos_*[r][0]; the classes follow at a stride of n_bins bins. mismatch_base (added
+ * after 2.4.0, format_version 2) follows mismatches. */
 int json_v2_pos_block(struct jout *o, const struct collect_pos_bin *bins, int n_bins)
 {
         const char *b = (const char *) bins;
@@ -215,24 +240,18 @@ int json_v2_pos_block(struct jout *o, const struct collect_pos_bin *bins, int n_
                 offsetof(struct collect_pos_bin, aligned_md), offsetof(struct collect_pos_bin, mismatches),
                 offsetof(struct collect_pos_bin, insertions), offsetof(struct collect_pos_bin, deletions)};
 
-        RUN(json_append(o, "{\n\"composition\": {"));
-        for(int m = 0; m < JSON_N_BIN; m++){
-                RUN(json_key(o, bin_id[m]));
-                RUN(json_append(o, "{"));
-                for(int k = 0; k < JSON_N_BASE; k++){
-                        RUN(json_key(o, base_name[k]));
-                        RUN(json_strided(o, b + (size_t) m * cs + offsetof(struct collect_pos_bin, comp) + (size_t) k * sizeof(uint64_t), st, n_bins));
-                        if(k + 1 < JSON_N_BASE){
-                                RUN(json_append(o, ", "));
-                        }
-                }
-                RUN(json_append(o, m + 1 < JSON_N_BIN ? "}, " : "}"));
-        }
-        RUN(json_append(o, "}"));
+        RUN(json_append(o, "{\n"));
+        RUN(json_key(o, "composition"));
+        RUN(json_v2_per_class_base(o, b + offsetof(struct collect_pos_bin, comp), cs, st, n_bins));
         for(int i = 0; i < 7; i++){
                 RUN(json_append(o, ",\n"));
                 RUN(json_key(o, names[i]));
                 RUN(json_v2_per_class(o, b + offs[i], cs, st, n_bins));
+                if(offs[i] == offsetof(struct collect_pos_bin, mismatches)){
+                        RUN(json_append(o, ",\n"));
+                        RUN(json_key(o, "mismatch_base"));
+                        RUN(json_v2_per_class_base(o, b + offsetof(struct collect_pos_bin, mismatch_base), cs, st, n_bins));
+                }
         }
         RUN(json_append(o, "\n}"));
         return OK;

@@ -161,7 +161,9 @@ file(WRITE ${LR_GEN}/eqx_perfect.sam
   "onemm\t0\tchr1\t20\t60\t4=1X5=\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n")
 set(eqx_checks "summary.reads_without_md=0" "summary.identity_reads=2"
   "read1.absolute.aligned_md.mapq_ge30.0=2" "read1.absolute.aligned_md.mapq_ge30.9=2"
-  "read1.absolute.mismatches.mapq_ge30.4=1" "read1.absolute.mismatches.mapq_ge30.3=0")
+  "read1.absolute.mismatches.mapq_ge30.4=1" "read1.absolute.mismatches.mapq_ge30.3=0"
+  "read1.absolute.mismatch_base.mapq_ge30.A.4=1" "read1.absolute.mismatch_base.mapq_ge30.A#len=5"
+  "read1.absolute.mismatch_base.mapq_ge30.C#len=0")
 string(REPLACE ";" "\;" eqx_checks "${eqx_checks}")
 add_test(NAME longread:value:eqx_perfect.sam
   COMMAND ${CMAKE_COMMAND}

@@ -6,6 +6,8 @@
 # json:no_v1_key:*  keys of format_version 1 and the "v2" wrapper are gone
 # json:golden:*    full report compared with tests/golden/expected/<input>.json (meta ignored)
 # json:off         without --json no .json file is written
+# json:mismatch_base:*  mismatches split by read base: hand-verified values, member order,
+#                  shape, sums and schema (check_mismatch_base.cmake)
 # json:helper:*    self-tests of check_json.cmake / compare_golden.cmake
 #
 # Goldens live in tests/golden/expected/ and are regenerated in one way only:
@@ -230,6 +232,70 @@ foreach(input small.sam paired_small.sam empty.sam qual.fq supplementary.sam)
       -DOUTDIR=${JSON_OUT}/schema_${input} -DSCHEMA=${PROJECT_SOURCE_DIR}/docs/samstat.schema.json
       -P ${JSON_HELPERS}/check_schema_keys.cmake)
   set_tests_properties(json:schema_keys:${input} PROPERTIES LABELS json)
+endforeach()
+
+# --- mismatch_base (standard-plots.md 3.2, 7) -----------------------------------------
+# mismatch_base.sam (written here): 10 bp reads, relative bin = 10 * position.
+#   fwd5   MAPQ 60, MD 0C0A0A0A0A5: mismatches at 0..4 with read bases A C G T N
+#   eqx    MAPQ 60, 4=1X5=, no MD: one mismatch at 4, read base A
+#   rev    MAPQ 20, flag 16, stored AAAAAAAAAG, MD 9A0: read position 0, read base C
+#   iupac  MAPQ 5, SEQ RCGTACGTAC, MD 0A9: R counts as N
+#   unm    unmapped, SEQ with N: nothing
+set(JSON_GEN ${CMAKE_CURRENT_BINARY_DIR}/gen)
+file(MAKE_DIRECTORY ${JSON_GEN})
+file(WRITE ${JSON_GEN}/mismatch_base.sam
+  "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:1000\n"
+  "fwd5\t0\tchr1\t1\t60\t10M\t*\t0\t0\tACGTNACGTA\tIIIIIIIIII\tMD:Z:0C0A0A0A0A5\n"
+  "eqx\t0\tchr1\t1\t60\t4=1X5=\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n"
+  "rev\t16\tchr1\t1\t20\t10M\t*\t0\t0\tAAAAAAAAAG\tIIIIIIIIII\tMD:Z:9A0\n"
+  "iupac\t0\tchr1\t1\t5\t10M\t*\t0\t0\tRCGTACGTAC\tIIIIIIIIII\tMD:Z:0A9\n"
+  "unm\t4\t*\t0\t0\t*\t*\t0\t0\tNNNNACGTNN\tIIIIIIIIII\n")
+set(mb_checks
+  "read1.absolute.mismatches.mapq_ge30#len=5"
+  "read1.absolute.mismatches.mapq_ge30.4=2"
+  "read1.absolute.mismatch_base.mapq_ge30.A#len=5"
+  "read1.absolute.mismatch_base.mapq_ge30.A.0=1"
+  "read1.absolute.mismatch_base.mapq_ge30.A.4=1"
+  "read1.absolute.mismatch_base.mapq_ge30.C#len=2"
+  "read1.absolute.mismatch_base.mapq_ge30.C.1=1"
+  "read1.absolute.mismatch_base.mapq_ge30.G#len=3"
+  "read1.absolute.mismatch_base.mapq_ge30.G.2=1"
+  "read1.absolute.mismatch_base.mapq_ge30.T#len=4"
+  "read1.absolute.mismatch_base.mapq_ge30.T.3=1"
+  "read1.absolute.mismatch_base.mapq_ge30.N#len=5"
+  "read1.absolute.mismatch_base.mapq_ge30.N.4=1"
+  "read1.absolute.mismatch_base.mapq_10_29.C#len=1"
+  "read1.absolute.mismatch_base.mapq_10_29.C.0=1"
+  "read1.absolute.mismatch_base.mapq_10_29.G#len=0"
+  "read1.absolute.mismatch_base.mapq_lt10.N#len=1"
+  "read1.absolute.mismatch_base.mapq_lt10.N.0=1"
+  "read1.absolute.mismatch_base.mapq_lt10.A#len=0"
+  "read1.absolute.mismatch_base.unmapped.N#len=0"
+  "read1.relative.mismatch_base.mapq_ge30.N#len=41"
+  "read1.relative.mismatch_base.mapq_ge30.N.40=1"
+  "read1.relative.mismatch_base.mapq_ge30.A.40=1"
+  "read1.relative.mismatch_base.mapq_ge30.C.10=1"
+  "read1.relative.mismatch_base.mapq_10_29.C.0=1")
+string(REPLACE ";" "\;" mb_checks "${mb_checks}")
+add_test(NAME json:mismatch_base:values
+  COMMAND ${CMAKE_COMMAND}
+    -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${JSON_GEN}/mismatch_base.sam
+    -DOUTDIR=${JSON_OUT}/mb_values "-DCHECKS=${mb_checks}"
+    -P ${JSON_HELPERS}/run_json.cmake)
+set_tests_properties(json:mismatch_base:values PROPERTIES LABELS json)
+
+# json:mismatch_base:<input>  member order, shape, sums and schema on generated, paired,
+# CIGAR X without MD, long-read and unaligned input
+foreach(input ${JSON_GEN}/mismatch_base.sam ${SAMSTAT_FIXTURE_DIR}/small.sam
+    ${SAMSTAT_FIXTURE_DIR}/paired_small.sam ${SAMSTAT_FIXTURE_DIR}/longread/eqx_nomd.sam
+    ${SAMSTAT_FIXTURE_DIR}/longread/ont_like.sam ${SAMSTAT_FIXTURE_DIR}/qual.fq)
+  get_filename_component(name ${input} NAME)
+  add_test(NAME json:mismatch_base:${name}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${input}
+      -DOUTDIR=${JSON_OUT}/mb_${name} -DSCHEMA=${PROJECT_SOURCE_DIR}/docs/samstat.schema.json
+      -P ${JSON_HELPERS}/check_mismatch_base.cmake)
+  set_tests_properties(json:mismatch_base:${name} PROPERTIES LABELS json)
 endforeach()
 
 # the version in meta is SAMStat's, not htslib's (config.h include order)

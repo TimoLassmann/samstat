@@ -28,7 +28,7 @@ _Static_assert(sizeof(collect_u128) == 16, "128-bit integers are required");
  * same counter in both collections. The sizes below are the member lists written out; a
  * member of any other type, or one added without updating this list, changes the size and
  * stops the build here before merge can add the wrong bytes. */
-#define COLLECT_POS_BIN_COUNTERS (COLLECT_N_BASE + 7)
+#define COLLECT_POS_BIN_COUNTERS (2 * COLLECT_N_BASE + 7)
 _Static_assert(sizeof(struct collect_pos_bin) == COLLECT_POS_BIN_COUNTERS * sizeof(uint64_t),
                "struct collect_pos_bin must hold uint64_t counters only (see stat_collection_merge)");
 _Static_assert(sizeof(struct collect_acc) ==
@@ -266,9 +266,10 @@ void pos_loop(struct pos_ctx *c, struct rel_walk *w, int c5, int from, int to, c
         }
 }
 
-/* Mismatches, insertions and deletions along the alignment strings (read orientation, after
- * fix_orientation). rp is the read position inside the aligned part. An insertion or a
- * deletion is counted once, where the gap opens (2.3 semantics). */
+/* Mismatches (in total and by read base), insertions and deletions along the alignment
+ * strings (read orientation, after fix_orientation). rp is the read position inside the
+ * aligned part. An insertion or a deletion is counted once, where the gap opens (2.3
+ * semantics). */
 static void collect_alignment(struct stat_collection *s, const struct aln_data *a, int r, int m, int aligned_len)
 {
         struct collect_acc *acc = s->acc;
@@ -295,10 +296,15 @@ static void collect_alignment(struct stat_collection *s, const struct aln_data *
                                         rb[rel_at(&w, (uint64_t) rp)].insertions++;
                                 }
                         }else if(has_mismatch_info && rc != gc){
+                                /* split by the read base, the same mapping as composition */
+                                const int code = nuc_to_internal[rc];
+                                struct collect_pos_bin *rb_ = rb + rel_at(&w, (uint64_t) rp);
                                 if(rp < COLLECT_ABS_BINS){
                                         ab[rp].mismatches++;
+                                        ab[rp].mismatch_base[code]++;
                                 }
-                                rb[rel_at(&w, (uint64_t) rp)].mismatches++;
+                                rb_->mismatches++;
+                                rb_->mismatch_base[code]++;
                         }
                         rp++;
                 }else if(gc != '-'){

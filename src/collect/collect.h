@@ -70,6 +70,9 @@ struct collect_pos_bin {
         uint64_t aligned;                /* aligned read bases (M, =, X, I) of mapped reads */
         uint64_t aligned_md;             /* the same, only for reads with MD or X operations */
         uint64_t mismatches;
+        /* the same mismatches by READ base A C G T N (read orientation, after
+         * fix_orientation; anything else counts as N): they add up to mismatches */
+        uint64_t mismatch_base[COLLECT_N_BASE];
         uint64_t insertions;             /* insertion events (one per gap opening) */
         uint64_t deletions;              /* deletion events (one per gap opening) */
 };

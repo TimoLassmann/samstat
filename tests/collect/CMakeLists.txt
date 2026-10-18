@@ -7,7 +7,8 @@
 # collect:mapq_sum:*    MAPQ class counts and length histograms add up to the primary reads
 # collect:axis_rule:*   layout rule and both position axes
 # collect:unit          unit_collect: the v2 collector (merge, tables, position bins, per-record
-#                       decisions, 128-bit mean Q, summary values of the long-read fixtures)
+#                       decisions, mismatches by read base, 128-bit mean Q, summary values of
+#                       the long-read fixtures)
 #
 # Expected values come from the hand-computed fixtures in tests/data/README.md.
 

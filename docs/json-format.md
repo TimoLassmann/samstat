@@ -10,7 +10,8 @@ Properties of the file:
 
 * Deterministic: same input and version give byte-identical output apart from
   `meta`. No timestamps, no absolute paths. Key order is fixed.
-* Every key is always present (no existence checks needed), except `read2` (see below).
+* Every key is always present (no existence checks needed), except `read2` (see below)
+  and, in files written by 2.4.0, `mismatch_base` (added later).
 * All arrays hold exact non-negative integers and are trimmed after their last non-zero
   entry: an index past the end of an array means 0, and a class without data gives `[]`.
 * Floating point values appear only in `summary`, are printed with four decimals and are
@@ -128,6 +129,7 @@ A **position block** holds, per mapq id and position bin:
 | `aligned` | Aligned read bases (CIGAR `M`, `=`, `X`, `I`) of mapped reads: denominator for insertions and deletions. |
 | `aligned_md` | The same, only for reads with an `MD` tag or `=`/`X` operations: denominator for mismatches. |
 | `mismatches` | Mismatching bases (from `MD`, or from `X` operations when `MD` is absent; a read of `=` operations only has none). |
+| `mismatch_base` | `{id: {"A": [int], "C": [int], "G": [int], "T": [int], "N": [int]}}`: the same mismatches split by the **read** base at that position (read orientation, so a reverse-strand read counts the complement of its stored base; anything that is not A, C, G or T counts as N). The five arrays add up to `mismatches` in every bin; `unmapped` has empty arrays. It works without `MD` (CIGAR `X`). Added after 2.4.0 as a new optional field (`format_version` stays 2): files written by 2.4.0 do not have it. |
 | `insertions` | Insertion events starting at this read position (one per gap opening). |
 | `deletions` | Deletion events at this read position (one per gap opening). |
 

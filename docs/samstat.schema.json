@@ -311,6 +311,10 @@
         "mismatches": {
           "$ref": "#/$defs/per_bin_counts"
         },
+        "mismatch_base": {
+          "description": "mismatches split by the read base (added after 2.4.0; optional, format_version stays 2). For every class and bin the five arrays add up to mismatches.",
+          "$ref": "#/$defs/per_bin_bases"
+        },
         "insertions": {
           "$ref": "#/$defs/per_bin_counts"
         },

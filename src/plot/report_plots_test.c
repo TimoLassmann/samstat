@@ -804,17 +804,23 @@ static void test_clarity(void)
         CHECK(strcmp(report_plot_caption(5, 1), "Mismatches per aligned base at each position, coloured by the read base and one row per MAPQ class; "
                                                 "then insertions and deletions, one line per MAPQ class. Each panel has its own vertical scale.") == 0,
               "plot 5 caption: %s", report_plot_caption(5, 1));
-        CHECK(strstr(report_plot_good(4, 1), "every row") != NULL && strstr(report_plot_look(4, 1), "MAPQ >= 30 row") != NULL, "plot 4 help, aligned");
-        CHECK(strstr(report_plot_good(4, 0), "row") == NULL && strstr(report_plot_look(4, 0), "MAPQ") == NULL &&
-              strstr(report_plot_look(4, 0), "An N spike at one position") == report_plot_look(4, 0), "plot 4 help, unaligned: no rows, no MAPQ");
+        /* spec section 5: one good line for plots 4 and 5, the same for any input */
+        CHECK(strcmp(report_plot_help[REPORT_PLOT_COMP].good, "Roughly parallel, flat lines, and the same picture in every row.") == 0,
+              "plot 4 good line: %s", report_plot_help[REPORT_PLOT_COMP].good);
+        CHECK(strstr(report_plot_help[REPORT_PLOT_COMP].look, "A row that differs from the MAPQ >= 30 row, such as more N") == report_plot_help[REPORT_PLOT_COMP].look &&
+              strstr(report_plot_help[REPORT_PLOT_COMP].look, "an N spike at one position, or a change in composition") != NULL,
+              "plot 4 look line: %s", report_plot_help[REPORT_PLOT_COMP].look);
+        CHECK(report_plot_look(4, 1) == report_plot_help[REPORT_PLOT_COMP].look &&
+              strstr(report_plot_look(4, 0), "MAPQ") == NULL && strstr(report_plot_look(4, 0), "An N spike at one position") == report_plot_look(4, 0),
+              "plot 4 look line, unaligned: no MAPQ class");
         for (int id = 1; id <= 6; id++) {
                 if (id != 4) {
-                        CHECK(report_plot_good(id, 0) == report_plot_good(id, 1) && report_plot_look(id, 0) == report_plot_look(id, 1),
-                              "plot %d has one good and one look line", id);
+                        CHECK(report_plot_look(id, 0) == report_plot_look(id, 1), "plot %d has one look line", id);
                 }
         }
-        CHECK(strstr(report_plot_look(5, 1), "G at the first positions: bases added during library preparation") != NULL &&
-              strstr(report_plot_good(5, 1), "no single base dominating the mismatches") != NULL, "plot 5 help names the read base");
+        CHECK(strstr(report_plot_help[REPORT_PLOT_ERRORS].look, "G at the first positions: bases added during library preparation") != NULL &&
+              strcmp(report_plot_help[REPORT_PLOT_ERRORS].good, "Low, flat rates, with MAPQ >= 30 the lowest, and no single base dominating the mismatches.") == 0,
+              "plot 5 help names the read base");
 
         /* positions backed by fewer than 50 reads are gaps, and the axis ends at the last backed position */
         {
@@ -1180,6 +1186,124 @@ static void test_base_rows(void)
                 p5 = render(s, 5);
                 CHECK(p5 && strstr(p5, "Mismatches at read base N, MAPQ &gt;= 30") == NULL &&
                       strstr(p5, "Mismatches at read base T, MAPQ &gt;= 30") != NULL, "no area for a base without mismatches");
+                free(p5);
+                stat_collection_free(s);
+        }
+
+        /*
+         * Each mismatch row has its own vertical scale: constant total rates 0.4 % (MAPQ >= 30), 1 %
+         * (MAPQ 10-29) and 4 % (MAPQ < 10), split evenly over the five bases. The top of each stack is
+         * at its own rate on an axis that ends at err_top() of that row's maximum, not of all rows.
+         */
+        {
+                static const uint64_t total[3] = {400, 1000, 4000};   /* per 100,000 MD-backed bases */
+                static const char* const cls[3] = {"MAPQ &gt;= 30", "MAPQ 10-29", "MAPQ &lt; 10"};
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                for (int m = 0; m < 3; m++) {
+                        for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                                struct collect_pos_bin* b = &s->acc->pos_abs[0][m][i];
+                                if (!b->aligned) {
+                                        continue;
+                                }
+                                b->aligned_md = 100000;
+                                b->mismatches = total[m];
+                                for (int k = 0; k < 5; k++) {
+                                        b->mismatch_base[k] = total[m] / 5;
+                                }
+                        }
+                }
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                char* p5 = render(s, 5);
+                double tops[3] = {0};
+                for (int m = 0; m < 3 && p5; m++) {
+                        char t[96];
+                        double x0, y0, dx, dy, base;
+                        snprintf(t, sizeof(t), "Mismatches at read base N, %s", cls[m]);
+                        int ok = path_d_of(p5, t, d, sizeof(d)) && sscanf(d, "M%lf,%lfl%lf,%lfV%lfH", &x0, &y0, &dx, &dy, &base) == 5;
+                        const double rate = 100.0 * (double)total[m] / 100000.0;
+                        tops[m] = fmax(svg_nice_ceil(rate * 1.04, 3), 0.5);
+                        const double want = 96.0 * rate / tops[m];
+                        CHECK(ok && fabs((base - y0) - want) < 0.11, "%s: stack top at %.2f units, expected %.2f (own axis top %g)", cls[m],
+                              ok ? base - y0 : -1.0, want, tops[m]);
+                }
+                CHECK(tops[0] < tops[1] && tops[1] < tops[2], "three different axis tops (%g, %g, %g)", tops[0], tops[1], tops[2]);
+                /* the tick labels of each row follow its own axis (0-0.5 and 0-5 here) */
+                char a[4000];
+                svg_texts(p5 ? p5 : "", p5 ? p5 + strlen(p5) : "", a, sizeof(a));
+                CHECK(p5 && strstr(a, "|Mismatches, MAPQ &gt;= 30 (% of aligned bases)|0.0|0.2|0.4|Mismatches, MAPQ 10-29") != NULL &&
+                      strstr(a, "|Mismatches, MAPQ &lt; 10 (% of aligned bases)|0|2|4|Insertions") != NULL,
+                      "tick labels of the own axis of each row: %.400s", a);
+                free(p5);
+                stat_collection_free(s);
+        }
+
+        /*
+         * Paired: a mismatch row exists when either mate has MD-backed bases in the class, so the other
+         * mate's panel can be empty. Its note names the reason, as in plot 4: Read 1 has no MAPQ < 10
+         * reads, no MD in MAPQ 10-29, and fewer than 50 MD-backed bases per position in MAPQ >= 30.
+         * Plot 4: Read 1 has no MAPQ < 10 reads, and fewer than 50 bases per position in MAPQ >= 30.
+         */
+        {
+                struct spec sp = {.paired = 1, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                const int m_lt = COLLECT_MAPQ_LT10;
+                s->basic_nums[0][m_lt] = 0;
+                memset(s->acc->pos_abs[0][m_lt], 0, sizeof(s->acc->pos_abs[0][m_lt]));
+                memset(s->acc->pos_rel[0][m_lt], 0, sizeof(s->acc->pos_rel[0][m_lt]));
+                memset(s->acc->len_reads[0][m_lt], 0, sizeof(s->acc->len_reads[0][m_lt]));
+                memset(s->acc->len_bases[0][m_lt], 0, sizeof(s->acc->len_bases[0][m_lt]));
+                memset(s->acc->read_q[0][m_lt], 0, sizeof(s->acc->read_q[0][m_lt]));
+                memset(s->acc->identity[0][m_lt], 0, sizeof(s->acc->identity[0][m_lt]));
+                for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                        struct collect_pos_bin* b = &s->acc->pos_abs[0][COLLECT_MAPQ_10_29][i];
+                        b->aligned_md = 0;
+                        b->mismatches = 0;
+                        memset(b->mismatch_base, 0, sizeof(b->mismatch_base));
+                        b = &s->acc->pos_abs[0][COLLECT_MAPQ_GE30][i];
+                        if (b->aligned) {
+                                b->aligned_md = 10;
+                                b->mismatches = 1;
+                                memset(b->mismatch_base, 0, sizeof(b->mismatch_base));
+                                b->mismatch_base[0] = 1;
+                                memset(b->comp, 0, sizeof(b->comp));
+                                b->comp[0] = 10;
+                        }
+                }
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                char* p4 = render(s, 4);
+                char* p5 = render(s, 5);
+                const char* r2 = p5 ? strstr(p5, ">Read 2: ") : NULL;
+                CHECK(p5 && r2, "render plot 5");
+                if (p5 && r2) {
+                        check_markup("plot 5, empty R1 mismatch panels", p5);
+                        const char* t30 = strstr(p5, ">Read 1: Mismatches, MAPQ &gt;= 30 (%)<");
+                        const char* t10 = strstr(p5, ">Read 1: Mismatches, MAPQ 10-29 (%)<");
+                        const char* tlt = strstr(p5, ">Read 1: Mismatches, MAPQ &lt; 10 (%)<");
+                        const char* tins = strstr(p5, ">Read 1: Insertions");
+                        const char* n_few = strstr(p5, ">too few reads to draw<");
+                        const char* n_md = strstr(p5, ">no reads with MD or X<");
+                        const char* n_none = strstr(p5, ">no reads<");
+                        CHECK(t30 && t10 && tlt && tins, "plot 5: Read 1 keeps the three mismatch rows");
+                        CHECK(t30 && t10 && tlt && tins && n_few && n_md && n_none && t30 < n_few && n_few < t10 && t10 < n_md && n_md < tlt &&
+                              tlt < n_none && n_none < tins, "plot 5 R1 notes: too few, no MD, no reads, each in its own row");
+                        CHECK(count_of(p5, ">too few reads to draw<") == 1 && count_of(p5, ">no reads with MD or X<") == 1 &&
+                              count_of(p5, ">no reads<") == 1 && (!n_none || n_none < r2), "plot 5: no notes in Read 2");
+                }
+                const char* q2 = p4 ? strstr(p4, ">Read 2: ") : NULL;
+                CHECK(p4 && q2, "render plot 4");
+                if (p4 && q2) {
+                        const char* t30 = strstr(p4, ">Read 1: MAPQ &gt;= 30<");
+                        const char* tlt = strstr(p4, ">Read 1: MAPQ &lt; 10<");
+                        const char* tun = strstr(p4, ">Read 1: Unmapped<");
+                        const char* n_few = strstr(p4, ">too few reads to draw<");
+                        const char* n_none = strstr(p4, ">no reads<");
+                        CHECK(t30 && tlt && tun && n_few && n_none && t30 < n_few && n_few < tlt && tlt < n_none && n_none < tun,
+                              "plot 4 R1 notes: too few in MAPQ >= 30, no reads in MAPQ < 10");
+                        CHECK(count_of(p4, ">too few reads to draw<") == 1 && count_of(p4, ">no reads<") == 1 && n_none && n_none < q2,
+                              "plot 4: no notes in Read 2");
+                }
+                free(p4);
                 free(p5);
                 stat_collection_free(s);
         }

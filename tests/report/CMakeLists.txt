@@ -128,7 +128,7 @@ foreach(input small.bam longread/ont_like.bam longread/long.fq)
     "-DNOT_MATCHES=(src|href)=[\"']?(https?:)?//@@url\\([\"']?https?:")
 endforeach()
 
-# report:ultralong_html, report:short_html_size: HTML < 1 MB in both layouts
+# report:ultralong_html, report:short_html_size: HTML < 1 MB in both layouts (short: noisy input, and JSON < 1 MB)
 add_test(NAME report:ultralong_html
   COMMAND ${CMAKE_COMMAND} -DSAMSTAT=$<TARGET_FILE:samstat>
     -DOUTDIR=${REPORT_OUT}/ultralong_html -DMODE=ultralong
@@ -414,10 +414,10 @@ plot_set_test(base_rows:plot5 "${GEN_DIR}/twoclass120.sam" -DSCOPE=samstat-p5
 plot_set_test(base_rows:text "${GEN_DIR}/twoclass120.sam" "-DSVG_A11Y=1"
   "-DCONTAINS=id=\"samstat-p4-key-t\"|id=\"samstat-p5-key-t\"|Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.</p>|Mismatches per aligned base at each position, coloured by the read base and one row per MAPQ class; then insertions and deletions, one line per MAPQ class. Each panel has its own vertical scale.</p>|Roughly parallel, flat lines, and the same picture in every row.|A row that differs from the MAPQ &gt;= 30 row|Low, flat rates, with MAPQ &gt;= 30 the lowest, and no single base dominating the mismatches.|G towards the 3&#39; end on two-colour instruments"
   "-DNOT_CONTAINS=one line per MAPQ class. A class is drawn")
-# unaligned: one row of all reads, and no text about MAPQ rows
+# unaligned: one row of all reads; the good line of spec section 5 as on aligned input, a look line without MAPQ
 plot_set_test(base_rows:unaligned "${GEN_DIR}/unaligned60.fq"
-  "-DCONTAINS=Percentage of A, C, G, T and N at each position along the read.</p>|Roughly parallel, flat lines.</p>|An N spike at one position|id=\"samstat-p4-key-t\""
-  "-DNOT_CONTAINS=MAPQ|same picture in every row|A row that differs|samstat-p5|Rows:")
+  "-DCONTAINS=Percentage of A, C, G, T and N at each position along the read.</p>|Roughly parallel, flat lines, and the same picture in every row.</p>|An N spike at one position|id=\"samstat-p4-key-t\""
+  "-DNOT_CONTAINS=MAPQ|A row that differs|samstat-p5|Rows:")
 # no MD and no X: no mismatch rows and no base key in plot 5, the N/A line in their place, indel rows stay
 plot_set_test(base_rows:no_md "${GEN_DIR}/nomd60.sam"
   "-DCONTAINS=Mismatches not available: no MD tag.|Insertions (% of aligned bases)|Deletions (% of aligned bases)|id=\"samstat-p4-key-t\""

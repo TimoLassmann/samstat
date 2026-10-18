@@ -43,7 +43,6 @@ struct report_plot_help {
         const char* caption;        /* always visible */
         const char* caption_unaligned;  /* caption for input that is not aligned, or NULL for the same */
         const char* good;           /* visible line under the figure */
-        const char* good_unaligned; /* good line for input that is not aligned, or NULL for the same */
         const char* look;           /* "How to read plot N" (collapsed), line 1 */
         const char* look_unaligned; /* look line for input that is not aligned, or NULL for the same */
         const char* benign;         /* line 2 */
@@ -75,10 +74,9 @@ EXTERN const char* const report_shape_caption;       /* what the shape view show
 EXTERN const char* const report_mapq_title;          /* MAPQ table heading */
 EXTERN const char* const report_mapq_caption;        /* MAPQ table caption */
 
-/* Caption, "What good looks like:" and "Worth a look:" lines of a plot for aligned or unaligned input
-   (plot 4 on unaligned input has one row of all reads, so its text names no MAPQ class). */
+/* Caption and "Worth a look:" line of a plot for aligned or unaligned input
+   (the plot 4 look line on unaligned input names no MAPQ class). */
 const char* report_plot_caption(int plot_id, int is_aligned);
-const char* report_plot_good(int plot_id, int is_aligned);
 const char* report_plot_look(int plot_id, int is_aligned);
 
 /* Plot 5 mismatch row text when no read has MD or X operations. */

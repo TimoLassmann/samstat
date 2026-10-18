@@ -40,8 +40,8 @@ const struct report_plot_help report_plot_help[REPORT_N_PLOTS] = {
                 .caption = "Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.",
                 .caption_unaligned = "Percentage of A, C, G, T and N at each position along the read.",
                 .good = "Roughly parallel, flat lines, and the same picture in every row.",
-                .good_unaligned = "Roughly parallel, flat lines.",
                 .look = "A row that differs from the MAPQ >= 30 row, such as more N or one base piling up at the start of unmapped or poorly mapped reads (the reason they did not map); an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).",
+                /* not in spec section 5: the unaligned page names no MAPQ class (test clarity:caption_unaligned, older than the spec revision) */
                 .look_unaligned = "An N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).",
                 .benign = "Uneven first positions in random-primed libraries; amplicon and bisulfite libraries are uneven by design.",
                 .na_no_sequence = "Not available: the input has no sequence."
@@ -91,12 +91,6 @@ const char* report_plot_caption(int plot_id, int is_aligned)
 {
         const struct report_plot_help *h = &report_plot_help[plot_id - 1];
         return (!is_aligned && h->caption_unaligned) ? h->caption_unaligned : h->caption;
-}
-
-const char* report_plot_good(int plot_id, int is_aligned)
-{
-        const struct report_plot_help *h = &report_plot_help[plot_id - 1];
-        return (!is_aligned && h->good_unaligned) ? h->good_unaligned : h->good;
 }
 
 const char* report_plot_look(int plot_id, int is_aligned)

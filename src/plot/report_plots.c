@@ -1152,6 +1152,7 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
         struct posaxis ax;
         uint64_t md_total = 0;
         uint64_t md_class[COLLECT_MAPQ_UNMAPPED] = {0};
+        uint64_t md_mate[COLLECT_N_MATE][COLLECT_MAPQ_UNMAPPED] = {{0}};   /* for the note of an empty mismatch panel */
         char buf1[48], buf2[48], text[600];
 
         if (!s->is_aligned) {
@@ -1172,9 +1173,10 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                 for (int m = 0; m < COLLECT_MAPQ_UNMAPPED; m++) {
                         const struct collect_pos_bin* pb = pos_bins(s, &ax, r, m);
                         for (int i = 0; i < ax.nb; i++) {
-                                md_class[m] += pb[i].aligned_md;
+                                md_mate[r][m] += pb[i].aligned_md;
                         }
-                        md_total += md_class[m];
+                        md_class[m] += md_mate[r][m];
+                        md_total += md_mate[r][m];
                 }
         }
         /* the mismatch rows: mapped classes with MD-backed bases, in table order; none without MD or X */
@@ -1331,7 +1333,9 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                 pd->note = "none detected";
                                 n_none++;
                         } else if (!seen[r][row] && row < n_mrow) {
-                                pd->note = "too few reads to draw";
+                                /* the row has data in the other mate only: say why this panel is empty, as in plot 4 */
+                                const int m = mrow_class[row];
+                                pd->note = !class_reads(s, r, 1u << m) ? "no reads" : !md_mate[r][m] ? "no reads with MD or X" : "too few reads to draw";
                         }
                         pd->n = ax.nb;
                         pd->x0 = ax.x0;

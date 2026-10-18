@@ -2,8 +2,10 @@
 # Writes the input into OUTDIR, runs samstat and checks the size of the report.
 # Required: -DSAMSTAT=<binary> -DOUTDIR=<dir>
 #           -DMODE=short       a paired, aligned SAM of 999 bp reads with enough records to
-#                              give every position bin of every MAPQ class and mate data
-#                              (worst case for the number of plotted points, short layout)
+#                              give every position bin of every MAPQ class and mate data, with
+#                              noisy bases, qualities, mismatches and indels (worst case for the
+#                              number of plotted points, short layout); also writes the JSON
+#                              report and checks that it stays below MAX_BYTES too
 #           -DMODE=ultralong   one aligned read of 1 Mb (long layout)
 # Optional: -DMAX_BYTES=<n>    default 1000000
 #           -DCONTAINS=a|b     strings that must occur in the report
@@ -30,11 +32,31 @@ if(MODE STREQUAL "ultralong")
   file(WRITE ${sam} "${header}"
     "ultra\t0\tchr1\t1\t60\t${len}M\t*\t0\t0\t${seq}\t${qual}\tNM:i:0\tMD:Z:${len}\n")
 elseif(MODE STREQUAL "short")
-  # Pair i: MAPQ class i%4 (60, 20, 5, unmapped), one mismatch (MD) at read position i,
-  # base qualities that differ per pair, so that every position bin of every class has
-  # data. 1000 pairs cover all 999 positions.
+  # Pair i: MAPQ class i%4 (60, 20, 5, unmapped). The input is noisy so that path simplification
+  # cannot collapse any line or area to a few points: each read is a window of a pseudo-random
+  # ACGT pool with about 1 % N, and its qualities a window of a pseudo-random quality pool; a
+  # mapped read has 20 mismatches (MD) at positions i%50 + 50j with the read base there, and one
+  # 1 bp insertion (even i) or deletion (odd i) at a position that moves with i. 1000 pairs give
+  # every position bin of every class and mate data (250 reads per class and mate).
   set(len 999)
-  string(REPEAT "C" ${len} seq)
+  set(pool_len 2000)
+  set(seed 12345)
+  set(bases "")
+  set(quals "")
+  foreach(k RANGE 1 ${pool_len})
+    math(EXPR seed "(${seed}*1103515245+12345)%2147483648")
+    math(EXPR v "(${seed}/65536)%101")
+    if(v EQUAL 100)
+      string(APPEND bases "N")
+    else()
+      math(EXPR b "${v}%4")
+      string(SUBSTRING "ACGT" ${b} 1 c)
+      string(APPEND bases "${c}")
+    endif()
+    math(EXPR q "35+(${seed}/4096)%39")
+    string(ASCII ${q} qc)
+    string(APPEND quals "${qc}")
+  endforeach()
   set(sam ${OUTDIR}/short_999.sam)
   file(WRITE ${sam} "${header}")
   set(mapqs 60 20 5 0)
@@ -43,24 +65,71 @@ elseif(MODE STREQUAL "short")
     math(EXPR cls "${i}%4")
     math(EXPR pos "1+(${i}*37)%90000")
     math(EXPR mate "${pos}+200")
-    math(EXPR mm "${i}%${len}")
-    math(EXPR rest "${len}-1-${mm}")
-    math(EXPR q "33+(${i}*7)%41")
-    string(ASCII ${q} qc)
-    math(EXPR q2 "33+(${i}*11+5)%41")
-    string(ASCII ${q2} qc2)
-    string(REPEAT "${qc}" ${len} qual1)
-    string(REPEAT "${qc2}" ${len} qual2)
+    # read 1 and read 2 take different windows of the pools
+    math(EXPR o1 "(${i}*389)%1000")
+    math(EXPR o2 "(${i}*613+501)%1000")
+    math(EXPR oq1 "(${i}*271)%1000")
+    math(EXPR oq2 "(${i}*457+333)%1000")
+    string(SUBSTRING "${bases}" ${o1} ${len} seq1)
+    string(SUBSTRING "${bases}" ${o2} ${len} seq2)
+    string(SUBSTRING "${quals}" ${oq1} ${len} qual1)
+    string(SUBSTRING "${quals}" ${oq2} ${len} qual2)
     if(cls EQUAL 3)
       # unmapped pair
       string(APPEND chunk
-        "p${i}\t77\t*\t0\t0\t*\t*\t0\t0\t${seq}\t${qual1}\n"
-        "p${i}\t141\t*\t0\t0\t*\t*\t0\t0\t${seq}\t${qual2}\n")
+        "p${i}\t77\t*\t0\t0\t*\t*\t0\t0\t${seq1}\t${qual1}\n"
+        "p${i}\t141\t*\t0\t0\t*\t*\t0\t0\t${seq2}\t${qual2}\n")
     else()
       list(GET mapqs ${cls} mapq)
+      # mismatches at read positions off + 50j; the indel at q, never on a mismatch
+      math(EXPR off "${i}%50")
+      math(EXPR q "${off}+25+50*((${i}*7)%19)")
+      math(EXPR ins "${i}%2")
+      foreach(k 1 2)
+        set(seq "${seq${k}}")
+        set(md "")
+        set(run 0)
+        set(prev 0)
+        set(indel_done 0)
+        foreach(j RANGE 0 19)
+          math(EXPR p "${off}+50*${j}")
+          if(NOT indel_done AND q LESS p)
+            math(EXPR run "${run}+${q}-${prev}")
+            if(ins)
+              # the inserted base q is not in MD
+              math(EXPR prev "${q}+1")
+            else()
+              string(APPEND md "${run}^A")
+              set(run 0)
+              set(prev ${q})
+            endif()
+            set(indel_done 1)
+          endif()
+          math(EXPR run "${run}+${p}-${prev}")
+          string(SUBSTRING "${seq}" ${p} 1 rb)
+          if(rb STREQUAL "A")
+            set(ref "C")
+          else()
+            set(ref "A")
+          endif()
+          string(APPEND md "${run}${ref}")
+          set(run 0)
+          math(EXPR prev "${p}+1")
+        endforeach()
+        math(EXPR run "${run}+${len}-${prev}")
+        string(APPEND md "${run}")
+        set(md${k} "${md}")
+      endforeach()
+      math(EXPR rest "${len}-${q}")
+      if(ins)
+        math(EXPR rest "${rest}-1")
+        set(cigar "${q}M1I${rest}M")
+      else()
+        set(cigar "${q}M1D${rest}M")
+      endif()
       string(APPEND chunk
-        "p${i}\t99\tchr1\t${pos}\t${mapq}\t${len}M\t=\t${mate}\t1200\t${seq}\t${qual1}\tNM:i:1\tMD:Z:${mm}A${rest}\n"
-        "p${i}\t147\tchr1\t${mate}\t${mapq}\t${len}M\t=\t${pos}\t-1200\t${seq}\t${qual2}\tNM:i:1\tMD:Z:${mm}A${rest}\n")
+        "p${i}\t99\tchr1\t${pos}\t${mapq}\t${cigar}\t=\t${mate}\t1200\t${seq1}\t${qual1}\tNM:i:21\tMD:Z:${md1}\n"
+        "p${i}\t147\tchr1\t${mate}\t${mapq}\t${cigar}\t=\t${pos}\t-1200\t${seq2}\t${qual2}\tNM:i:21\tMD:Z:${md2}\n")
     endif()
     math(EXPR m "${i}%100")
     if(m EQUAL 99)
@@ -73,7 +142,11 @@ else()
   message(FATAL_ERROR "run_html_size: set -DMODE=short or -DMODE=ultralong")
 endif()
 
-execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} -d ${OUTDIR} ${sam}
+set(json_flag "")
+if(MODE STREQUAL "short")
+  set(json_flag --json)
+endif()
+execute_process(TIMEOUT 120 COMMAND ${SAMSTAT} ${json_flag} -d ${OUTDIR} ${sam}
   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "samstat exited with ${rc} (${MODE})\nstdout:\n${out}\nstderr:\n${err}")
@@ -88,6 +161,17 @@ if(NOT size LESS ${MAX_BYTES})
   message(FATAL_ERROR "${MODE}: HTML report is ${size} bytes, expected < ${MAX_BYTES}")
 endif()
 message(STATUS "${MODE}: HTML report ${size} bytes (< ${MAX_BYTES})")
+if(json_flag)
+  set(json ${OUTDIR}/${name}.samstat.json)
+  if(NOT EXISTS ${json})
+    message(FATAL_ERROR "No JSON report written: ${json}")
+  endif()
+  file(SIZE ${json} json_size)
+  if(NOT json_size LESS ${MAX_BYTES})
+    message(FATAL_ERROR "${MODE}: JSON report is ${json_size} bytes, expected < ${MAX_BYTES}")
+  endif()
+  message(STATUS "${MODE}: JSON report ${json_size} bytes (< ${MAX_BYTES})")
+endif()
 file(READ ${report} html)
 set(failed "")
 string(REPLACE "|" ";" must "${CONTAINS}")

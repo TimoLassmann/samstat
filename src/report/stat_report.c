@@ -703,7 +703,7 @@ static int page_plot(tld_strbuf *o, struct stat_collection *s, int plot_id)
                 RUN(app(o, "<p class=\"good\"><strong>"));
                 RUN(esc(o, report_good_label));
                 RUN(app(o, "</strong> "));
-                RUN(esc(o, report_plot_good(plot_id, s->is_aligned)));
+                RUN(esc(o, h->good));
                 RUN(app(o, "</p>\n"));
                 /* progressive disclosure: the counts above are the message; the shape view is opened on purpose */
                 RUN(tld_strbuf_alloc(&fig, 1 << 14));

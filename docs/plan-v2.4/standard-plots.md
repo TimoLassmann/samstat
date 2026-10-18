@@ -87,14 +87,15 @@ Unaligned input: the table is absent and plots 1-4 draw one line, `all reads`, s
 
 ## 2. Encoding rules (apply to every plot)
 
-1. **MAPQ class = one line** with the fixed colour and dash above. On aligned input plots 1-3, 5 and 6 have one line per class that has data (unmapped is not drawn in plots 5 and 6); plot 4 pools all reads.
+1. **MAPQ class = one line** with the fixed colour and dash above. On aligned input plots 1-3, 5 (insertion and deletion rows) and 6 have one line per class that has data (unmapped is not drawn in plots 5 and 6). Plot 4 and the mismatch rows of plot 5 are the exception: there colour means the base, so each MAPQ class gets its own row instead of its own line (rule 9).
 2. **Mates:** paired input draws R1 and R2 as side-by-side panels with identical x and y axes and the titles `Read 1` / `Read 2`. Never extra lines.
 3. **Max 5 lines per panel.**
-4. **No direct line labels.** MAPQ lines are identified only by the MAPQ table. Plot 4 has one fixed inline legend row (A C G T N swatches) in its caption area.
+4. **No direct line labels.** MAPQ lines are identified only by the MAPQ table. Plots 4 and 5 each have one fixed inline legend row (A C G T N swatches) in their caption area; plot 4 and the plot 5 mismatch rows are labelled by MAPQ class in the row title.
 5. Each plot: title (a question), one always-visible caption sentence (above the figure), one always-visible `What good looks like:` line (under the figure; it describes the ideal, not a verdict on this file), one collapsed `<details>` `How to read plot N` with `Worth a look:`, `Often benign:` and, for plots 2 and 6, `How it is calculated:`. All text lives in `src/report/report_help.c` (section 5). The caption of plot 3 names MAPQ classes only for aligned input.
 6. Every `<svg>` has `role="img"`, `<title>`, `<desc>`. Each series is one `<path>`/`<polyline>` with one series-level `<title>`; **no per-point elements or tooltips**. The JSON is the data channel. Lines are 2 units wide. A histogram bin with no drawn neighbour is drawn at least 6 units wide and 1 unit high, so a single read on a log axis is still visible. A log axis has at least three labelled ticks (200 k, 500 k, 1 M for a lone bin), a count axis is at least 0-3 and uses whole-number ticks.
 7. Figures are 400 units wide with 15 unit text and scale to their column (a figure up to 32 rem wide, a Read 1 / Read 2 pair side by side, one column below 40 rem), so text is >= 12 px at 360 px width. System font stack, >= 12 px text, light theme only, layout works at 360 px width, one `@media print` block (forces `<details>` open, `break-inside: avoid`, A4 portrait).
-8. The base-composition palette (plot 4) shares no hex value with the MAPQ palette.
+8. The base palette (plots 4 and 5) shares no hex value with the MAPQ palette.
+9. **Base x MAPQ = rows.** Where a plot shows bases (plot 4, plot 5 mismatch rows), each MAPQ class that has data is one short row, in the MAPQ table order, titled with the class label (`MAPQ >= 30`, ..., `Unmapped`); the five bases are the colours inside the row. A class with no reads in either mate has no row. Rows share the x-axis; paired input shows R1 and R2 as columns, as everywhere else. Unaligned input has one row, `all reads`. This restores the contrast both SAMStat papers are built on (decisions A3, F3 revised 2026-10-18).
 
 ---
 
@@ -152,10 +153,11 @@ Per bin, per `m`, per `r`:
 | `aligned` | aligned read bases (CIGAR M, =, X, I) of mapped reads; denominator for insertions and deletions |
 | `aligned_md` | same, only for reads that have an MD tag or X operations; denominator for mismatches |
 | `mismatches` | mismatching bases (from MD, or CIGAR X when MD is absent) |
+| `mismatch_base.{A,C,G,T,N}` | the same mismatches split by the **read** base at that position (read orientation, after `fix_orientation`); anything not ACGT counts as N. Their sum equals `mismatches` in every bin. The read base, not the reference base, so it works for CIGAR X without MD and shows N calls and bases added by library preparation (2011 paper: 5' added G in CAGE) |
 | `insertions` | insertion events starting at this read position (one per gap opening) |
 | `deletions` | deletion events at this read position (one per gap opening, 2.3 semantics) |
 
-Memory: 12 rows x 1100 bins x 4 x 2 x 8 B = about 0.85 MB per collection.
+Memory: 17 rows x 1100 bins x 4 x 2 x 8 B = about 1.2 MB per collection (was 12 rows, 0.85 MB, before `mismatch_base`).
 
 ### 3.3 Quality, in integer fixed point
 
@@ -247,12 +249,13 @@ A single-length short-read library shows one honest spike in the middle of a 10 
 
 | | |
 |---|---|
-| Data | `composition` summed over all MAPQ classes, per mate, as % of the bin's bases |
+| Data | `composition` per MAPQ class, per mate, as % of the bin's bases in that class |
 | x | layout axis and x range (3.2) |
 | y | % of bases, 0-100 |
 | Lines | A green `#007A5A` solid, C reddish purple `#A8467F` dashed `6 3`, G black `#000000` dotted `2 3`, T brown `#8C5A00` dash-dot `8 3 2 3`, N blue `#1F6FA8` long-dashed `12 3` (a fine dotted N line looked pale; N is rare and its line is mostly flat). Every base has its own dash pattern (WCAG 1.4.1) and every colour has at least 5:1 contrast on white (thin dashed lines). None of the hex values is in the MAPQ palette. |
 | Legend | one inline row of five swatches A C G T N above the panels |
-| Panels | one (unpaired) or R1, R2 side by side. No MAPQ split (`decisions.md` A3) |
+| Panels | one row per MAPQ class with reads (aligned input: up to 4, `Unmapped` included, because unmapped and poorly mapped reads are where N calls, adapters and added bases show), each row titled with the class label; R1, R2 as columns. Unaligned input: one row, `all reads`. Rows are short (about half the height of a plot 3 panel) and share the x-axis (encoding rule 9, `decisions.md` A3 revised) |
+| Thin bins | a bin backed by fewer than 50 bases **in that class** is a gap in that row |
 | N/A note | no sequence in any read: `Not available: the input has no sequence.` |
 | FastQC equivalent | Per Base Sequence Content + Per Base N Content |
 
@@ -262,13 +265,14 @@ SAMStat's differentiator. Full page width, the tallest figure.
 
 | | |
 |---|---|
-| Data | three rates per bin: `mismatches / aligned_md`, `insertions / aligned`, `deletions / aligned` |
-| Layout | three rows stacked vertically, sharing one x-axis: Mismatches, Insertions, Deletions. Paired: two columns (R1, R2) |
+| Data | per bin: `mismatch_base.{A,C,G,T,N} / aligned_md` per mapped class; `insertions / aligned`, `deletions / aligned` |
+| Layout | rows stacked vertically, sharing one x-axis: one **mismatch row per mapped MAPQ class with data** (`Mismatches, MAPQ >= 30`, `Mismatches, MAPQ 10-29`, `Mismatches, MAPQ < 10`), then Insertions, then Deletions. Paired: two columns (R1, R2) |
+| Mismatch rows | stacked areas of the five per-base rates, bottom to top A, C, G, T, N, in the plot 4 base colours (fill, no dash); the top edge of the stack is the total mismatch rate of that class. A bin with fewer than 50 `aligned_md` bases in that class is a gap. Legend: the A C G T N swatch row (encoding rule 4) |
 | x | layout axis and x range (3.2) |
-| y | % of aligned bases, linear from 0. Each row (mismatch, insertion, deletion) has its own y-scale, **shared between the R1 and R2 columns**. A row that is zero at every position keeps a whole-number scale (0, 2, 4) and is labelled `none detected` inside the panel |
-| Lines | one per mapped MAPQ class (>= 30, 10-29, < 10). Bins with `aligned` (or `aligned_md`) = 0 are gaps |
+| y | % of aligned bases, linear from 0. Each row has its own y-scale (each mismatch row too: the point is where along the read each class goes wrong, and a low-MAPQ row can be 10x the MAPQ >= 30 row), **shared between the R1 and R2 columns**. A row that is zero at every position keeps a whole-number scale (0, 2, 4) and is labelled `none detected` inside the panel |
+| Lines | insertion and deletion rows: one per mapped MAPQ class (>= 30, 10-29, < 10). Bins with `aligned` = 0 are gaps |
 | Partial tags | the mismatch row caption appends the "excludes N of M reads" note when `reads_without_md > 0` |
-| N/A note | no mapped read: `No mapped reads.` Fewer than 50 reads: `Too few reads (N) for a per-position plot (needs at least 50).` No read has MD or X: mismatch row only shows `Mismatches not available: no MD tag. Add one with samtools calmd -b in.bam ref.fa > out.bam (minimap2: --MD).`; insertion and deletion rows still render |
+| N/A note | no mapped read: `No mapped reads.` Fewer than 50 reads: `Too few reads (N) for a per-position plot (needs at least 50).` No read has MD or X: no mismatch rows; in their place `Mismatches not available: no MD tag. Add one with samtools calmd -b in.bam ref.fa > out.bam (minimap2: --MD).`; insertion and deletion rows still render |
 
 Rates replace the 2.3 raw counts (GitHub issue #12).
 
@@ -310,15 +314,15 @@ Caption, aligned input: `Mean base quality at each position along the read, one 
 - Often benign: the first few positions are slightly lower; long-read files use % of read length as the axis, which dilutes effects in the first few bases.
 
 **Plot 4. Is base composition even along the read?**
-Caption: `Percentage of A, C, G, T and N at each position along the read.`
-- What good looks like: roughly parallel, flat lines.
-- Worth a look: an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).
+Caption, aligned input: `Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.` Unaligned input: `Percentage of A, C, G, T and N at each position along the read.`
+- What good looks like: roughly parallel, flat lines, and the same picture in every row.
+- Worth a look: a row that differs from the MAPQ >= 30 row, such as more N or one base piling up at the start of unmapped or poorly mapped reads (the reason they did not map); an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).
 - Often benign: uneven first positions in random-primed libraries; amplicon and bisulfite libraries are uneven by design.
 
 **Plot 5. Where along the read do errors occur?**
-Caption: `Mismatches, insertions and deletions per aligned base at each position, one line per MAPQ class. Each panel has its own vertical scale.`
-- What good looks like: low, flat lines, with MAPQ >= 30 the lowest.
-- Worth a look: rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, reads joined from two places); high mismatch rates in well-mapped reads (wrong reference or contamination).
+Caption: `Mismatches per aligned base at each position, coloured by the read base and one row per MAPQ class; then insertions and deletions, one line per MAPQ class. Each panel has its own vertical scale.`
+- What good looks like: low, flat rates, with MAPQ >= 30 the lowest, and no single base dominating the mismatches.
+- Worth a look: one base dominating the mismatches at a few positions (for example G at the first positions: bases added during library preparation; N: failed base calls; G towards the 3' end on two-colour instruments: no signal), especially if it reaches further into the read in the low-MAPQ rows; rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, reads joined from two places); high mismatch rates in well-mapped reads (wrong reference or contamination).
 - Often benign: low-MAPQ reads are often ambiguous (repeats, reads that fit several places), not necessarily wrong. Long reads carry more insertions and deletions than short reads. A few very long reads can dominate a line.
 
 **Plot 6. How accurate are the aligned reads?**
@@ -384,12 +388,14 @@ Rules carried over from v1: deterministic, no timestamps or absolute paths, fixe
   "aligned":        {<id>: [int]},
   "aligned_md":     {<id>: [int]},
   "mismatches":     {<id>: [int]},
+  "mismatch_base":  {<id>: {"A": [int], "C": [int], "G": [int], "T": [int], "N": [int]}},
   "insertions":     {<id>: [int]},
   "deletions":      {<id>: [int]}
 }
 ```
 
-- Removed from v1: `read*.base_quality` (Q x position matrix), per-base `mismatches.{A,C,G,T,N}`, clip-trimmed `length`. Changelog gets one line for v1 consumers.
+- Added after 2.4.0 (optional field, `format_version` stays 2 per `docs/json-format.md`): `mismatch_base`, the per-read-base split of `mismatches`, written after `mismatches`; same trimming rules; the unmapped class has empty arrays.
+- Removed from v1: `read*.base_quality` (Q x position matrix), clip-trimmed `length`. Changelog gets one line for v1 consumers.
 - Array length bounds (tested by `longread:ultralong`): absolute-axis arrays <= 1000, relative-axis arrays <= 100, identity arrays <= 1001, `read_mean_q` <= 94.
 - Size: a 1 Mb single read gives well under 1 MB (about 15k numbers). A 30x WGS file with all 8 class/mate groups full is about 1 MB.
 - Transitional (waves 3-4 only, `work-packages.md`): the v2 blocks are first emitted under a top-level `"v2"` key next to the v1 keys, then promoted in WP4.3.

@@ -76,6 +76,16 @@ Date: 2026-10-14. 55 issues from four review lenses (feasibility 17, performance
 | S15 | Workflow sized to agent count | A | Opus reviewers only on M/L or Opus packages; 42 runs (WP §1, DE F9). |
 | S16 | TSAN job flakiness | A | Limited to `-L golden` and `-R threads`, sysctl step (UNVERIFIED issue link) (WP2.3). |
 
+## Revision 2026-10-18: base x MAPQ restored
+
+Maintainer review after the 2.4.0 release, against both papers (Lassmann et al. 2011, doi:10.1093/bioinformatics/btq614; Lassmann 2023, doi:10.1093/bioinformatics/btad019). Each paper's headline finding needs both the base and the MAPQ class: 2011, G mismatches at the 5' end of CAGE reads, at position 1 in high-MAPQ reads and positions 1-5 in the lowest; 2023, N at read position 40, read by contrasting confident with poorly or unmapped reads. In 2.4.0, A3 removed the MAPQ split from composition and F3 removed the base from mismatches, so neither finding could be reproduced from a report.
+
+| Change | Where |
+|---|---|
+| A3 revised to (b): plot 4 one row per MAPQ class, unmapped included | DE A3, SP 2 rule 9, SP plot 4, SP 5 |
+| F3 revised: `mismatch_base` restored (read base), plot 5 one stacked mismatch row per mapped class | DE F3, SP 3.2, SP plot 5, SP 5, SP 7 |
+| ref->read substitution matrix considered and not taken (JSON ceiling E5; reference base unknown without MD) | DE F3 |
+
 ## Not changed
 
 `simplicity-review.md`, `topics/` and `research/` were not edited. Where they now disagree (simplicity-review §2 strip list with median length, §3 C1 and C18 MultiQC axis, §4 note texts, §5 CRAM "free"), the precedence line in `README.md` and the entries above decide.

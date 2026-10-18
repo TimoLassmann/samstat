@@ -422,3 +422,19 @@ plot_set_test(base_rows:unaligned "${GEN_DIR}/unaligned60.fq"
 plot_set_test(base_rows:no_md "${GEN_DIR}/nomd60.sam"
   "-DCONTAINS=Mismatches not available: no MD tag.|Insertions (% of aligned bases)|Deletions (% of aligned bases)|id=\"samstat-p4-key-t\""
   "-DNOT_CONTAINS=samstat-p5-key|Mismatches, MAPQ|Mismatches at read base")
+
+# The two artefacts the base x MAPQ rows are for (tests/data/README.md u, v; JSON values in
+# json:artefact:*). cage_5g.sam: every mismatch is a read G (reverse reads counted in read
+# orientation, so no C series), in the MAPQ >= 30 and MAPQ < 10 rows; the 30 MAPQ 10-29 reads
+# have a row with nothing to draw. n_pos40.sam: the N line is drawn in the MAPQ >= 30 and
+# Unmapped rows of plot 4, and the only mismatch series of plot 5 is read base N.
+plot_set_test(base_rows:cage_5g "${SAMSTAT_FIXTURE_DIR}/cage_5g.sam" -DSCOPE=samstat-p5
+  "-DCONTAINS=>Mismatches, MAPQ &gt;= 30 (% of aligned bases)<|>Mismatches, MAPQ &lt; 10 (% of aligned bases)<|<title>Mismatches at read base G, MAPQ &gt;= 30</title>|<title>Mismatches at read base G, MAPQ &lt; 10</title>"
+  "-DNOT_CONTAINS=read base A|read base C|read base T|read base N|Mismatches, Unmapped")
+plot_set_test(base_rows:n_pos40_p4 "${SAMSTAT_FIXTURE_DIR}/n_pos40.sam" -DSCOPE=samstat-p4
+  "-DCONTAINS=>MAPQ &gt;= 30<|>Unmapped<|<title>Base N, MAPQ &gt;= 30</title>|<title>Base N, Unmapped</title>|Rows: MAPQ &gt;= 30, Unmapped."
+  "-DNOT_CONTAINS=>MAPQ 10-29<|>MAPQ &lt; 10<"
+  "-DMATCHES=>MAPQ &gt;= 30<.*>Unmapped<")
+plot_set_test(base_rows:n_pos40_p5 "${SAMSTAT_FIXTURE_DIR}/n_pos40.sam" -DSCOPE=samstat-p5
+  "-DCONTAINS=>Mismatches, MAPQ &gt;= 30 (% of aligned bases)<|<title>Mismatches at read base N, MAPQ &gt;= 30</title>"
+  "-DNOT_CONTAINS=read base A|read base C|read base G|read base T|Mismatches, MAPQ &lt; 10|Mismatches, Unmapped")

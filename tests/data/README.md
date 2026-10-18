@@ -225,3 +225,39 @@ accompanied by a `reads.fq`; the lower-case FASTQ exists only inside `reads.fq.g
 - Purpose: three 20 bp reads followed by one 5000 bp read (arrays must grow).
 - Expected: total reads 4; length 20 x3 and 5000 x1; Q40 count at position 19 is 4
   and at position 4999 is 1.
+
+## u) cage_5g.sam
+
+- Purpose: the CAGE 5' G artefact (SAMStat paper, 2011) in the base x MAPQ rows of
+  plots 4 and 5, and read orientation of `mismatch_base`.
+- Generated once with a seeded script (not kept in the repository) against a random
+  toy reference (`@SQ SN:chr1 LN:5000`); every read is `36M` with `NM` and `MD`
+  consistent with SEQ and that reference. Qualities `I`.
+- Reads (320):
+  - `hi000`..`hi149`, MAPQ 60: the first read base is an added `G` (a mismatch:
+    the reference base there is not `G`). `hi100`..`hi149` are on the reverse
+    strand, stored reverse-complemented, so the added base is a `C` at the end of SEQ
+    (`MD:Z:35x0`).
+  - `lo000`..`lo119`, MAPQ 3: a run of k added `G` at the read's 5' end, k cycling
+    3 3 3 3 2 1 4 5; `lo080`..`lo119` on the reverse strand (`C` run at the end of SEQ).
+  - `mid000`..`mid029`, MAPQ 20, no mismatch. `un000`..`un019` unmapped.
+- Expected (read1, absolute axis): `mismatch_base.mapq_ge30.G` = [150] and no other
+  base; `mismatch_base.mapq_lt10.G` = [120, 105, 90, 30, 15] and no other base;
+  `mismatches` equal to those arrays; no mismatch for MAPQ 10-29. With the reverse
+  reads in reference orientation the 50 + 40 reverse mismatches would be `C` at
+  position 36 instead.
+
+## v) n_pos40.sam
+
+- Purpose: N at read position 40 (2023 report) in the unmapped row of plot 4.
+- Generated like `cage_5g.sam` (`@SQ SN:chr1 LN:10000`), 100 bp reads, `100M`,
+  qualities `I`.
+- Reads (300):
+  - `map000`..`map199`, MAPQ 60, odd numbers on the reverse strand. `map000`,
+    `map100` (forward) and `map001`, `map101` (reverse) have `N` at read position 40
+    (SEQ index 39 forward, 60 reverse), a mismatch in MD; no other mismatch.
+  - `un000`..`un099` unmapped, random bases; all but `un000`, `un010`, ... `un090` have
+    `N` at read position 40.
+- Expected (read1, absolute axis, 0-based index 39): `composition.unmapped.N` has
+  length 40 and value 90 at index 39; `composition.mapq_ge30.N` length 40, value 4;
+  `mismatch_base.mapq_ge30.N` = `mismatches.mapq_ge30`, length 40, value 4.

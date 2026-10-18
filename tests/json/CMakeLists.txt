@@ -8,6 +8,7 @@
 # json:off         without --json no .json file is written
 # json:mismatch_base:*  mismatches split by read base: hand-verified values, member order,
 #                  shape, sums and schema (check_mismatch_base.cmake)
+# json:artefact:*  CAGE 5' G and N at position 40 fixtures: the artefact per MAPQ class
 # json:helper:*    self-tests of check_json.cmake / compare_golden.cmake
 #
 # Goldens live in tests/golden/expected/ and are regenerated in one way only:
@@ -288,7 +289,8 @@ set_tests_properties(json:mismatch_base:values PROPERTIES LABELS json)
 # CIGAR X without MD, long-read and unaligned input
 foreach(input ${JSON_GEN}/mismatch_base.sam ${SAMSTAT_FIXTURE_DIR}/small.sam
     ${SAMSTAT_FIXTURE_DIR}/paired_small.sam ${SAMSTAT_FIXTURE_DIR}/longread/eqx_nomd.sam
-    ${SAMSTAT_FIXTURE_DIR}/longread/ont_like.sam ${SAMSTAT_FIXTURE_DIR}/qual.fq)
+    ${SAMSTAT_FIXTURE_DIR}/longread/ont_like.sam ${SAMSTAT_FIXTURE_DIR}/qual.fq
+    ${SAMSTAT_FIXTURE_DIR}/cage_5g.sam ${SAMSTAT_FIXTURE_DIR}/n_pos40.sam)
   get_filename_component(name ${input} NAME)
   add_test(NAME json:mismatch_base:${name}
     COMMAND ${CMAKE_COMMAND}
@@ -296,6 +298,73 @@ foreach(input ${JSON_GEN}/mismatch_base.sam ${SAMSTAT_FIXTURE_DIR}/small.sam
       -DOUTDIR=${JSON_OUT}/mb_${name} -DSCHEMA=${PROJECT_SOURCE_DIR}/docs/samstat.schema.json
       -P ${JSON_HELPERS}/check_mismatch_base.cmake)
   set_tests_properties(json:mismatch_base:${name} PROPERTIES LABELS json)
+endforeach()
+
+# json:artefact:<name>  the two artefacts the base x MAPQ rows are for (tests/data/README.md u, v);
+# read1, absolute axis, 0-based positions.
+# cage_5g.sam: 150 MAPQ 60 reads with an added G at read position 1 (50 of them reverse,
+#   stored as a C at the end of SEQ), 120 MAPQ 3 reads with a 5' G run of 3 3 3 3 2 1 4 5,
+#   30 perfect MAPQ 20 reads, 20 unmapped. Every mismatch is a read G at the 5' end: none
+#   is a C (reverse reads in reference orientation) and none is at the 3' end.
+set(cage_checks
+  "summary.total_reads=320"
+  "read1.absolute.mismatches.mapq_ge30#len=1"
+  "read1.absolute.mismatches.mapq_ge30.0=150"
+  "read1.absolute.mismatch_base.mapq_ge30.G#len=1"
+  "read1.absolute.mismatch_base.mapq_ge30.G.0=150"
+  "read1.absolute.mismatch_base.mapq_ge30.A#len=0"
+  "read1.absolute.mismatch_base.mapq_ge30.C#len=0"
+  "read1.absolute.mismatch_base.mapq_ge30.T#len=0"
+  "read1.absolute.mismatch_base.mapq_ge30.N#len=0"
+  "read1.absolute.mismatches.mapq_10_29#len=0"
+  "read1.absolute.mismatch_base.mapq_10_29.G#len=0"
+  "read1.absolute.mismatches.mapq_lt10#len=5"
+  "read1.absolute.mismatch_base.mapq_lt10.G#len=5"
+  "read1.absolute.mismatch_base.mapq_lt10.G.0=120"
+  "read1.absolute.mismatch_base.mapq_lt10.G.1=105"
+  "read1.absolute.mismatch_base.mapq_lt10.G.2=90"
+  "read1.absolute.mismatch_base.mapq_lt10.G.3=30"
+  "read1.absolute.mismatch_base.mapq_lt10.G.4=15"
+  "read1.absolute.mismatch_base.mapq_lt10.C#len=0"
+  "read1.absolute.mismatch_base.mapq_lt10.A#len=0"
+  "read1.absolute.mismatch_base.mapq_lt10.T#len=0"
+  "read1.absolute.mismatch_base.unmapped.G#len=0"
+  "read1.absolute.composition.mapq_ge30.G.0=150"
+  "read1.absolute.composition.mapq_lt10.G.0=120"
+  "read1.absolute.aligned_md.mapq_ge30.0=150")
+# n_pos40.sam: 100 bp reads; 90 of 100 unmapped reads and 4 of 200 MAPQ 60 reads (2 reverse)
+# have N at read position 40 (index 39), nowhere else.
+set(npos_checks
+  "summary.total_reads=300"
+  "read1.absolute.composition.unmapped.N#len=40"
+  "read1.absolute.composition.unmapped.N.39=90"
+  "read1.absolute.composition.unmapped.N.38=0"
+  "read1.absolute.composition.mapq_ge30.N#len=40"
+  "read1.absolute.composition.mapq_ge30.N.39=4"
+  "read1.absolute.composition.mapq_ge30.A#len=100"
+  "read1.absolute.mismatches.mapq_ge30#len=40"
+  "read1.absolute.mismatches.mapq_ge30.39=4"
+  "read1.absolute.mismatch_base.mapq_ge30.N#len=40"
+  "read1.absolute.mismatch_base.mapq_ge30.N.39=4"
+  "read1.absolute.mismatch_base.mapq_ge30.A#len=0"
+  "read1.absolute.mismatch_base.mapq_ge30.C#len=0"
+  "read1.absolute.mismatch_base.mapq_ge30.G#len=0"
+  "read1.absolute.mismatch_base.mapq_ge30.T#len=0"
+  "read1.absolute.mismatch_base.unmapped.N#len=0"
+  "read1.absolute.aligned_md.mapq_ge30.39=200")
+foreach(case cage_5g npos40)
+  if(case STREQUAL "cage_5g")
+    set(input cage_5g.sam)
+  else()
+    set(input n_pos40.sam)
+  endif()
+  string(REPLACE ";" "\;" checks "${${case}_checks}")
+  add_test(NAME json:artefact:${case}
+    COMMAND ${CMAKE_COMMAND}
+      -DSAMSTAT=$<TARGET_FILE:samstat> -DINPUT=${SAMSTAT_FIXTURE_DIR}/${input}
+      -DOUTDIR=${JSON_OUT}/art_${case} "-DCHECKS=${checks}"
+      -P ${JSON_HELPERS}/run_json.cmake)
+  set_tests_properties(json:artefact:${case} PROPERTIES LABELS json)
 endforeach()
 
 # the version in meta is SAMStat's, not htslib's (config.h include order)

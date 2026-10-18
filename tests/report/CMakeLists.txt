@@ -365,7 +365,7 @@ plot_set_test(clarity_r2:hidden_below_50 "${GEN_DIR}/perfect49.sam"
 # 60 reads: plots 3-5 are drawn; the all-zero error panels say so; the lines carry their colours
 plot_set_test(clarity_r2:drawn_from_50 "${GEN_DIR}/perfect60.sam"
   "-DTITLES=${TITLES_ALIGNED}"
-  "-DCONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|>none detected<|A panel labelled none detected|Positions covered by fewer than 50 reads are not drawn."
+  "-DCONTAINS=id=\"samstat-p3-t\"|id=\"samstat-p4-t\"|id=\"samstat-p5-t\"|>none detected<|A panel labelled none detected|In each row, positions backed by fewer than 50 bases of that class are not drawn."
   "-DNOT_CONTAINS=Too few reads|are hidden|0.5<"
   "-DSVG_A11Y=1")
 # exactly 50 reads: drawn
@@ -395,3 +395,30 @@ add_test(NAME report:clarity_r2_ultralong
     "-DNOT_CONTAINS=>1,000.0 kb<|99.2"
     -P ${REPORT_HELPERS}/run_html_size.cmake)
 set_tests_properties(report:clarity_r2_ultralong PROPERTIES LABELS report)
+
+# =============================================================================
+# Base x MAPQ (standard-plots.md encoding rule 9; decisions A3 and F3 revised 2026-10-18): plot 4 has
+# one row per MAPQ class with reads, plot 5 one mismatch row per mapped class, stacked by read base.
+# twoclass120.sam: reads are ACGT repeats; the MAPQ 60 reads have their mismatch at an even position
+# (read base A or G), the MAPQ 5 reads at an odd one (C or T); no MAPQ 10-29 and no unmapped read.
+# =============================================================================
+plot_set_test(base_rows:plot4 "${GEN_DIR}/twoclass120.sam" -DSCOPE=samstat-p4
+  "-DCONTAINS=>MAPQ &gt;= 30<|>MAPQ &lt; 10<|<title>Base N, MAPQ &lt; 10</title>|Rows: MAPQ &gt;= 30, MAPQ &lt; 10."
+  "-DNOT_CONTAINS=>MAPQ 10-29<|>Unmapped<"
+  "-DMATCHES=>MAPQ &gt;= 30<.*>MAPQ &lt; 10<")
+plot_set_test(base_rows:plot5 "${GEN_DIR}/twoclass120.sam" -DSCOPE=samstat-p5
+  "-DCONTAINS=>Mismatches, MAPQ &gt;= 30 (% of aligned bases)<|>Mismatches, MAPQ &lt; 10 (% of aligned bases)<|>Insertions (% of aligned bases)<|>Deletions (% of aligned bases)<|<title>Mismatches at read base A, MAPQ &gt;= 30</title>|<title>Mismatches at read base G, MAPQ &gt;= 30</title>|<title>Mismatches at read base C, MAPQ &lt; 10</title>|<title>Mismatches at read base T, MAPQ &lt; 10</title>|bottom to top A, C, G, T, N"
+  "-DNOT_CONTAINS=Mismatches, MAPQ 10-29|Mismatches, Unmapped|read base C, MAPQ &gt;= 30|read base T, MAPQ &gt;= 30|read base A, MAPQ &lt; 10|read base G, MAPQ &lt; 10|read base N"
+  "-DMATCHES=>Mismatches, MAPQ &gt;= 30 [^<]*<.*>Mismatches, MAPQ &lt; 10 [^<]*<.*>Insertions@@read base G, MAPQ &gt;= 30</title>.*read base A, MAPQ &gt;= 30</title>")
+# the page: both base keys, the captions and help text of spec section 5
+plot_set_test(base_rows:text "${GEN_DIR}/twoclass120.sam" "-DSVG_A11Y=1"
+  "-DCONTAINS=id=\"samstat-p4-key-t\"|id=\"samstat-p5-key-t\"|Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.</p>|Mismatches per aligned base at each position, coloured by the read base and one row per MAPQ class; then insertions and deletions, one line per MAPQ class. Each panel has its own vertical scale.</p>|Roughly parallel, flat lines, and the same picture in every row.|A row that differs from the MAPQ &gt;= 30 row|Low, flat rates, with MAPQ &gt;= 30 the lowest, and no single base dominating the mismatches.|G towards the 3&#39; end on two-colour instruments"
+  "-DNOT_CONTAINS=one line per MAPQ class. A class is drawn")
+# unaligned: one row of all reads, and no text about MAPQ rows
+plot_set_test(base_rows:unaligned "${GEN_DIR}/unaligned60.fq"
+  "-DCONTAINS=Percentage of A, C, G, T and N at each position along the read.</p>|Roughly parallel, flat lines.</p>|An N spike at one position|id=\"samstat-p4-key-t\""
+  "-DNOT_CONTAINS=MAPQ|same picture in every row|A row that differs|samstat-p5|Rows:")
+# no MD and no X: no mismatch rows and no base key in plot 5, the N/A line in their place, indel rows stay
+plot_set_test(base_rows:no_md "${GEN_DIR}/nomd60.sam"
+  "-DCONTAINS=Mismatches not available: no MD tag.|Insertions (% of aligned bases)|Deletions (% of aligned bases)|id=\"samstat-p4-key-t\""
+  "-DNOT_CONTAINS=samstat-p5-key|Mismatches, MAPQ|Mismatches at read base")

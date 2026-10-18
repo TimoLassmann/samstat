@@ -8,10 +8,13 @@
  *
  * Output contract (the page code, WP4.2a, relies on it):
  *   - Only static markup: <svg> elements, and <p class="plot-na">,
- *     <p class="plot-note"> and <p class="plot-key"> (wraps the key of plot 4) lines. No <script>, no <style>, no external
+ *     <p class="plot-note"> and <p class="plot-key"> (wraps the base key of plots 4 and 5) lines. No <script>, no <style>, no external
  *     reference, no per-point elements.
  *   - Every <svg> has role="img", <title> and <desc>. Ids are unique on the
  *     page: "samstat-p<plot>[-r1|-r2|-key]" and "samstat-mapq-<class>".
+ *   - Plot 4 has one row of panels per MAPQ class with reads (aligned input) or one row of all reads;
+ *     the mismatch rows of plot 5 (one per mapped class) are filled areas, one <path> per read base,
+ *     stacked bottom to top A C G T N and drawn top first (standard-plots.md encoding rule 9).
  *   - Every <svg> carries style="max-width:100%;height:auto;vertical-align:top"
  *     and its natural width in the width attribute (400 units, text 15 units, so the text is
  *     still >= 12 px on a 360 px screen). A paired input is drawn as two sibling <svg>

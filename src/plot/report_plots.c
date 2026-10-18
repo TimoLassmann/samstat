@@ -31,6 +31,8 @@
 #define FONT_PAIR 15.0
 #define PH_ONE 215.0      /* plotting height of a single-row figure */
 #define PH_ROW 96.0       /* plotting height of one row of plot 5 */
+#define PH_BASE_ROW 108.0 /* one MAPQ class row of plot 4: about half of PH_ONE (rule 9) */
+#define BASE_TOL 0.2      /* plots 4 and 5 drop points within this many units of the drawn line */
 
 #define MAXL 5            /* lines per panel (rule 3) */
 #define MAXB 2000         /* more than the 1922 storage length bins */
@@ -209,6 +211,9 @@ struct panel_data {
         double vline;
         char vlabel[64];
         const char* note;       /* short text inside the panel (plot 5: "none detected"), or NULL */
+        unsigned stack_mask;    /* plot 5 mismatch row: the MAPQ classes of the row; v[] are running sums
+                                   over the bases, drawn as filled areas (svg_area). 0 = MAPQ lines */
+        double tol;             /* path simplification (svg_line_ex), 0 = every point */
 };
 
 /* Top of a count axis: a little headroom over the tallest bar, and never below 3 (4 from 3 reads on)
@@ -254,16 +259,21 @@ static void list_lines(const struct panel_data* p, char* buf, size_t n)
  * Key of a MAPQ-split figure, in table order (MAPQ >= 30 first): every class with reads in this
  * mate, with its read count, so that a flat line at zero explains itself. A class that has reads
  * but no line in any row (plots 3 and 5: fewer than 50 reads at every position; the shape view:
- * fewer than 50 reads) says so. Returns the number of items.
+ * fewer than 50 reads) says so. The lines are those of the first row that is not a stack of bases
+ * (plot 5: the insertion row); a class drawn only in its mismatch row counts as drawn. Returns the
+ * number of items.
  */
 #define KEY_LABEL 96
 static int mapq_key(const struct stat_collection* s, int mate, const struct panel_data* rows, int nrows,
                     svg_swatch_item* items, char (*labels)[KEY_LABEL])
 {
-        const struct panel_data* d = &rows[0];
+        const struct panel_data* d = NULL;
         int n = 0;
 
-        if (!s || !s->is_aligned || d->nl < 2) {
+        for (int r = 0; r < nrows && !d; r++) {
+                d = rows[r].stack_mask ? NULL : &rows[r];
+        }
+        if (!s || !s->is_aligned || !d || d->nl < 2) {
                 return 0;
         }
         for (int k = d->nl - 1; k >= 0; k--) {
@@ -284,7 +294,13 @@ static int mapq_key(const struct stat_collection* s, int mate, const struct pane
                         continue;
                 }
                 for (int r = 0; r < nrows; r++) {
-                        drawn |= has_values(rows[r].v[k], rows[r].n, rows[r].step);
+                        if (!rows[r].stack_mask) {
+                                drawn |= has_values(rows[r].v[k], rows[r].n, rows[r].step);
+                        } else if (rows[r].stack_mask & d->li[k].mask) {
+                                for (int b = 0; b < rows[r].nl; b++) {
+                                        drawn |= rows[r].v[b] != NULL;
+                                }
+                        }
                 }
                 fmt_count(cnt, sizeof(cnt), reads);
                 snprintf(labels[n], KEY_LABEL, "%s (%s read%s%s)", d->li[k].label, cnt, reads == 1 ? "" : "s",
@@ -296,7 +312,8 @@ static int mapq_key(const struct stat_collection* s, int mate, const struct pane
 }
 
 /* One figure of one mate. key_s: the collection whose MAPQ classes the lines are (a key is drawn
- * above the panels), or NULL for a figure whose lines are not MAPQ classes (plot 4). */
+ * above the panels), or NULL for a figure whose lines are not MAPQ classes (plot 4). A row with a
+ * stack_mask is drawn as filled areas, the top of the stack first (svg_area). */
 static int figure(tld_strbuf* o, const struct stat_collection* key_s, const char* id_base, const char* title,
                   const char* desc, int mate, int nm, const struct panel_data* rows, int nrows, double ph)
 {
@@ -335,7 +352,8 @@ static int figure(tld_strbuf* o, const struct stat_collection* key_s, const char
         for (int r = 0; r < nrows; r++) {
                 const struct panel_data* d = &rows[r];
                 TRY(svg_grid_panel_ex(o, &g, r, 0, d->title, &d->x, &d->y, d->x_tick_max, &p));
-                for (int k = 0; k < d->nl; k++) {
+                for (int j = 0; j < d->nl; j++) {
+                        const int k = d->stack_mask ? d->nl - 1 - j : j;
                         if (!d->v[k]) {
                                 continue;
                         }
@@ -345,7 +363,11 @@ static int figure(tld_strbuf* o, const struct stat_collection* key_s, const char
                                 snprintf(sertitle, sizeof(sertitle), "%s", d->li[k].label);
                         }
                         svg_series ser = {sertitle, d->li[k].colour, d->li[k].dash, d->xe, d->x0, d->dx, d->v[k], d->n};
-                        TRY(d->step ? svg_step(o, &p, &ser) : svg_line(o, &p, &ser));
+                        if (d->stack_mask) {
+                                TRY(svg_area(o, &p, &ser, d->tol));
+                        } else {
+                                TRY(d->step ? svg_step(o, &p, &ser) : svg_line_ex(o, &p, &ser, d->tol));
+                        }
                 }
                 if (d->has_vline) {
                         TRY(svg_vline(o, &p, d->vline, d->vlabel));
@@ -915,11 +937,62 @@ static const char* const base_series[5] = {"Base A", "Base C", "Base G", "Base T
 static const char* const base_colour_name[5] = {"green", "reddish purple", "black", "brown", "blue"};
 static const char* const base_dash_name[5] = {"solid line", "dashed line", "dotted line", "dash-dot line", "long-dashed line"};
 
+/* The A C G T N key above the figures of plots 4 and 5: one row of five swatches (with their dash
+ * patterns in plot 4; solid in plot 5, whose bases are filled areas). */
+static int base_key(tld_strbuf* o, int plot_id)
+{
+        svg_swatch_item items[5];
+        char desc[300];
+        const int lines = plot_id == 4;
+        int l = snprintf(desc, sizeof(desc), lines ? "Line key for the bases:" : "Colour key for the read bases of the mismatch rows:");
+        for (int b = 0; b < 5; b++) {
+                items[b] = (svg_swatch_item){base_name[b], report_base_colour[b], lines ? report_base_dash[b] : ""};
+                if (lines) {
+                        l += snprintf(desc + l, sizeof(desc) - (size_t)l, "%s %s %s, %s", b ? ";" : "", base_name[b],
+                                      base_colour_name[b], base_dash_name[b]);
+                } else {
+                        l += snprintf(desc + l, sizeof(desc) - (size_t)l, "%s %s %s", b ? ";" : "", base_name[b], base_colour_name[b]);
+                }
+        }
+        if (!lines) {
+                snprintf(desc + l, sizeof(desc) - (size_t)l, ". Bottom to top in every mismatch row: A, C, G, T, N.");
+        }
+        if (tld_append(o, "<p class=\"plot-key\">") != OK ||
+            svg_swatch_row(o, lines ? "samstat-p4-key" : "samstat-p5-key", items, 5, FONT,
+                           lines ? "Line key for the base composition plot" : "Colour key for the mismatch rows", desc) != OK ||
+            tld_append(o, "</p>\n") != OK) {
+                return FAIL;
+        }
+        return OK;
+}
+
+/* Reads of the classes in mask in mate r. */
+static uint64_t class_reads(const struct stat_collection* s, int r, unsigned mask)
+{
+        uint64_t n = 0;
+        for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                if (mask & (1u << m)) {
+                        n += s->basic_nums[r][m];
+                }
+        }
+        return n;
+}
+
+/*
+ * Plot 4. Aligned input: one short row per MAPQ class with reads in either mate, in table order
+ * (encoding rule 9), so that composition of the unmapped and poorly mapped reads can be held
+ * against the MAPQ >= 30 row. Unaligned input: one row of all reads, as tall as plot 3.
+ * A position backed by fewer than REPORT_MIN_POS_BASES bases of the row's class is a gap.
+ */
+#define COMP_ROWS COLLECT_N_MAPQ
 static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
 {
         const int nm = mates(s);
         struct posaxis ax;
-        double* v[2][5];
+        double* v[2][COMP_ROWS][5];
+        unsigned rmask[COMP_ROWS];
+        const char* rlabel[COMP_ROWS];
+        int nrow = 0;
 
         if (s->total_bases == 0) {
                 return na_line(o, help_of(4)->na_no_sequence);
@@ -927,68 +1000,111 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
         if (!pos_axis(s, &ax)) {
                 return too_few_line(o, s);
         }
-        /* the key: one row of five swatches above the panels */
-        {
-                svg_swatch_item items[5];
-                char desc[300];
-                int l = snprintf(desc, sizeof(desc), "Line key for the bases:");
-                for (int b = 0; b < 5; b++) {
-                        items[b] = (svg_swatch_item){base_name[b], report_base_colour[b], report_base_dash[b]};
-                        l += snprintf(desc + l, sizeof(desc) - (size_t)l, "%s %s %s, %s", b ? ";" : "", base_name[b],
-                                      base_colour_name[b], base_dash_name[b]);
-                }
-                if (tld_append(o, "<p class=\"plot-key\">") != OK ||
-                    svg_swatch_row(o, "samstat-p4-key", items, 5, FONT, "Line key for the base composition plot", desc) != OK ||
-                    tld_append(o, "</p>\n") != OK) {
-                        return FAIL;
+        if (!s->is_aligned) {
+                rmask[0] = 0xFu;
+                rlabel[0] = NULL;
+                nrow = 1;
+        } else {
+                for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                        uint64_t any = 0;
+                        for (int r = 0; r < nm; r++) {
+                                any += s->basic_nums[r][m];
+                        }
+                        if (any) {
+                                rmask[nrow] = 1u << m;
+                                rlabel[nrow] = report_mapq_help[m].label;
+                                nrow++;
+                        }
                 }
         }
+        if (base_key(o, 4) != OK) {
+                return FAIL;
+        }
         for (int r = 0; r < nm; r++) {
-                for (int b = 0; b < 5; b++) {
-                        v[r][b] = pool_alloc(pl, (size_t)ax.nb);
-                        if (!v[r][b]) {
-                                return FAIL;
-                        }
-                }
-                for (int i = 0; i < ax.nb; i++) {
-                        uint64_t c[5] = {0, 0, 0, 0, 0}, tot = 0;
-                        for (int m = 0; m < COLLECT_N_MAPQ; m++) {
-                                const struct collect_pos_bin* pb = &pos_bins(s, &ax, r, m)[i];
-                                for (int b = 0; b < 5; b++) {
-                                        c[b] += pb->comp[b];
+                for (int row = 0; row < nrow; row++) {
+                        for (int b = 0; b < 5; b++) {
+                                v[r][row][b] = pool_alloc(pl, (size_t)ax.nb);
+                                if (!v[r][row][b]) {
+                                        return FAIL;
                                 }
                         }
-                        for (int b = 0; b < 5; b++) {
-                                tot += c[b];
-                        }
-                        for (int b = 0; b < 5; b++) {
-                                v[r][b][i] = (tot && tot >= ax.min_bases) ? 100.0 * (double)c[b] / (double)tot : NAN;
+                        for (int i = 0; i < ax.nb; i++) {
+                                uint64_t c[5] = {0, 0, 0, 0, 0}, tot = 0;
+                                for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                                        if (!(rmask[row] & (1u << m))) {
+                                                continue;
+                                        }
+                                        const struct collect_pos_bin* pb = &pos_bins(s, &ax, r, m)[i];
+                                        for (int b = 0; b < 5; b++) {
+                                                c[b] += pb->comp[b];
+                                        }
+                                }
+                                for (int b = 0; b < 5; b++) {
+                                        tot += c[b];
+                                }
+                                for (int b = 0; b < 5; b++) {
+                                        v[r][row][b][i] = (tot && tot >= ax.min_bases) ? 100.0 * (double)c[b] / (double)tot : NAN;
+                                }
                         }
                 }
         }
         svg_axis ya = {0.0, 100.0, 0, "% of bases", 0};
-        char desc[800], range[96];
+        char desc[900], range[96], names[200];
+        char titles[COMP_ROWS][64];
+        char labels[COMP_ROWS][5][48];
         pos_range_text(&ax, range, sizeof(range));
+        names[0] = 0;
+        for (int row = 0; row < nrow && rlabel[row]; row++) {
+                size_t l = strlen(names);
+                snprintf(names + l, sizeof(names) - l, "%s%s", row ? ", " : "", rlabel[row]);
+        }
         for (int r = 0; r < nm; r++) {
-                struct panel_data pd;
-                memset(&pd, 0, sizeof(pd));
-                pd.title = mate_title(nm, r);
-                pd.x = ax.x;
-                pd.y = ya;
-                pd.n = ax.nb;
-                pd.x0 = ax.x0;
-                pd.dx = 1.0;
-                pd.nl = 5;
-                for (int b = 0; b < 5; b++) {
-                        pd.li[b] = (struct lineinfo){base_series[b], report_base_colour[b], report_base_dash[b], 0};
-                        pd.v[b] = has_values(v[r][b], ax.nb, 0) ? v[r][b] : NULL;
+                struct panel_data rows[COMP_ROWS];
+                memset(rows, 0, sizeof(rows));
+                for (int row = 0; row < nrow; row++) {
+                        struct panel_data* pd = &rows[row];
+                        if (rlabel[row]) {
+                                snprintf(titles[row], sizeof(titles[row]), "%s%s", nm == 2 ? (r ? "Read 2: " : "Read 1: ") : "", rlabel[row]);
+                                pd->title = titles[row];
+                        } else {
+                                pd->title = mate_title(nm, r);
+                        }
+                        pd->x = ax.x;
+                        pd->y = ya;
+                        pd->n = ax.nb;
+                        pd->x0 = ax.x0;
+                        pd->dx = 1.0;
+                        pd->nl = 5;
+                        pd->tol = rlabel[row] ? BASE_TOL : 0.0;   /* one row (unaligned): every point, as before */
+                        int drawn = 0;
+                        for (int b = 0; b < 5; b++) {
+                                if (rlabel[row]) {
+                                        snprintf(labels[row][b], sizeof(labels[row][b]), "%s, %s", base_series[b], rlabel[row]);
+                                }
+                                pd->li[b] = (struct lineinfo){rlabel[row] ? labels[row][b] : base_series[b], report_base_colour[b], report_base_dash[b], 0};
+                                pd->v[b] = has_values(v[r][row][b], ax.nb, 0) ? v[r][row][b] : NULL;
+                                drawn |= pd->v[b] != NULL;
+                        }
+                        if (rlabel[row] && !drawn) {
+                                pd->note = class_reads(s, r, rmask[row]) ? "too few reads to draw" : "no reads";
+                        }
                 }
-                snprintf(desc, sizeof(desc),
-                         "Percentage of A, C, G, T and N at each position along the read, %s%s. "
-                         "One line per base, each with its own dash pattern; the line key is above the figure. "
-                         "Positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads are not drawn.",
-                         range, s->is_aligned ? ", aligned part of the read" : "");
-                if (figure(o, NULL, "samstat-p4", help_of(4)->title, desc, r, nm, &pd, 1, PH_ONE) != OK) {
+                if (!s->is_aligned) {
+                        snprintf(desc, sizeof(desc),
+                                 "Percentage of A, C, G, T and N at each position along the read, %s. "
+                                 "One line per base, each with its own dash pattern; the line key is above the figure. "
+                                 "Positions covered by fewer than " REPORT_MIN_POS_BASES_STR " reads are not drawn.",
+                                 range);
+                } else {
+                        snprintf(desc, sizeof(desc),
+                                 "Percentage of A, C, G, T and N at each position along the read, %s, aligned part of the read, "
+                                 "one row per MAPQ class, sharing the position axis. Rows: %s. "
+                                 "One line per base, each with its own dash pattern; the line key is above the figure. "
+                                 "In each row, positions backed by fewer than " REPORT_MIN_POS_BASES_STR " bases of that class are not drawn.",
+                                 range, names);
+                }
+                if (figure(o, NULL, "samstat-p4", help_of(4)->title, desc, r, nm, rows, nrow,
+                           s->is_aligned ? PH_BASE_ROW : PH_ONE) != OK) {
                         return FAIL;
                 }
         }
@@ -1002,6 +1118,7 @@ static int plot_comp(tld_strbuf* o, const struct stat_collection* s, struct pool
 static const char* const err_row_title[3] = {"Mismatches", "Insertions", "Deletions"};
 
 #define ERR_MIN_TOP 0.5   /* smallest top of a plot 5 rate axis, in percent */
+#define ERR_ROWS (COLLECT_MAPQ_UNMAPPED + 2)   /* a mismatch row per mapped class, insertions, deletions */
 
 static double err_rate(const struct collect_pos_bin* b, int row)
 {
@@ -1010,12 +1127,31 @@ static double err_rate(const struct collect_pos_bin* b, int row)
         return den ? 100.0 * (double)num / (double)den : NAN;
 }
 
+/* Top of the rate axis of a plot 5 row whose highest rate (both mates) is ymax. All zero: a
+ * whole-number scale (0, 2, 4 %) instead of 0.0-1.0. Otherwise the scale reaches at least
+ * ERR_MIN_TOP %, so that a handful of events among thousands of reads (0.004 %) stays a flat line
+ * near zero instead of filling the panel. */
+static double err_top(double ymax)
+{
+        return ymax > 0.0 ? fmax(svg_nice_ceil(ymax * 1.04, 3), ERR_MIN_TOP) : 4.0;
+}
+
+/*
+ * Plot 5. Rows, sharing the position axis: one mismatch row per mapped MAPQ class with MD-backed
+ * bases (encoding rule 9), each a stack of filled areas of the per-base rates
+ * mismatch_base[b] / aligned_md, bottom to top A C G T N, so that the top of the stack is the
+ * class's total mismatch rate; then insertions and deletions, one line per mapped class. Each row
+ * has its own y scale, shared by Read 1 and Read 2. A mismatch row has a gap where fewer than
+ * REPORT_MIN_POS_BASES MD-backed bases of its class are aligned at the position; a line, where
+ * fewer than that many of its reads cover it.
+ */
 static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct pool* pl)
 {
         const int nm = mates(s);
         struct lineinfo li[MAXL];
         struct posaxis ax;
         uint64_t md_total = 0;
+        uint64_t md_class[COLLECT_MAPQ_UNMAPPED] = {0};
         char buf1[48], buf2[48], text[600];
 
         if (!s->is_aligned) {
@@ -1036,32 +1172,74 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                 for (int m = 0; m < COLLECT_MAPQ_UNMAPPED; m++) {
                         const struct collect_pos_bin* pb = pos_bins(s, &ax, r, m);
                         for (int i = 0; i < ax.nb; i++) {
-                                md_total += pb[i].aligned_md;
+                                md_class[m] += pb[i].aligned_md;
                         }
+                        md_total += md_class[m];
                 }
         }
-        const int first = md_total ? 0 : 1;          /* the mismatch row is dropped without MD or X */
-        const int nrows = 3 - first;
+        /* the mismatch rows: mapped classes with MD-backed bases, in table order; none without MD or X */
+        int mrow_class[COLLECT_MAPQ_UNMAPPED];
+        int n_mrow = 0;
+        for (int m = 0; m < COLLECT_MAPQ_UNMAPPED; m++) {
+                if (md_class[m]) {
+                        mrow_class[n_mrow++] = m;
+                }
+        }
+        const int nrows = n_mrow + 2;
 
         if (!md_total) {
                 if (html_para(o, "plot-na", NULL, report_mismatch_row_na) != OK) {
                         return FAIL;
                 }
-        } else if (s->reads_without_md > 0) {
-                fmt_count(buf1, sizeof(buf1), s->reads_without_md);
-                fmt_count(buf2, sizeof(buf2), mapped);
-                snprintf(text, sizeof(text), report_note_mismatch_excludes, buf1, buf2);
-                if (html_para(o, "plot-note", "Mismatches:", text) != OK) {
+        } else {
+                if (base_key(o, 5) != OK) {
                         return FAIL;
+                }
+                if (s->reads_without_md > 0) {
+                        fmt_count(buf1, sizeof(buf1), s->reads_without_md);
+                        fmt_count(buf2, sizeof(buf2), mapped);
+                        snprintf(text, sizeof(text), report_note_mismatch_excludes, buf1, buf2);
+                        if (html_para(o, "plot-note", "Mismatches:", text) != OK) {
+                                return FAIL;
+                        }
                 }
         }
 
-        double* v[2][3][MAXL];
-        double ymax[3] = {0.0, 0.0, 0.0};
-        double pmax[2][3] = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};   /* per mate and row, for "none detected" */
-        int seen[2][3] = {{0, 0, 0}, {0, 0, 0}};                  /* a rate was measured at some position */
+        /* v[r][row][k]: row < n_mrow: running sums over the bases A..k of mismatch row row;
+         * then the insertion and deletion rows, one line per mapped class */
+        double* v[2][ERR_ROWS][MAXL];
+        double ymax[ERR_ROWS] = {0.0};
+        double pmax[2][ERR_ROWS] = {{0.0}};   /* per mate and row, for "none detected" */
+        int seen[2][ERR_ROWS] = {{0}};        /* a rate was measured at some position */
         for (int r = 0; r < nm; r++) {
-                for (int row = first; row < 3; row++) {
+                for (int row = 0; row < n_mrow; row++) {
+                        const struct collect_pos_bin* pb = pos_bins(s, &ax, r, mrow_class[row]);
+                        for (int b = 0; b < 5; b++) {
+                                v[r][row][b] = pool_alloc(pl, (size_t)ax.nb);
+                                if (!v[r][row][b]) {
+                                        return FAIL;
+                                }
+                        }
+                        for (int i = 0; i < ax.nb; i++) {
+                                const uint64_t den = pb[i].aligned_md;
+                                double cum = 0.0;
+                                for (int b = 0; b < 5; b++) {
+                                        if (den < ax.min_bases) {
+                                                v[r][row][b][i] = NAN;   /* gap */
+                                                continue;
+                                        }
+                                        cum += 100.0 * (double)pb[i].mismatch_base[b] / (double)den;
+                                        v[r][row][b][i] = cum;
+                                }
+                                if (den >= ax.min_bases) {
+                                        seen[r][row] = 1;
+                                        pmax[r][row] = cum > pmax[r][row] ? cum : pmax[r][row];
+                                        ymax[row] = cum > ymax[row] ? cum : ymax[row];
+                                }
+                        }
+                }
+                for (int e = 1; e < 3; e++) {
+                        const int row = n_mrow + e - 1;
                         for (int k = 0; k < nl; k++) {
                                 v[r][row][k] = pool_alloc(pl, (size_t)ax.nb);
                                 if (!v[r][row][k]) {
@@ -1073,15 +1251,13 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                                         for (int m = 0; m < COLLECT_MAPQ_UNMAPPED; m++) {
                                                 if (li[k].mask & (1u << m)) {
                                                         const struct collect_pos_bin* pb = &pos_bins(s, &ax, r, m)[i];
-                                                        sum.mismatches += pb->mismatches;
                                                         sum.insertions += pb->insertions;
                                                         sum.deletions += pb->deletions;
                                                         sum.aligned += pb->aligned;
-                                                        sum.aligned_md += pb->aligned_md;
                                                 }
                                         }
                                         double x = line_support(s, &ax, r, li[k].mask, i) >= ax.min_bases
-                                                           ? err_rate(&sum, row) : NAN;
+                                                           ? err_rate(&sum, e) : NAN;
                                         v[r][row][k][i] = x;
                                         if (isfinite(x)) {
                                                 seen[r][row] = 1;
@@ -1096,43 +1272,91 @@ static int plot_errors(tld_strbuf* o, const struct stat_collection* s, struct po
                         }
                 }
         }
-        char names[200], desc[900], range[96];
-        char titles[2][3][64];
+        char names[200], mnames[200], desc[1200], range[96];
+        char titles[ERR_ROWS][96];
+        char labels[COLLECT_MAPQ_UNMAPPED][5][64];
+        const double fw = nm == 2 ? FIG_W_PAIR : FIG_W_ONE;
+        const double font = nm == 2 ? FONT_PAIR : FONT;
         pos_range_text(&ax, range, sizeof(range));
+        mnames[0] = 0;
+        for (int row = 0; row < n_mrow; row++) {
+                size_t l = strlen(mnames);
+                snprintf(mnames + l, sizeof(mnames) - l, "%s%s", row ? ", " : "", report_mapq_help[mrow_class[row]].label);
+        }
         for (int r = 0; r < nm; r++) {
-                struct panel_data rows[3];
+                struct panel_data rows[ERR_ROWS];
                 int n_none = 0;
                 memset(rows, 0, sizeof(rows));
-                for (int row = first; row < 3; row++) {
-                        struct panel_data* pd = &rows[row - first];
-                        snprintf(titles[r][row], sizeof(titles[r][row]), "%s%s (%% of aligned bases)",
-                                 nm == 2 ? (r ? "Read 2: " : "Read 1: ") : "", err_row_title[row]);
-                        pd->title = titles[r][row];
+                for (int row = 0; row < nrows; row++) {
+                        struct panel_data* pd = &rows[row];
+                        const char* mate = nm == 2 ? (r ? "Read 2: " : "Read 1: ") : "";
+                        if (row < n_mrow) {
+                                const int m = mrow_class[row];
+                                /* the unit in full where it fits the figure (title width as in svg_grid_panel) */
+                                snprintf(titles[row], sizeof(titles[row]), "%s%s, %s (%% of aligned bases)", mate, err_row_title[0],
+                                         report_mapq_help[m].label);
+                                if (0.62 * font * (double)strlen(titles[row]) > fw - 8.0) {
+                                        snprintf(titles[row], sizeof(titles[row]), "%s%s, %s (%%)", mate, err_row_title[0],
+                                                 report_mapq_help[m].label);
+                                }
+                                pd->stack_mask = 1u << m;
+                                pd->tol = BASE_TOL;
+                                pd->nl = 5;
+                                for (int b = 0; b < 5; b++) {
+                                        snprintf(labels[row][b], sizeof(labels[row][b]), "Mismatches at read base %s, %s", base_name[b],
+                                                 report_mapq_help[m].label);
+                                        pd->li[b] = (struct lineinfo){labels[row][b], report_base_colour[b], "", 1u << m};
+                                        /* a base without mismatches adds nothing to the stack: its band is empty */
+                                        double own = 0.0;
+                                        for (int i = 0; i < ax.nb; i++) {
+                                                double lo = b ? v[r][row][b - 1][i] : 0.0;
+                                                if (isfinite(v[r][row][b][i]) && v[r][row][b][i] - lo > own) {
+                                                        own = v[r][row][b][i] - lo;
+                                                }
+                                        }
+                                        pd->v[b] = own > 0.0 ? v[r][row][b] : NULL;
+                                }
+                        } else {
+                                snprintf(titles[row], sizeof(titles[row]), "%s%s (%% of aligned bases)", mate, err_row_title[row - n_mrow + 1]);
+                                pd->nl = nl;
+                                for (int k = 0; k < nl; k++) {
+                                        pd->li[k] = li[k];
+                                        pd->v[k] = has_values(v[r][row][k], ax.nb, 0) ? v[r][row][k] : NULL;
+                                }
+                        }
+                        pd->title = titles[row];
                         pd->x = ax.x;
-                        /* all zero: a whole-number scale (0, 2, 4 %) instead of 0.0-1.0, and a label that says so.
-                         * Otherwise the scale reaches at least ERR_MIN_TOP %, so that a handful of events among
-                         * thousands of reads (0.004 %) stays a flat line near zero instead of filling the panel. */
-                        pd->y = (svg_axis){0.0, ymax[row] > 0.0 ? fmax(svg_nice_ceil(ymax[row] * 1.04, 3), ERR_MIN_TOP) : 4.0, 0, NULL, 0};
+                        pd->y = (svg_axis){0.0, err_top(ymax[row]), 0, NULL, 0};
                         if (seen[r][row] && pmax[r][row] <= 0.0) {
                                 pd->note = "none detected";
                                 n_none++;
+                        } else if (!seen[r][row] && row < n_mrow) {
+                                pd->note = "too few reads to draw";
                         }
                         pd->n = ax.nb;
                         pd->x0 = ax.x0;
                         pd->dx = 1.0;
-                        pd->nl = nl;
-                        for (int k = 0; k < nl; k++) {
-                                pd->li[k] = li[k];
-                                pd->v[k] = has_values(v[r][row][k], ax.nb, 0) ? v[r][row][k] : NULL;
-                        }
                 }
                 list_lines(&rows[nrows - 1], names, sizeof(names));
-                snprintf(desc, sizeof(desc),
-                         "%s per aligned base at each position along the read, %s, aligned part of the read, "
-                         "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. Lines: %s.%s "
-                         "A line is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
-                         md_total ? "Mismatches, insertions and deletions" : "Insertions and deletions", range, names,
-                         n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");
+                if (md_total) {
+                        snprintf(desc, sizeof(desc),
+                                 "Mismatches, insertions and deletions per aligned base at each position along the read, %s, aligned part of the read, "
+                                 "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. "
+                                 "Mismatch rows, one per MAPQ class: %s. Each is a stack of filled areas, one per read base, bottom to top A, C, G, T, N; "
+                                 "the top edge of the stack is the total mismatch rate of the class; the colour key is above the figure. "
+                                 "Insertion and deletion lines: %s.%s "
+                                 "A mismatch row is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " aligned bases of its class have an MD tag or X operations, "
+                                 "a line where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
+                                 range, mnames, names,
+                                 n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");
+                } else {
+                        snprintf(desc, sizeof(desc),
+                                 "%s per aligned base at each position along the read, %s, aligned part of the read, "
+                                 "as percent of aligned bases. One panel per error type, sharing the position axis; each panel has its own vertical scale. Lines: %s.%s "
+                                 "A line is not drawn where fewer than " REPORT_MIN_POS_BASES_STR " of its reads cover the position.",
+                                 "Insertions and deletions", range, names,
+                                 n_none ? " A panel labelled none detected has an error rate of zero at every position." : "");
+                }
                 if (figure(o, s, "samstat-p5", help_of(5)->title, desc, r, nm, rows, nrows, PH_ROW) != OK) {
                         return FAIL;
                 }
@@ -1310,7 +1534,9 @@ static int render(tld_strbuf* o, const struct stat_collection* s, int plot_id, i
                 }
                 return na_line(o, NA_NO_READS);
         }
-        pl.cap = (size_t)(2 * 3 * MAXL + 4) * MAXB;
+        /* plot 4: per mate a row of 5 bases per MAPQ class; plot 5: per mate 3 mismatch rows of 5 bases
+         * and 2 rows of 3 lines */
+        pl.cap = (size_t)(2 * (COLLECT_N_MAPQ + 1) * MAXL + 4) * MAXB;
         pl.d = calloc(pl.cap, sizeof(double));
         if (!pl.d) {
                 ERROR_MSG("report_plot_render: out of memory");

@@ -290,6 +290,109 @@ static void test_series_paths(void)
         tld_strbuf_free(o);
 }
 
+/* svg_area (plot 5 mismatch stacks) and the tolerance of svg_line_ex / svg_area (plots 4 and 5) */
+static void test_area_and_tolerance(void)
+{
+        tld_strbuf* o = NULL;
+        char d[2048];
+        char err[300];
+        svg_panel p = unit_panel();
+        tld_strbuf_alloc(&o, 1024);
+
+        /* filled area with gaps: run [1,2] closed along the bottom, lone values as 1.6 px bars */
+        double y[] = {1, 2, NAN, 4, NAN, 7};
+        svg_series a = {"area", "#007A5A", "6 3", NULL, 0, 1, y, 6};
+        CHECK(svg_area(o, &p, &a, 0.0) == OK, "area");
+        CHECK(path_d_of(TLD_STR(o), "area", d, sizeof(d)) &&
+              strcmp(d, "M0,90 20,80V100H0ZM59.2,60H60.8V100H59.2ZM99.2,30H100.8V100H99.2Z") == 0, "%s", d);
+        CHECK(strncmp(TLD_STR(o), "<path fill=\"#007A5A\" d=\"", 24) == 0, "filled, no stroke: %.60s", TLD_STR(o));
+        CHECK(strstr(TLD_STR(o), "stroke") == NULL, "an area has no stroke and no dash");
+        CHECK(count_of(TLD_STR(o), "<path") == 1 && count_of(TLD_STR(o), "<title>") == 1, "one path, one title");
+        tld_strbuf_clear(o);
+
+        /* all gaps: nothing */
+        double none[] = {NAN, NAN};
+        svg_series an = {"none", "#007A5A", NULL, NULL, 0, 1, none, 2};
+        CHECK(svg_area(o, &p, &an, 0.2) == OK && TLD_STRLEN(o) == 0, "all-gap area draws nothing");
+
+        /* a stack of two bases: running sums, the top drawn first, so each band shows its own share */
+        double lo[] = {2, 2, 2}, top[] = {5, 5, 5};
+        svg_series sa = {"A", "#007A5A", NULL, NULL, 0, 1, lo, 3};
+        svg_series sc = {"C", "#A8467F", NULL, NULL, 0, 1, top, 3};
+        CHECK(svg_area(o, &p, &sc, 0.0) == OK && svg_area(o, &p, &sa, 0.0) == OK, "stack");
+        CHECK(path_d_of(TLD_STR(o), "C", d, sizeof(d)) && strcmp(d, "M0,50 20,50 40,50V100H0Z") == 0, "%s", d);
+        CHECK(path_d_of(TLD_STR(o), "A", d, sizeof(d)) && strcmp(d, "M0,80 20,80 40,80V100H0Z") == 0, "%s", d);
+        CHECK(strstr(TLD_STR(o), "<title>C</title>") < strstr(TLD_STR(o), "<title>A</title>"), "top of the stack first");
+        tld_strbuf_clear(o);
+
+        /* tolerance: a straight line is two points, a flat line too; tol 0 keeps every point. With a
+         * tolerance the points after the first are relative steps in tenths ("l dx,dy dx,dy") */
+        double ramp[] = {0, 2, 4, 6, 8, 10}, flat[] = {5, 5, 5, 5, 5, 5}, spike[] = {0, 0, 0, 8, 0, 0};
+        svg_series sr = {"ramp", "#000000", NULL, NULL, 0, 1, ramp, 6};
+        CHECK(svg_line_ex(o, &p, &sr, 0.2) == OK && path_d_of(TLD_STR(o), "ramp", d, sizeof(d)) &&
+              strcmp(d, "M0,100l100,-100") == 0, "%s", d);
+        tld_strbuf_clear(o);
+        CHECK(svg_line_ex(o, &p, &sr, 0.0) == OK && path_d_of(TLD_STR(o), "ramp", d, sizeof(d)) &&
+              strcmp(d, "M0,100 20,80 40,60 60,40 80,20 100,0") == 0, "%s", d);
+        tld_strbuf_clear(o);
+        svg_series sf = {"flat", "#000000", NULL, NULL, 0, 1, flat, 6};
+        CHECK(svg_area(o, &p, &sf, 0.2) == OK && path_d_of(TLD_STR(o), "flat", d, sizeof(d)) &&
+              strcmp(d, "M0,50l100,0V100H0Z") == 0, "%s", d);
+        tld_strbuf_clear(o);
+        /* a one-position spike (plot 4: the N spike of the paper's example) is kept */
+        svg_series ss = {"spike", "#000000", NULL, NULL, 0, 1, spike, 6};
+        CHECK(svg_line_ex(o, &p, &ss, 0.2) == OK && path_d_of(TLD_STR(o), "spike", d, sizeof(d)) &&
+              strcmp(d, "M0,100l40,0 20,-80 20,80 20,0") == 0, "%s", d);
+        tld_strbuf_clear(o);
+        /* a point 0.3 units off the line is kept, one 0.1 units off is dropped */
+        double near[] = {5, 5.03, 5}, far[] = {5, 5.01, 5};
+        svg_series sn = {"near", "#000000", NULL, NULL, 0, 1, near, 3};
+        svg_series sfar = {"far", "#000000", NULL, NULL, 0, 1, far, 3};
+        CHECK(svg_line_ex(o, &p, &sn, 0.2) == OK && path_d_of(TLD_STR(o), "near", d, sizeof(d)) &&
+              strcmp(d, "M0,50l20,-.3 20,.3") == 0, "%s", d);
+        CHECK(svg_line_ex(o, &p, &sfar, 0.2) == OK && path_d_of(TLD_STR(o), "far", d, sizeof(d)) &&
+              strcmp(d, "M0,50l40,0") == 0, "%s", d);
+        tld_strbuf_clear(o);
+
+        /* a long flat line: one point per SVG_SIMPLIFY_SPAN (200) positions, and still well formed */
+        {
+                static double fl[1000];
+                for (int i = 0; i < 1000; i++) {
+                        fl[i] = 5.0;
+                }
+                svg_panel wp = {0, 0, 999, 100, 12, {0, 999, 0, NULL, 0}, AX_Y10};
+                svg_series sl = {"long", "#000000", NULL, NULL, 0, 1, fl, 1000};
+                svg_begin(o, "tol", 999, 100, 12, "t", "d");
+                CHECK(svg_area(o, &wp, &sl, 0.2) == OK, "long area");
+                svg_end(o);
+                CHECK(path_d_of(TLD_STR(o), "long", d, sizeof(d)) &&
+                      strcmp(d, "M0,50l200,0 200,0 200,0 200,0 199,0V100H0Z") == 0, "%s", d);
+                CHECK(svg_check(TLD_STR(o), err, sizeof(err)), "%s", err);
+                tld_strbuf_clear(o);
+
+                /* relative steps between rounded positions: 999 steps of 0.333 units end exactly at 333,
+                 * where an absolute path ends (no rounding drift) */
+                for (int i = 0; i < 1000; i++) {
+                        fl[i] = 5.0 + 3.0 * (double)(i % 2);
+                }
+                svg_panel np = {0, 0, 333, 100, 12, {0, 999, 0, NULL, 0}, AX_Y10};
+                svg_series zz = {"zigzag", "#000000", NULL, NULL, 0, 1, fl, 1000};
+                static char zd[16384];
+                CHECK(svg_line_ex(o, &np, &zz, 0.2) == OK && path_d_of(TLD_STR(o), "zigzag", zd, sizeof(zd)), "zigzag");
+                double x = 0.0, yy = 0.0, dx, dy;
+                int n = 0, k = 0;
+                const char* c = zd;
+                CHECK(sscanf(c, "M%lf,%lfl%n", &x, &yy, &k) == 2, "zigzag start: %.40s", zd);
+                for (c += k; sscanf(c, " %lf,%lf%n", &dx, &dy, &k) == 2; c += k) {
+                        x += dx;
+                        yy += dy;
+                        n++;
+                }
+                CHECK(n == 999 && fabs(x - 333.0) < 1e-6 && fabs(yy - 20.0) < 1e-6, "zigzag ends at 333,20 after %d steps: %g,%g at %.30s", n, x, yy, c);
+        }
+        tld_strbuf_free(o);
+}
+
 static void test_escaping_and_errors(void)
 {
         tld_strbuf* o = NULL;
@@ -717,6 +820,7 @@ int main(int argc, char** argv)
 {
         test_ticks();
         test_series_paths();
+        test_area_and_tolerance();
         test_escaping_and_errors();
         test_checker();
         test_grid();

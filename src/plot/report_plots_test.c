@@ -13,6 +13,7 @@
  */
 
 #include "report_plots.h"
+#include "svg_plot.h"
 
 #include "../collect/collect.h"
 #include "../report/report_help.h"
@@ -193,6 +194,16 @@ static struct stat_collection* make(const struct spec* sp)
                                                         pb[i].aligned_md = sp->md == 2 ? tot * 4 / 5 : tot;
                                                         double rate = (sp->is_long ? 0.04 : 0.003) * (1.0 + 2.0 * f * f + 0.8 * m);
                                                         pb[i].mismatches = (uint64_t)((double)pb[i].aligned_md * rate);
+                                                        /* split by read base (sum = mismatches); MAPQ < 10 has a G
+                                                         * pile-up at the first three positions (5' added G, 2011 paper) */
+                                                        const uint64_t mm = pb[i].mismatches;
+                                                        const int g_pile = m == COLLECT_MAPQ_LT10 && !axis && i < 3;
+                                                        pb[i].mismatch_base[0] = g_pile ? mm / 20 : mm * 20 / 100;
+                                                        pb[i].mismatch_base[1] = g_pile ? mm / 20 : mm * 20 / 100;
+                                                        pb[i].mismatch_base[3] = g_pile ? mm / 20 : mm * 25 / 100;
+                                                        pb[i].mismatch_base[4] = mm / 100;
+                                                        pb[i].mismatch_base[2] = mm - pb[i].mismatch_base[0] - pb[i].mismatch_base[1] -
+                                                                                 pb[i].mismatch_base[3] - pb[i].mismatch_base[4];
                                                 }
                                                 pb[i].insertions = (uint64_t)((double)tot * (sp->is_long ? 0.03 : 0.0004) * (1.0 + f + m));
                                                 pb[i].deletions = (uint64_t)((double)tot * (sp->is_long ? 0.04 : 0.0003) * (1.0 + f + m));
@@ -399,9 +410,9 @@ static void test_full_aligned_paired_short(void)
         if (!p[1] || !p[2] || !p[3] || !p[4] || !p[5] || !p[6]) {
                 return;
         }
-        /* two figures (Read 1, Read 2) per plot, plot 4 has the key as well */
+        /* two figures (Read 1, Read 2) per plot, plots 4 and 5 have the base key as well */
         for (int id = 1; id <= 6; id++) {
-                CHECK(count_of(p[id], "<svg ") == (id == 4 ? 3 : 2), "plot %d svg count %d", id, count_of(p[id], "<svg "));
+                CHECK(count_of(p[id], "<svg ") == (id == 4 || id == 5 ? 3 : 2), "plot %d svg count %d", id, count_of(p[id], "<svg "));
         }
         CHECK(strstr(p[1], "<title id=\"samstat-p1-r1-t\">How long are the reads? Read 1</title>") != NULL, "plot 1 title");
         CHECK(strstr(p[2], "How good is each read? Read 2") != NULL, "plot 2 title");
@@ -432,20 +443,45 @@ static void test_full_aligned_paired_short(void)
         for (int b = 0; b < 5; b++) {
                 char needle[64];
                 snprintf(needle, sizeof(needle), "stroke=\"%s\"", report_base_colour[b]);
-                CHECK(count_of(p[4], needle) == 2 + 1, "plot 4: base colour %s once per mate and once in the key (%d)", report_base_colour[b], count_of(p[4], needle));
+                CHECK(count_of(p[4], needle) == 4 * 2 + 1, "plot 4: base colour %s once per class row and mate and once in the key (%d)", report_base_colour[b], count_of(p[4], needle));
         }
         CHECK(strstr(p[4], "plot-key") != NULL && count_of(p[4], ">A</text>") == 1, "plot 4 key");
+        /* plot 4: one row per MAPQ class, in table order (rule 9) */
+        CHECK(count_of(p[4], ">Read 1: MAPQ &gt;= 30<") == 1 && count_of(p[4], ">Read 2: Unmapped<") == 1, "plot 4 row titles");
+        CHECK(strstr(p[4], ">Read 1: MAPQ &gt;= 30<") < strstr(p[4], ">Read 1: MAPQ 10-29<") &&
+              strstr(p[4], ">Read 1: MAPQ 10-29<") < strstr(p[4], ">Read 1: MAPQ &lt; 10<") &&
+              strstr(p[4], ">Read 1: MAPQ &lt; 10<") < strstr(p[4], ">Read 1: Unmapped<"), "plot 4 rows in table order");
+        CHECK(count_of(p[4], ">% of bases<") == 4 * 2, "plot 4: four rows per mate");
+        CHECK(count_of(p[4], "<title>Base N, MAPQ &lt; 10, Read 2</title>") == 1, "plot 4 series title names base, class and mate");
+        /* plot 5: one mismatch row per mapped class, stacked areas in the base colours, no unmapped row */
+        CHECK(strstr(p[5], "id=\"samstat-p5-key-t\"") != NULL && strstr(p[5], "Bottom to top in every mismatch row: A, C, G, T, N.") != NULL, "plot 5 key");
+        CHECK(count_of(p[5], ">Read 1: Mismatches, MAPQ") == 3 && strstr(p[5], "Mismatches, Unmapped") == NULL, "plot 5: three mismatch rows");
+        for (int b = 0; b < 5; b++) {
+                char needle[64];
+                snprintf(needle, sizeof(needle), "<path fill=\"%s\"", report_base_colour[b]);
+                CHECK(count_of(p[5], needle) == 3 * 2, "plot 5: base %s filled once per mismatch row and mate (%d)", report_base_colour[b], count_of(p[5], needle));
+        }
 
         /* x ranges per 3.2: short layout, position 1 to the last bin with a base */
         CHECK(strstr(p[3], "from position 1 to position 150") != NULL, "plot 3 range 150 in the description");
         CHECK(strstr(p[3], ">position in read (bp), aligned part<") != NULL, "axis label says aligned part");
-        CHECK(strstr(p[5], ">Read 1: Mismatches (% of aligned bases)<") != NULL && strstr(p[5], ">Read 2: Deletions (% of aligned bases)<") != NULL, "plot 5 row titles");
+        /* a paired figure is 400 units wide: the mismatch row titles give the unit as % */
+        CHECK(strstr(p[5], ">Read 1: Mismatches, MAPQ &gt;= 30 (%)<") != NULL && strstr(p[5], ">Read 2: Mismatches, MAPQ &lt; 10 (%)<") != NULL &&
+              strstr(p[5], ">Read 2: Deletions (% of aligned bases)<") != NULL, "plot 5 row titles");
+        CHECK(strstr(p[5], ">Read 1: Mismatches, MAPQ &gt;= 30 (%)<") < strstr(p[5], ">Read 1: Mismatches, MAPQ 10-29 (%)<") &&
+              strstr(p[5], ">Read 1: Mismatches, MAPQ &lt; 10 (%)<") < strstr(p[5], ">Read 1: Insertions (% of aligned bases)<"),
+              "plot 5 rows: mismatch rows in table order, then insertions");
 
         /* plot 5: both mates have identical axes, so the same labels on every tick */
         {
-                const char* second = strstr(p[5] + 10, "<svg ");
+                const char* first = strstr(p[5], "<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-labelledby=\"samstat-p5-r1-t");
+                const char* second = first ? strstr(first + 10, "<svg ") : NULL;
                 char a[4000], b[4000];
-                svg_texts(p[5], second, a, sizeof(a));
+                CHECK(first && second, "plot 5 figures");
+                if (!first || !second) {
+                        first = second = p[5];
+                }
+                svg_texts(first, second, a, sizeof(a));
                 svg_texts(second, p[5] + strlen(p[5]), b, sizeof(b));
                 unmate(a);
                 unmate(b);
@@ -485,7 +521,7 @@ static void test_long_unpaired(void)
                         continue;
                 }
                 check_markup(name, d);
-                CHECK(count_of(d, "<svg ") == (id == 4 ? 2 : 1), "%s: one figure", name);
+                CHECK(count_of(d, "<svg ") == (id == 4 || id == 5 ? 2 : 1), "%s: one figure", name);
                 CHECK(strstr(d, "-r1") == NULL && strstr(d, ">Read 1<") == NULL, "%s: no mate suffix when unpaired", name);
                 if (id == 1) {
                         CHECK(strstr(d, ">read length (bp), log scale<") != NULL, "plot 1 log axis label");
@@ -604,7 +640,10 @@ static void test_na_lines(void)
                         CHECK(strncmp(p5, "<p class=\"plot-na\">Mismatches not available: no MD tag. Add one with samtools calmd -b in.bam ref.fa &gt; out.bam (minimap2: --MD).</p>\n<svg ", 100) == 0 ||
                               strstr(p5, "Mismatches not available: no MD tag.") != NULL, "no-MD N/A line");
                         CHECK(strstr(p5, "ref.fa &gt; out.bam") != NULL && strstr(p5, "ref.fa > out.bam") == NULL, "the N/A line is HTML-escaped");
-                        CHECK(strstr(p5, ">Mismatches (") == NULL && strstr(p5, ">Insertions (% of aligned bases)<") != NULL && strstr(p5, ">Deletions (% of aligned bases)<") != NULL, "indel rows only");
+                        CHECK(strstr(p5, ">Mismatches, MAPQ") == NULL && strstr(p5, ">Mismatches (") == NULL && strstr(p5, ">Insertions (% of aligned bases)<") != NULL && strstr(p5, ">Deletions (% of aligned bases)<") != NULL, "indel rows only");
+                        CHECK(count_of(p5, "<svg ") == 1 && strstr(p5, "samstat-p5-key") == NULL && strstr(p5, "<path fill=\"#") == NULL,
+                              "no base key and no stacked areas without MD");
+                        CHECK(count_of(p5, "(% of aligned bases)<") == 2, "two rows");
                         CHECK(strstr(p5, "Insertions and deletions per aligned base") != NULL, "description without mismatches");
                 }
                 free(p5);
@@ -617,7 +656,9 @@ static void test_na_lines(void)
                 char* p5 = render(s, 5);
                 CHECK(p5 && strstr(p5, "<p class=\"plot-note\"><strong>Mismatches:</strong> Excludes ") != NULL, "partial-MD note: %.150s", p5 ? p5 : "(null)");
                 CHECK(p5 && strstr(p5, " of 9,500 mapped reads (no MD tag and no =/X operations in CIGAR).</p>") != NULL, "note counts: %.250s", p5 ? p5 : "(null)");
-                CHECK(p5 && strstr(p5, ">Mismatches (% of aligned bases)<") != NULL, "mismatch row present");
+                CHECK(p5 && strstr(p5, ">Mismatches, MAPQ &gt;= 30 (% of aligned bases)<") != NULL, "mismatch row present");
+                CHECK(p5 && count_of(p5, ">Mismatches, MAPQ") == 3, "one mismatch row per mapped class");
+                CHECK(p5 && strstr(p5, "<p class=\"plot-note\">") > strstr(p5, "samstat-p5-key"), "the note follows the base key");
                 free(p5);
                 stat_collection_free(s);
         }
@@ -757,6 +798,23 @@ static void test_clarity(void)
         }
         CHECK(strstr(report_plot_help[REPORT_PLOT_READQ].note, "error probabilities") != NULL, "the note lives in plot 2");
         CHECK(strstr(report_plot_help[REPORT_PLOT_READQ].caption, "Q20 = 1 error in 100 bases") != NULL, "plot 2 caption explains Q20");
+        /* plots 4 and 5 (spec section 5): rows per MAPQ class on aligned input only */
+        CHECK(strcmp(report_plot_caption(4, 1), "Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.") == 0 &&
+              strcmp(report_plot_caption(4, 0), "Percentage of A, C, G, T and N at each position along the read.") == 0, "plot 4 captions");
+        CHECK(strcmp(report_plot_caption(5, 1), "Mismatches per aligned base at each position, coloured by the read base and one row per MAPQ class; "
+                                                "then insertions and deletions, one line per MAPQ class. Each panel has its own vertical scale.") == 0,
+              "plot 5 caption: %s", report_plot_caption(5, 1));
+        CHECK(strstr(report_plot_good(4, 1), "every row") != NULL && strstr(report_plot_look(4, 1), "MAPQ >= 30 row") != NULL, "plot 4 help, aligned");
+        CHECK(strstr(report_plot_good(4, 0), "row") == NULL && strstr(report_plot_look(4, 0), "MAPQ") == NULL &&
+              strstr(report_plot_look(4, 0), "An N spike at one position") == report_plot_look(4, 0), "plot 4 help, unaligned: no rows, no MAPQ");
+        for (int id = 1; id <= 6; id++) {
+                if (id != 4) {
+                        CHECK(report_plot_good(id, 0) == report_plot_good(id, 1) && report_plot_look(id, 0) == report_plot_look(id, 1),
+                              "plot %d has one good and one look line", id);
+                }
+        }
+        CHECK(strstr(report_plot_look(5, 1), "G at the first positions: bases added during library preparation") != NULL &&
+              strstr(report_plot_good(5, 1), "no single base dominating the mismatches") != NULL, "plot 5 help names the read base");
 
         /* positions backed by fewer than 50 reads are gaps, and the axis ends at the last backed position */
         {
@@ -912,18 +970,19 @@ static void test_clarity_r2(void)
                 return;
         }
         char* p5 = render(s, 5);
-        CHECK(p5 && count_of(p5, ">none detected<") < 3, "data with errors: not every panel is labelled none detected (%d)", p5 ? count_of(p5, ">none detected<") : -1);
+        CHECK(p5 && count_of(p5, ">none detected<") < 5, "data with errors: not every panel is labelled none detected (%d)", p5 ? count_of(p5, ">none detected<") : -1);
         free(p5);
         for (int m = 0; m < COLLECT_N_MAPQ; m++) {
                 for (int i = 0; i < COLLECT_ABS_BINS; i++) {
                         struct collect_pos_bin* b = &s->acc->pos_abs[0][m][i];
                         b->mismatches = 0;
+                        memset(b->mismatch_base, 0, sizeof(b->mismatch_base));
                         b->insertions = 0;
                         b->deletions = 0;
                 }
         }
         p5 = render(s, 5);
-        CHECK(p5 && count_of(p5, ">none detected<") == 3, "all-zero data: three labelled panels (%d)", p5 ? count_of(p5, ">none detected<") : -1);
+        CHECK(p5 && count_of(p5, ">none detected<") == 5, "all-zero data: five labelled panels, three of them mismatch rows (%d)", p5 ? count_of(p5, ">none detected<") : -1);
         CHECK(p5 && strstr(p5, ">4<") != NULL && strstr(p5, ">2<") != NULL && strstr(p5, ">0.5<") == NULL && strstr(p5, ">1.0<") == NULL,
               "all-zero data: whole-number scale 0 2 4");
         CHECK(p5 && strstr(p5, "labelled none detected") != NULL, "the description says what the label means");
@@ -935,6 +994,195 @@ static void test_clarity_r2(void)
               strstr(p6, ">99.2<") == NULL, "plot 6 ticks are whole numbers up to 100");
         free(p6);
         stat_collection_free(s);
+}
+
+/* Copy the d="..." of the path whose series-level <title> is title (HTML-escaped). */
+static int path_d_of(const char* doc, const char* title, char* d, size_t dn)
+{
+        char t[160];
+        snprintf(t, sizeof(t), "<title>%s</title>", title);
+        const char* at = strstr(doc, t);
+        const char* start = NULL;
+        if (!at) {
+                return 0;
+        }
+        for (const char* p = doc; p < at; p++) {
+                if (strncmp(p, " d=\"", 4) == 0) {
+                        start = p + 4;
+                }
+        }
+        if (!start) {
+                return 0;
+        }
+        size_t n = (size_t)(strchr(start, '"') - start);
+        n = n >= dn ? dn - 1 : n;
+        memcpy(d, start, n);
+        d[n] = 0;
+        return 1;
+}
+
+/* Remove every trace of MAPQ class m from a collection (as if no read had it). */
+static void drop_class(struct stat_collection* s, int m)
+{
+        for (int r = 0; r < COLLECT_N_MATE; r++) {
+                s->basic_nums[r][m] = 0;
+                memset(s->acc->pos_abs[r][m], 0, sizeof(s->acc->pos_abs[r][m]));
+                memset(s->acc->pos_rel[r][m], 0, sizeof(s->acc->pos_rel[r][m]));
+                memset(s->acc->len_reads[r][m], 0, sizeof(s->acc->len_reads[r][m]));
+                memset(s->acc->len_bases[r][m], 0, sizeof(s->acc->len_bases[r][m]));
+                memset(s->acc->read_q[r][m], 0, sizeof(s->acc->read_q[r][m]));
+                memset(s->acc->identity[r][m], 0, sizeof(s->acc->identity[r][m]));
+        }
+}
+
+/* Base x MAPQ (encoding rule 9, decisions A3 and F3 revised): plot 4 has one row per class with
+ * reads, plot 5 one mismatch row per mapped class with MD-backed bases. */
+static void test_base_rows(void)
+{
+        char d[20000];
+
+        /* paired, no read in MAPQ 10-29, and the MAPQ < 10 reads have no MD */
+        {
+                struct spec sp = {.paired = 1, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                CHECK(s != NULL, "collection");
+                if (!s) {
+                        return;
+                }
+                drop_class(s, COLLECT_MAPQ_10_29);
+                for (int r = 0; r < COLLECT_N_MATE; r++) {
+                        for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                                struct collect_pos_bin* b = &s->acc->pos_abs[r][COLLECT_MAPQ_LT10][i];
+                                b->aligned_md = 0;
+                                b->mismatches = 0;
+                                memset(b->mismatch_base, 0, sizeof(b->mismatch_base));
+                        }
+                }
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                char* p4 = render(s, 4);
+                char* p5 = render(s, 5);
+                CHECK(p4 && p5, "render");
+                if (p4 && p5) {
+                        check_markup("rows plot 4", p4);
+                        check_markup("rows plot 5", p5);
+                        CHECK(count_of(p4, ">% of bases<") == 3 * 2, "plot 4: three rows per mate (%d)", count_of(p4, ">% of bases<"));
+                        CHECK(strstr(p4, "MAPQ 10-29") == NULL, "plot 4: no row for a class without reads");
+                        CHECK(strstr(p4, ">Read 2: MAPQ &gt;= 30<") < strstr(p4, ">Read 2: MAPQ &lt; 10<") &&
+                              strstr(p4, ">Read 2: MAPQ &lt; 10<") < strstr(p4, ">Read 2: Unmapped<"), "plot 4: table order");
+                        CHECK(strstr(p4, "Rows: MAPQ &gt;= 30, MAPQ &lt; 10, Unmapped.") != NULL, "plot 4 description names the rows");
+                        CHECK(count_of(p5, ">Read 1: Mismatches, MAPQ") == 1 && strstr(p5, ">Read 1: Mismatches, MAPQ &gt;= 30 (%)<") != NULL,
+                              "plot 5: a mismatch row only for the class with MD");
+                        CHECK(strstr(p5, "Mismatches, MAPQ 10-29") == NULL && strstr(p5, "Mismatches, MAPQ &lt; 10") == NULL,
+                              "plot 5: no mismatch row for a class without reads or without MD");
+                        CHECK(strstr(p5, "<title>MAPQ &lt; 10, Read 1</title>") != NULL, "plot 5: the MD-less class keeps its indel lines");
+                        CHECK(strstr(p5, "MAPQ &lt; 10 (") != NULL && strstr(p5, "too few to draw") == NULL, "plot 5 key: the class is drawn");
+                        CHECK(count_of(p5, "(% of aligned bases)<") == 2 * 2, "plot 5: insertion and deletion rows per mate");
+                }
+                free(p4);
+                free(p5);
+                stat_collection_free(s);
+        }
+
+        /* unaligned input: plot 4 is one row of all reads, as tall as before, with no MAPQ in it */
+        {
+                struct spec sp = {.paired = 0, .aligned = 0, .quals = 1, .readlen = 100, .nreads = 2000};
+                struct stat_collection* s = make(&sp);
+                char* p4 = render(s, 4);
+                CHECK(p4 && count_of(p4, ">% of bases<") == 1 && count_of(p4, "<svg ") == 2, "unaligned plot 4: one row");
+                CHECK(p4 && strstr(p4, "MAPQ") == NULL && strstr(p4, "Unmapped") == NULL && strstr(p4, "Rows:") == NULL, "unaligned plot 4: no class");
+                CHECK(p4 && strstr(p4, "<title>Base A</title>") != NULL && strstr(p4, "<title>Base N</title>") != NULL, "unaligned plot 4: series of all reads");
+                CHECK(p4 && strstr(p4, "Positions covered by fewer than 50 reads are not drawn.") != NULL, "unaligned plot 4 description");
+                free(p4);
+                stat_collection_free(s);
+        }
+
+        /* single, short: a bin with fewer than 50 bases in a class is a gap in that class's row only;
+         * a mismatch row has a gap where its class has fewer than 50 MD-backed aligned bases */
+        {
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                struct collect_pos_bin* u = &s->acc->pos_abs[0][COLLECT_MAPQ_UNMAPPED][10];
+                memset(u->comp, 0, sizeof(u->comp));
+                u->comp[0] = 49;
+                struct collect_pos_bin* g = &s->acc->pos_abs[0][COLLECT_MAPQ_GE30][20];
+                g->aligned_md = 49;
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                char* p4 = render(s, 4);
+                char* p5 = render(s, 5);
+                CHECK(p4 && path_d_of(p4, "Base A, Unmapped", d, sizeof(d)) && count_of(d, "M") == 2, "plot 4: thin bin is a gap in the unmapped row");
+                CHECK(p4 && path_d_of(p4, "Base A, MAPQ &gt;= 30", d, sizeof(d)) && count_of(d, "M") == 1, "plot 4: other rows have no gap");
+                CHECK(p5 && path_d_of(p5, "Mismatches at read base G, MAPQ &gt;= 30", d, sizeof(d)) && count_of(d, "M") == 2,
+                      "plot 5: 49 MD-backed bases are a gap in the mismatch row: %.200s", d);
+                CHECK(p5 && path_d_of(p5, "Mismatches at read base G, MAPQ &lt; 10", d, sizeof(d)) && count_of(d, "M") == 1,
+                      "plot 5: other mismatch rows have no gap");
+                free(p4);
+                free(p5);
+                stat_collection_free(s);
+        }
+
+        /*
+         * Stack order and height: constant per-base mismatch counts A 100, C 200, G 300, T 400, N 50 per
+         * 100,000 MD-backed bases (total 1.05 %). The areas are drawn top first (N, T, G, C, A), each from
+         * the bottom of the row to the running sum, so the top of N is the total mismatch rate.
+         */
+        {
+                static const uint64_t mb[5] = {100, 200, 300, 400, 50};
+                static const double cum[5] = {100, 300, 600, 1000, 1050};
+                struct spec sp = {.paired = 0, .aligned = 1, .mapped = 1, .quals = 1, .md = 1, .ident = 1, .readlen = 100, .nreads = 5000};
+                struct stat_collection* s = make(&sp);
+                for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                        struct collect_pos_bin* b = &s->acc->pos_abs[0][COLLECT_MAPQ_GE30][i];
+                        if (!b->aligned) {
+                                continue;
+                        }
+                        b->aligned_md = 100000;
+                        b->mismatches = 1050;
+                        memcpy(b->mismatch_base, mb, sizeof(mb));
+                }
+                CHECK(stat_collection_finalise(s) == OK, "finalise");
+                char* p5 = render(s, 5);
+                double top_y[5] = {0}, base_y[5] = {0};
+                const char* pos[5] = {NULL};
+                for (int b = 0; b < 5 && p5; b++) {
+                        char t[96];
+                        double x0, dx, dy;
+                        snprintf(t, sizeof(t), "Mismatches at read base %s, MAPQ &gt;= 30", b == 0 ? "A" : b == 1 ? "C" : b == 2 ? "G" : b == 3 ? "T" : "N");
+                        int ok = path_d_of(p5, t, d, sizeof(d));
+                        pos[b] = strstr(p5, t);
+                        /* flat: the first point and one step to the last (the tolerance drops the rest), down to
+                         * the bottom, back, closed */
+                        CHECK(ok && sscanf(d, "M%lf,%lfl%lf,%lfV%lfH", &x0, &top_y[b], &dx, &dy, &base_y[b]) == 5 &&
+                              dy == 0.0 && count_of(d, ",") == 2, "flat stack path of base %d: %.200s", b, ok ? d : "(none)");
+                }
+                CHECK(p5 && pos[4] && pos[3] && pos[2] && pos[1] && pos[0] && pos[4] < pos[3] && pos[3] < pos[2] && pos[2] < pos[1] &&
+                      pos[1] < pos[0], "stack drawn top first: N T G C A");
+                /* the plotting height of a plot 5 row is PH_ROW (96 units); the axis top is err_top(total) */
+                const double total = 100.0 * 1050.0 / 100000.0;
+                const double axis_top = fmax(svg_nice_ceil(total * 1.04, 3), 0.5);
+                for (int b = 0; b < 5 && p5; b++) {
+                        double want = 96.0 * (100.0 * cum[b] / 100000.0) / axis_top;
+                        CHECK(fabs((base_y[b] - top_y[b]) - want) < 0.11, "base %d: band top at %.2f units, expected %.2f (running sum)", b,
+                              base_y[b] - top_y[b], want);
+                }
+                CHECK(p5 && fabs((base_y[4] - top_y[4]) - 96.0 * total / axis_top) < 0.11, "the top of the stack is the total mismatch rate");
+                CHECK(p5 && strstr(p5, "bottom to top A, C, G, T, N") != NULL && strstr(p5, "the top edge of the stack is the total mismatch rate") != NULL,
+                      "plot 5 description explains the stack");
+                free(p5);
+
+                /* a base without mismatches has no area (its band is empty) */
+                for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                        struct collect_pos_bin* b = &s->acc->pos_abs[0][COLLECT_MAPQ_GE30][i];
+                        if (b->aligned_md) {
+                                b->mismatches -= b->mismatch_base[4];
+                                b->mismatch_base[4] = 0;
+                        }
+                }
+                p5 = render(s, 5);
+                CHECK(p5 && strstr(p5, "Mismatches at read base N, MAPQ &gt;= 30") == NULL &&
+                      strstr(p5, "Mismatches at read base T, MAPQ &gt;= 30") != NULL, "no area for a base without mismatches");
+                free(p5);
+                stat_collection_free(s);
+        }
 }
 
 static void test_locale(void)
@@ -1007,6 +1255,46 @@ static void test_size(const char* dump)
         if (dump) {
                 (void)0;
         }
+
+        /*
+         * The same with noise at every position (a shallow file: a few thousand reads per class), so that
+         * no point of plots 4 and 5 lies on the line through its neighbours and the path tolerance drops
+         * nothing: one row of five bases per MAPQ class in plot 4 and one stack per mapped class in plot 5.
+         */
+        lcg = 4242;
+        for (int r = 0; r < COLLECT_N_MATE; r++) {
+                for (int m = 0; m < COLLECT_N_MAPQ; m++) {
+                        for (int i = 0; i < COLLECT_ABS_BINS; i++) {
+                                struct collect_pos_bin* b = &s->acc->pos_abs[r][m][i];
+                                uint64_t tot = 0, mm = 0;
+                                for (int c = 0; c < 5; c++) {
+                                        b->comp[c] = 200 + (uint64_t)(400.0 * rnd());
+                                        tot += b->comp[c];
+                                        if (m != COLLECT_MAPQ_UNMAPPED) {
+                                                b->mismatch_base[c] = (uint64_t)(60.0 * rnd());
+                                                mm += b->mismatch_base[c];
+                                        }
+                                }
+                                if (m != COLLECT_MAPQ_UNMAPPED) {
+                                        b->aligned = b->aligned_md = tot;
+                                        b->mismatches = mm;
+                                        b->insertions = (uint64_t)(20.0 * rnd());
+                                        b->deletions = (uint64_t)(20.0 * rnd());
+                                }
+                                b->qual_bases = tot;
+                                b->qual_error_sum = tot * collect_qual_error(20 + (int)(15.0 * rnd()));
+                        }
+                }
+        }
+        tld_strbuf_clear(o);
+        for (int id = 1; id <= 6; id++) {
+                size_t before = (size_t)TLD_STRLEN(o);
+                CHECK(report_plot_render(o, s, id) == OK, "plot %d of the noisy worst case", id);
+                fprintf(stderr, "noisy worst case (paired 999 bp): plot %d is %zu bytes\n", id, (size_t)TLD_STRLEN(o) - before);
+        }
+        fprintf(stderr, "noisy worst case (paired 999 bp): six plots %zu bytes\n", (size_t)TLD_STRLEN(o));
+        /* the page limit is 1 MB and the rest of the page (text, tables, CSS) is about 20 kB */
+        CHECK((size_t)TLD_STRLEN(o) < 950000, "six plots of the noisy worst case are %zu bytes (the page limit is 1 MB)", (size_t)TLD_STRLEN(o));
         tld_strbuf_free(o);
         stat_collection_free(s);
 }
@@ -1085,6 +1373,7 @@ int main(int argc, char** argv)
         test_shape();
         test_clarity();
         test_clarity_r2();
+        test_base_rows();
         test_locale();
         test_swatch();
         test_size(argc > 1 ? argv[1] : NULL);

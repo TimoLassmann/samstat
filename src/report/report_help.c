@@ -37,18 +37,20 @@ const struct report_plot_help report_plot_help[REPORT_N_PLOTS] = {
         },
         [REPORT_PLOT_COMP] = {
                 .title = "Is base composition even along the read?",
-                .caption = "Percentage of A, C, G, T and N at each position along the read.",
-                .good = "Roughly parallel, flat lines.",
-                .look = "An N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).",
+                .caption = "Percentage of A, C, G, T and N at each position along the read, one row per MAPQ class.",
+                .caption_unaligned = "Percentage of A, C, G, T and N at each position along the read.",
+                .good = "Roughly parallel, flat lines, and the same picture in every row.",
+                .good_unaligned = "Roughly parallel, flat lines.",
+                .look = "A row that differs from the MAPQ >= 30 row, such as more N or one base piling up at the start of unmapped or poorly mapped reads (the reason they did not map); an N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).",
+                .look_unaligned = "An N spike at one position, or a change in composition towards the end of the read (in unaligned input often adapter read-through; aligners usually cut adapters off the alignment, so in aligned input they are not shown).",
                 .benign = "Uneven first positions in random-primed libraries; amplicon and bisulfite libraries are uneven by design.",
                 .na_no_sequence = "Not available: the input has no sequence."
         },
         [REPORT_PLOT_ERRORS] = {
                 .title = "Where along the read do errors occur?",
-                .caption = "Mismatches, insertions and deletions per aligned base at each position, one line per MAPQ class. "
-                           "A class is drawn only where at least " REPORT_MIN_POS_BASES_STR " of its reads cover the position. Each panel has its own vertical scale.",
-                .good = "Low, flat lines, with MAPQ >= 30 the lowest.",
-                .look = "Rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, reads joined from two places); high mismatch rates in well-mapped reads (wrong reference or contamination).",
+                .caption = "Mismatches per aligned base at each position, coloured by the read base and one row per MAPQ class; then insertions and deletions, one line per MAPQ class. Each panel has its own vertical scale.",
+                .good = "Low, flat rates, with MAPQ >= 30 the lowest, and no single base dominating the mismatches.",
+                .look = "One base dominating the mismatches at a few positions (for example G at the first positions: bases added during library preparation; N: failed base calls; G towards the 3' end on two-colour instruments: no signal), especially if it reaches further into the read in the low-MAPQ rows; rates that rise towards one end (trim there); errors piled up at the ends of poorly mapped reads (adapters, reads joined from two places); high mismatch rates in well-mapped reads (wrong reference or contamination).",
                 .benign = "Low-MAPQ reads are often ambiguous (repeats, reads that fit several places), not necessarily wrong. Long reads carry more insertions and deletions than short reads. A few very long reads can dominate a line.",
                 .na_no_mapped = "No mapped reads.",
                 .na_no_sequence = "Not available: the input has no sequence."
@@ -89,6 +91,18 @@ const char* report_plot_caption(int plot_id, int is_aligned)
 {
         const struct report_plot_help *h = &report_plot_help[plot_id - 1];
         return (!is_aligned && h->caption_unaligned) ? h->caption_unaligned : h->caption;
+}
+
+const char* report_plot_good(int plot_id, int is_aligned)
+{
+        const struct report_plot_help *h = &report_plot_help[plot_id - 1];
+        return (!is_aligned && h->good_unaligned) ? h->good_unaligned : h->good;
+}
+
+const char* report_plot_look(int plot_id, int is_aligned)
+{
+        const struct report_plot_help *h = &report_plot_help[plot_id - 1];
+        return (!is_aligned && h->look_unaligned) ? h->look_unaligned : h->look;
 }
 
 const char* const report_mismatch_row_na =

@@ -100,8 +100,8 @@ The report is one self-contained HTML page: no JavaScript, no network request, a
 1. How long are the reads? Read length distribution with N50.
 2. How good is each read? Distribution of per-read mean base quality.
 3. Where along the read does quality drop? Mean quality by position.
-4. Is base composition even along the read? A, C, G, T and N by position.
-5. Where along the read do errors occur? Mismatch, insertion and deletion rates by position (aligned input only).
+4. Is base composition even along the read? A, C, G, T and N by position, one row per mapping-quality class (aligned input) or one row of all reads (unaligned input).
+5. Where along the read do errors occur? Mismatch rates by position, one row per mapping-quality class and stacked by the read base (A, C, G, T, N); then insertion and deletion rates by position (aligned input only).
 6. How accurate are the aligned reads? Distribution of per-read identity (aligned input only).
 
 Lines are coloured by mapping-quality class; paired input shows Read 1 and Read 2 side by side. Positions are in base pairs for short reads and in percent of read length when the median length is 1 kb or more. Unaligned input (FASTQ, FASTA, unaligned BAM) shows plots 1 to 4 only. Plots 3 to 5 (the per-position plots) are replaced by a one-line note when the input has fewer than 50 reads. A plot that cannot be drawn, for example mismatches for a BAM without MD tags, is replaced by a one-line note. bwa-mem and bwa-mem2 write MD tags by default; STAR and minimap2 (without =--MD=) do not.

@@ -8,6 +8,7 @@
  *   - nice ticks, linear and log-10 axes
  *   - line series (dash pattern, gaps for missing values)
  *   - step histograms
+ *   - filled areas from the axis bottom (stacked areas, drawn top series first)
  *   - one vertical marker line with a label
  *   - swatches (single, and a row of them)
  *   - panel grids (rows x columns, shared x per column, shared y per row)
@@ -50,8 +51,12 @@ typedef struct svg_axis {
  * One data series.
  *   svg_line: n points at x[i] (or x0 + i * dx when x is NULL).
  *   svg_step: n bins; x holds n + 1 bin edges (or x0 + i * dx, i = 0..n).
+ *   svg_area: as svg_line, the area between the bottom of the panel and the line.
  * y[i] = NaN is a gap. In svg_step a bin with y <= the axis minimum is also
  * not drawn, so empty stretches do not paint over the x axis.
+ * A tol > 0 (svg_line_ex, svg_area) drops points that lie within tol units of
+ * the line drawn through their neighbours, so that a long flat stretch is two
+ * points; tol 0 keeps every point.
  */
 typedef struct svg_series {
         const char* title;      /* series-level <title>, may be NULL */
@@ -151,7 +156,16 @@ int svg_grid_panel_ex(tld_strbuf* o, const svg_grid* g, int r, int c, const char
                       const svg_axis* x, const svg_axis* y, double x_tick_max, svg_panel* p);
 
 int svg_line(tld_strbuf* o, const svg_panel* p, const svg_series* s);
+int svg_line_ex(tld_strbuf* o, const svg_panel* p, const svg_series* s, double tol);   /* tol: see svg_series */
 int svg_step(tld_strbuf* o, const svg_panel* p, const svg_series* s);
+
+/*
+ * One filled <path> (fill = s->color, no stroke, dash ignored) between the bottom of the
+ * panel and the line through s, one closed outline per run of finite values. A stack of
+ * areas is drawn as the running sums, the top series first: each area then shows its own
+ * band above the ones drawn after it, and the outline of every band is written once.
+ */
+int svg_area(tld_strbuf* o, const svg_panel* p, const svg_series* s, double tol);
 
 /* Dashed black vertical line at data value x with a text label beside it. */
 int svg_vline(tld_strbuf* o, const svg_panel* p, double x, const char* label);

@@ -3,6 +3,12 @@
 All notable changes to SAMStat are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Base composition and mismatches are shown per MAPQ class again (base x MAPQ, as in both SAMStat papers): plot 4 has one row per MAPQ class with reads (one row of all reads for unaligned input), and plot 5 has one mismatch row per mapped MAPQ class, stacked by the read base (A, C, G, T, N), above the insertion and deletion rows. The JSON position blocks get an optional key `mismatch_base`, the mismatches of each bin split by read base; `format_version` stays 2 and the MultiQC output is unchanged.
+
 ## [2.4.0] - 2026-10-15
 
 ### Breaking changes

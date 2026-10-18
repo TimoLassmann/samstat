@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Neutral chrome. Series colours come from the caller. */
@@ -608,43 +609,184 @@ static int series_close(tld_strbuf* o, const svg_series* s)
         return pf(o, "\"/>");
 }
 
-int svg_line(tld_strbuf* o, const svg_panel* p, const svg_series* s)
+static int point_ok(const svg_series* s, int i)
+{
+        return i >= 0 && i < s->n && isfinite(s->y[i]) && isfinite(series_x(s, i));
+}
+
+/* Distance (units) of point j of s from the segment between its points a and e. */
+static double seg_dist(const svg_panel* p, const svg_series* s, int a, int e, int j)
+{
+        double ax = px(p, series_x(s, a)), ay = py(p, s->y[a]);
+        double dx = px(p, series_x(s, e)) - ax, dy = py(p, s->y[e]) - ay;
+        double jx = px(p, series_x(s, j)) - ax, jy = py(p, s->y[j]) - ay;
+        double l2 = dx * dx + dy * dy;
+        double t = l2 > 0.0 ? (jx * dx + jy * dy) / l2 : 0.0;
+        t = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t;
+        return hypot(jx - t * dx, jy - t * dy);
+}
+
+#define SVG_SIMPLIFY_SPAN 200     /* points one simplified segment may replace (bounds the work) */
+
+/*
+ * The point drawn after point a of a run that ends at point last: a + 1 when tol is 0, else
+ * the farthest point (at most SVG_SIMPLIFY_SPAN on) such that every point in between lies within
+ * tol of the straight segment to it.
+ */
+static int next_kept(const svg_panel* p, const svg_series* s, int a, int last, double tol)
+{
+        int e = a + 1;
+        if (!(tol > 0.0)) {
+                return e;
+        }
+        while (e < last && e + 1 - a <= SVG_SIMPLIFY_SPAN) {
+                int ok = 1;
+                for (int j = a + 1; j <= e && ok; j++) {
+                        ok = seg_dist(p, s, a, e + 1, j) <= tol;
+                }
+                if (!ok) {
+                        break;
+                }
+                e++;
+        }
+        return e;
+}
+
+/* A coordinate in tenths of a unit (clamped as in num()); printed back with num() it is exact. */
+static long tenths(double v)
+{
+        if (!isfinite(v)) {
+                v = 0.0;
+        }
+        v = v > 1e6 ? 1e6 : v < -1e6 ? -1e6 : v;
+        return lround(10.0 * v);
+}
+
+/* A difference of tenths, short: 12 -> "1.2", 3 -> ".3", -3 -> "-.3", 20 -> "2". */
+static const char* rel_num(char* buf, long t)
+{
+        const char* sign = t < 0 ? "-" : "";
+        long a = labs(t);
+        if (a % 10 == 0) {
+                snprintf(buf, 32, "%s%ld", sign, a / 10);
+        } else if (a < 10) {
+                snprintf(buf, 32, "%s.%ld", sign, a);
+        } else {
+                snprintf(buf, 32, "%s%ld.%ld", sign, a / 10, a % 10);
+        }
+        return buf;
+}
+
+/*
+ * Point i0 of a run as "M x,y", then the points after it up to i1. With tol 0 each as " x,y" (the
+ * format of every other line). With tol > 0 (plots 4 and 5, up to 4 rows x 5 bases x 1000 positions
+ * per mate) the kept points are relative steps "l dx,dy dx,dy", taken between the rounded absolute
+ * positions so that rounding never accumulates: about a quarter fewer bytes than absolute pairs.
+ */
+static int run_points(tld_strbuf* o, const svg_panel* p, const svg_series* s, int i0, int i1, double tol)
+{
+        char bx[32], by[32];
+        double x0 = px(p, series_x(s, i0)), y0 = py(p, s->y[i0]);
+
+        if (!(tol > 0.0)) {
+                TRY(pf(o, "M%f,%f", x0, y0));
+                for (int a = i0; a < i1;) {
+                        a = next_kept(p, s, a, i1, tol);
+                        TRY(pf(o, " %f,%f", px(p, series_x(s, a)), py(p, s->y[a])));
+                }
+                return OK;
+        }
+        long lx = tenths(x0), ly = tenths(y0);
+        TRY(pf(o, "M%f,%fl", (double)lx / 10.0, (double)ly / 10.0));
+        for (int a = i0, first = 1; a < i1; first = 0) {
+                a = next_kept(p, s, a, i1, tol);
+                long tx = tenths(px(p, series_x(s, a))), ty = tenths(py(p, s->y[a]));
+                TRY(pf(o, "%s%s,%s", first ? "" : " ", rel_num(bx, tx - lx), rel_num(by, ty - ly)));
+                lx = tx;
+                ly = ty;
+        }
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+/* Number of points of s that can be drawn (finite x and y). */
+static int has_points(const svg_series* s)
 {
         int valid = 0;
-        int run = 0;
-        double pend_x = 0.0, pend_y = 0.0;
+        for (int i = 0; i < s->n; i++) {
+                valid += point_ok(s, i);
+        }
+        return valid;
+}
+
+int svg_line(tld_strbuf* o, const svg_panel* p, const svg_series* s)
+{
+        return svg_line_ex(o, p, s, 0.0);
+}
+
+int svg_line_ex(tld_strbuf* o, const svg_panel* p, const svg_series* s, double tol)
+{
+        if (!s || (s->n > 0 && !s->y)) {
+                ERROR_MSG("svg_plot: bad series");
+        }
+        if (!has_points(s)) {
+                return OK;
+        }
+        TRY(series_open(o, s, SVG_LINE_WIDTH));
+        for (int i0 = 0; i0 < s->n; i0++) {
+                if (!point_ok(s, i0)) {
+                        continue;
+                }
+                int i1 = i0;
+                while (point_ok(s, i1 + 1)) {
+                        i1++;
+                }
+                double xx = px(p, series_x(s, i0));
+                double yy = py(p, s->y[i0]);
+                if (i1 == i0) {
+                        /* an isolated value between gaps: a 1.6 px dash so it stays visible */
+                        TRY(pf(o, "M%f,%fH%f", xx - 0.8, yy, xx + 0.8));
+                } else {
+                        TRY(run_points(o, p, s, i0, i1, tol));
+                }
+                i0 = i1;
+        }
+        return series_close(o, s);
+ERROR:
+        return FAIL;
+}
+
+int svg_area(tld_strbuf* o, const svg_panel* p, const svg_series* s, double tol)
+{
+        const double base = p->top + p->h;
 
         if (!s || (s->n > 0 && !s->y)) {
                 ERROR_MSG("svg_plot: bad series");
         }
-        for (int i = 0; i < s->n; i++) {
-                valid += isfinite(s->y[i]) && isfinite(series_x(s, i));
-        }
-        if (!valid) {
+        if (!has_points(s)) {
                 return OK;
         }
-        TRY(series_open(o, s, SVG_LINE_WIDTH));
-        for (int i = 0; i <= s->n; i++) {
-                int ok = i < s->n && isfinite(s->y[i]) && isfinite(series_x(s, i));
-                if (ok) {
-                        double xx = px(p, series_x(s, i));
-                        double yy = py(p, s->y[i]);
-                        if (run == 0) {
-                                pend_x = xx;
-                                pend_y = yy;
-                        } else if (run == 1) {
-                                TRY(pf(o, "M%f,%f %f,%f", pend_x, pend_y, xx, yy));
-                        } else {
-                                TRY(pf(o, " %f,%f", xx, yy));
-                        }
-                        run++;
-                } else {
-                        if (run == 1) {
-                                /* an isolated value between gaps: a 1.6 px dash so it stays visible */
-                                TRY(pf(o, "M%f,%fH%f", pend_x - 0.8, pend_y, pend_x + 0.8));
-                        }
-                        run = 0;
+        TRY(pf(o, "<path fill=\"%e\" d=\"", s->color ? s->color : "#000000"));
+        /* per run: along the line, down to the bottom, back along the bottom, closed */
+        for (int i0 = 0; i0 < s->n; i0++) {
+                if (!point_ok(s, i0)) {
+                        continue;
                 }
+                int i1 = i0;
+                while (point_ok(s, i1 + 1)) {
+                        i1++;
+                }
+                double xx = px(p, series_x(s, i0));
+                double yy = py(p, s->y[i0]);
+                if (i1 == i0) {
+                        /* an isolated value between gaps: a bar 1.6 px wide */
+                        TRY(pf(o, "M%f,%fH%fV%fH%fZ", xx - 0.8, yy, xx + 0.8, base, xx - 0.8));
+                } else {
+                        TRY(run_points(o, p, s, i0, i1, tol));
+                        TRY(pf(o, "V%fH%fZ", base, xx));
+                }
+                i0 = i1;
         }
         return series_close(o, s);
 ERROR:

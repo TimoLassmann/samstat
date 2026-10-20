@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "seq_star_softclip.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "seq_star_softclip.sam"},
 "summary": {
 "total_reads": 1,
 "read1_reads": 1,

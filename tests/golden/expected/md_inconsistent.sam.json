@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "md_inconsistent.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "md_inconsistent.sam"},
 "summary": {
 "total_reads": 3,
 "read1_reads": 3,

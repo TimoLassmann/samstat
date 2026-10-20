@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "ont_like.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "ont_like.sam"},
 "summary": {
 "total_reads": 24,
 "read1_reads": 24,

@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "small.bam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "small.bam"},
 "summary": {
 "total_reads": 20,
 "read1_reads": 20,

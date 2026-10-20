@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "softclip_shift.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "softclip_shift.sam"},
 "summary": {
 "total_reads": 1,
 "read1_reads": 1,

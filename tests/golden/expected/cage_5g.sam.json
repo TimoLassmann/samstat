@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "cage_5g.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "cage_5g.sam"},
 "summary": {
 "total_reads": 320,
 "read1_reads": 320,

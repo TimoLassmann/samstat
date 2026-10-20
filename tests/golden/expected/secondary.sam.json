@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "secondary.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "secondary.sam"},
 "summary": {
 "total_reads": 3,
 "read1_reads": 3,

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(SAMStat LANGUAGES C VERSION "2.4.0")
+project(SAMStat LANGUAGES C VERSION "2.5.0")
 
 # C11 with the GNU/POSIX extensions (-std=gnu11): the sources use localtime_r, strdup/strndup,
 # realpath, clock_gettime and getopt_long, which a strict -std=c11 does not declare (gcc 14 makes

@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "eqx_nomd.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "eqx_nomd.sam"},
 "summary": {
 "total_reads": 5,
 "read1_reads": 5,

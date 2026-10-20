@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "high_qual.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "high_qual.sam"},
 "summary": {
 "total_reads": 2,
 "read1_reads": 2,

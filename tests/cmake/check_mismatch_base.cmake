@@ -8,7 +8,7 @@
 #     the longest of them is exactly as long as the mismatches array (same trimming)
 #   - the unmapped class has five empty arrays
 # and that docs/samstat.schema.json lists mismatch_base in the position block without
-# requiring it (an optional field added after 2.4.0: files written by 2.4.0 still validate).
+# requiring it (an optional field added in 2.5.0: files written by 2.4.0 still validate).
 # Required: -DSAMSTAT=<binary> -DINPUT=<file> -DOUTDIR=<dir> -DSCHEMA=<schema file>
 
 cmake_minimum_required(VERSION 3.19)

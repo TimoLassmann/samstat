@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use SAMStat, please cite the SAMStat 2 paper."
 title: "SAMStat"
-version: 2.4.0
-date-released: "2026-10-15"
+version: 2.5.0
+date-released: "2026-10-20"
 type: software
 authors:
   - family-names: Lassmann

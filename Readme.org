@@ -108,6 +108,12 @@ The report is one self-contained HTML page: no JavaScript, no network request, a
 
 Lines are coloured by mapping-quality class; paired input shows Read 1 and Read 2 side by side. Positions are in base pairs for short reads and in percent of read length when the median length is 1 kb or more. Unaligned input (FASTQ, FASTA, unaligned BAM) shows plots 1 to 4 only. Plots 3 to 5 (the per-position plots) are replaced by a one-line note when the input has fewer than 50 reads. A plot that cannot be drawn, for example mismatches for a BAM without MD tags, is replaced by a one-line note. bwa-mem and bwa-mem2 write MD tags by default; STAR and minimap2 (without =--MD=) do not.
 
+* New in 2.5.0
+
+- Base composition (plot 4) and mismatches (plot 5) are shown per mapping-quality class again, with the mismatches stacked by read base (A, C, G, T, N), as in both SAMStat papers.
+- A, C, G, T and N use the IGV colours.
+- The JSON output gains an optional key =mismatch_base=; =format_version= stays 2.
+
 * New in 2.4.0
 
 - Intra-file threading: =-t= is the total thread budget and speeds up a single input.

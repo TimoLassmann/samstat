@@ -227,7 +227,7 @@ ERROR:
 }
 
 /* bins = acc->pos_*[r][0]; the classes follow at a stride of n_bins bins. mismatch_base (added
- * after 2.4.0, format_version 2) follows mismatches. */
+ * in 2.5.0, format_version 2) follows mismatches. */
 int json_v2_pos_block(struct jout *o, const struct collect_pos_bin *bins, int n_bins)
 {
         const char *b = (const char *) bins;

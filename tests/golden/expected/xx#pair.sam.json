@@ -1,6 +1,6 @@
 {
 "format_version": 2,
-"meta": {"samstat_version": "2.4.0", "input_file": "xx#pair.sam"},
+"meta": {"samstat_version": "2.5.0", "input_file": "xx#pair.sam"},
 "summary": {
 "total_reads": 6,
 "read1_reads": 3,

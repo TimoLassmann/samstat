@@ -16,7 +16,9 @@ SAMStat reports length distribution, base quality distribution, mapping
 statistics, mismatch, insertion and deletion error profiles. The output is a
 single html page:
 
-[[Image of example output][https://user-images.githubusercontent.com/8110320/175869206-6edcb06d-1afc-42f6-bbb8-16a2a18146f0.png]]
+[[file:docs/img/samstat-report-cage.png]]
+
+Part of the report for 400,000 records of an ENCODE CAGE run (ENCFF599AMP, 36 bp). Plot 5 shows the extra G that the cap-trapping protocol adds at the 5′ end of CAGE reads, as mismatches at the start of the read in both MAPQ classes.
 
 * How to install
 

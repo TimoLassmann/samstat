@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://github.com/TimoLassmann/samstat/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: 0000000000000000000000000000000000000000000000000000000000000000
+  sha256: 7f1122371780e8d29ef8886ff9e099055fd86828b8c1ade2a95c71d5a70a9c68
 
 build:
   number: 0
